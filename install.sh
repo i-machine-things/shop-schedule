@@ -5,10 +5,18 @@ set -e
 INSTALL_DIR="/home/pi/foreman-schedule"
 
 echo "=== Foreman Schedule Installer ==="
+echo ""
+read -rp "Install kiosk display (requires a monitor connected)? [y/N] " _kiosk
+KIOSK_MODE=false
+[[ "${_kiosk,,}" == "y" ]] && KIOSK_MODE=true
 
 # Dependencies
 sudo apt-get update -q
-sudo apt-get install -y python3-pip chromium-browser unclutter
+if $KIOSK_MODE; then
+    sudo apt-get install -y python3-pip chromium-browser unclutter
+else
+    sudo apt-get install -y python3-pip
+fi
 pip3 install pdfplumber
 
 # Copy files
@@ -27,7 +35,7 @@ if [ ! -f "$INSTALL_DIR/.env" ]; then
     echo ""
 fi
 
-# Placeholder schedule so Chromium doesn't open an error page on first boot
+# Placeholder schedule
 if [ ! -f "$INSTALL_DIR/schedule.html" ]; then
     cat > "$INSTALL_DIR/schedule.html" << 'EOF'
 <!DOCTYPE html>
@@ -38,23 +46,25 @@ display:flex;align-items:center;justify-content:center;height:100vh;font-size:24
 EOF
 fi
 
-# Install & start kiosk service
-sudo cp foreman-kiosk.service /etc/systemd/system/
-sudo systemctl daemon-reload
-sudo systemctl enable foreman-kiosk
-sudo systemctl start foreman-kiosk
+# Install & start kiosk service (display mode only)
+if $KIOSK_MODE; then
+    sudo cp foreman-kiosk.service /etc/systemd/system/
+    sudo systemctl daemon-reload
+    sudo systemctl enable foreman-kiosk
+    sudo systemctl start foreman-kiosk
 
-# Install & start HTTP server (remote viewing)
+    # Hide mouse cursor on idle
+    AUTOSTART="/etc/xdg/lxsession/LXDE-pi/autostart"
+    if [ -f "$AUTOSTART" ] && ! grep -q 'unclutter' "$AUTOSTART"; then
+        echo "@unclutter -idle 0.1 -root" | sudo tee -a "$AUTOSTART"
+    fi
+fi
+
+# Install & start HTTP server (always — enables remote viewing)
 sudo cp foreman-server.service /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable foreman-server
 sudo systemctl start foreman-server
-
-# Hide mouse cursor on idle
-AUTOSTART="/etc/xdg/lxsession/LXDE-pi/autostart"
-if [ -f "$AUTOSTART" ] && ! grep -q 'unclutter' "$AUTOSTART"; then
-    echo "@unclutter -idle 0.1 -root" | sudo tee -a "$AUTOSTART"
-fi
 
 # Add cron job (every 15 minutes)
 CRON="*/15 * * * * $INSTALL_DIR/run_update.sh >> /tmp/foreman-schedule.log 2>&1"
@@ -65,4 +75,5 @@ echo "=== Done ==="
 echo "1. Edit $INSTALL_DIR/.env with your Gmail credentials"
 echo "2. Run: python3 $INSTALL_DIR/update_schedule.py"
 echo "   (point it at an existing PDF first to test the display)"
-echo "3. Email any Foreman's Report PDF to $GMAIL_USER — it will appear within 15 min"
+echo "3. Email any Foreman's Report PDF — it will appear within 15 min"
+echo "4. View schedule at: http://$(hostname -I | awk '{print $1}'):8080/schedule.html"
