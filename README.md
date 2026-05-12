@@ -21,7 +21,7 @@ Raspberry Pi kiosk display for a machine shop floor. Polls a Gmail inbox every 1
 
 ```bash
 # Clone on the Pi
-git clone https://github.com/YOUR_ORG/foreman-schedule.git /home/pi/foreman-schedule
+git clone https://github.com/i-machine-things/foreman-schedule.git /home/pi/foreman-schedule
 cd /home/pi/foreman-schedule
 
 # Run the installer (installs deps, sets up cron, starts kiosk service)
@@ -30,10 +30,10 @@ bash install.sh
 
 The installer will prompt you to fill in `.env` before the first run:
 
-```
+```dotenv
 GMAIL_USER=your@gmail.com
 GMAIL_PASS=xxxx-xxxx-xxxx-xxxx   # Gmail App Password
-SHOP_NAME=Your Shop Name          # Shown in the page header and browser title
+SHOP_NAME="Your Shop Name"        # Shown in the page header and browser title
 ```
 
 ## Manual test
