@@ -28,11 +28,12 @@ cd /home/pi/foreman-schedule
 bash install.sh
 ```
 
-The installer will prompt you to fill in `.env` with your Gmail credentials before the first run:
+The installer will prompt you to fill in `.env` before the first run:
 
 ```
 GMAIL_USER=your@gmail.com
 GMAIL_PASS=xxxx-xxxx-xxxx-xxxx   # Gmail App Password
+SHOP_NAME=Your Shop Name          # Shown in the page header and browser title
 ```
 
 ## Manual test
