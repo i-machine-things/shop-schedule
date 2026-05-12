@@ -38,6 +38,16 @@ GMAIL_PASS=xxxx-xxxx-xxxx-xxxx   # Gmail App Password
 SHOP_NAME="Your Shop Name"        # Shown in the page header and browser title
 ```
 
+## Remote access
+
+Once the installer runs, the schedule is also served over HTTP on port 8080:
+
+```
+http://<pi-ip>:8080/schedule.html
+```
+
+The page auto-refreshes every 30 minutes (matching the cron interval). Any device on the same network can view it — useful for checking the schedule from a desk or phone without walking to the display.
+
 ## Manual test
 
 ```bash
@@ -54,6 +64,7 @@ GMAIL_USER='' python3 update_schedule.py
 | `run_update.sh` | Cron wrapper — loads `.env` and calls the script |
 | `install.sh` | One-time Pi setup: deps, cron job, kiosk service |
 | `foreman-kiosk.service` | systemd service — opens Chromium in kiosk mode |
+| `foreman-server.service` | systemd service — serves `schedule.html` over HTTP on port 8080 |
 | `.env.example` | Credential template (copy to `.env` and fill in) |
 
 ## Display

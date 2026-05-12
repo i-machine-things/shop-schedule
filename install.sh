@@ -44,6 +44,12 @@ sudo systemctl daemon-reload
 sudo systemctl enable foreman-kiosk
 sudo systemctl start foreman-kiosk
 
+# Install & start HTTP server (remote viewing)
+sudo cp foreman-server.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable foreman-server
+sudo systemctl start foreman-server
+
 # Hide mouse cursor on idle
 AUTOSTART="/etc/xdg/lxsession/LXDE-pi/autostart"
 if [ -f "$AUTOSTART" ] && ! grep -q 'unclutter' "$AUTOSTART"; then
