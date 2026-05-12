@@ -1,0 +1,17 @@
+# Credentials
+.env
+
+# Report PDFs (may contain sensitive job data)
+*.pdf
+
+# Generated output
+schedule.html
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Editor
+.vscode/
+*.swp

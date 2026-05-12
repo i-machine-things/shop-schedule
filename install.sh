@@ -1,0 +1,62 @@
+#!/bin/bash
+# Run this once on the Raspberry Pi to set everything up.
+set -e
+
+INSTALL_DIR="/home/pi/foreman-schedule"
+
+echo "=== Foreman Schedule Installer ==="
+
+# Dependencies
+sudo apt-get update -q
+sudo apt-get install -y python3-pip chromium-browser unclutter
+pip3 install pdfplumber
+
+# Copy files
+sudo mkdir -p "$INSTALL_DIR"
+sudo cp update_schedule.py run_update.sh "$INSTALL_DIR/"
+sudo chmod +x "$INSTALL_DIR/run_update.sh"
+sudo chown -R pi:pi "$INSTALL_DIR"
+
+# Create .env from example if not present
+if [ ! -f "$INSTALL_DIR/.env" ]; then
+    cp .env.example "$INSTALL_DIR/.env"
+    echo ""
+    echo ">>> Edit $INSTALL_DIR/.env with your Gmail credentials before continuing <<<"
+    echo "    Use a Gmail App Password (not your regular password)."
+    echo "    Generate one at: https://myaccount.google.com/apppasswords"
+    echo ""
+fi
+
+# Placeholder schedule so Chromium doesn't open an error page on first boot
+if [ ! -f "$INSTALL_DIR/schedule.html" ]; then
+    cat > "$INSTALL_DIR/schedule.html" << 'EOF'
+<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><meta http-equiv="refresh" content="60">
+<style>body{background:#07070f;color:#4af;font-family:monospace;
+display:flex;align-items:center;justify-content:center;height:100vh;font-size:24px}</style>
+</head><body>Waiting for Foreman's Report PDF...</body></html>
+EOF
+fi
+
+# Install & start kiosk service
+sudo cp foreman-kiosk.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable foreman-kiosk
+sudo systemctl start foreman-kiosk
+
+# Hide mouse cursor on idle
+AUTOSTART="/etc/xdg/lxsession/LXDE-pi/autostart"
+if [ -f "$AUTOSTART" ] && ! grep -q 'unclutter' "$AUTOSTART"; then
+    echo "@unclutter -idle 0.1 -root" | sudo tee -a "$AUTOSTART"
+fi
+
+# Add cron job (every 15 minutes)
+CRON="*/15 * * * * $INSTALL_DIR/run_update.sh >> /tmp/foreman-schedule.log 2>&1"
+( crontab -l 2>/dev/null | grep -v foreman-schedule; echo "$CRON" ) | crontab -
+
+echo ""
+echo "=== Done ==="
+echo "1. Edit $INSTALL_DIR/.env with your Gmail credentials"
+echo "2. Run: python3 $INSTALL_DIR/update_schedule.py"
+echo "   (point it at an existing PDF first to test the display)"
+echo "3. Email any Foreman's Report PDF to $GMAIL_USER — it will appear within 15 min"
