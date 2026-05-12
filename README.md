@@ -1,6 +1,8 @@
-# Foreman Schedule
+# Shop Schedule
 
 Raspberry Pi kiosk display for a machine shop floor. Polls a Gmail inbox every 15 minutes for the Foreman's Report PDF, parses it, and serves an auto-scrolling HTML schedule on a wall-mounted screen.
+
+> Works off the **Foreman's Report** exported from JobBoss. The report is emailed as a PDF attachment and picked up automatically.
 
 ## How it works
 
@@ -21,8 +23,8 @@ Raspberry Pi kiosk display for a machine shop floor. Polls a Gmail inbox every 1
 
 ```bash
 # Clone on the Pi
-git clone https://github.com/i-machine-things/foreman-schedule.git /home/pi/foreman-schedule
-cd /home/pi/foreman-schedule
+git clone https://github.com/i-machine-things/shop-schedule.git /home/pi/shop-schedule
+cd /home/pi/shop-schedule
 
 # Run the installer (installs deps, sets up cron, starts kiosk service)
 bash install.sh
