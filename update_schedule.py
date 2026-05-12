@@ -371,7 +371,7 @@ setupLoop();
 function pauseScroll(){{
   paused = true;
   clearTimeout(pauseTimer);
-  pauseTimer = setTimeout(()=>{{ paused = false; pos = wrap.scrollTop; }}, 60000);
+  pauseTimer = setTimeout(()=>{{ paused = false; pos = wrap.scrollTop; }}, 10000);
 }}
 
 wrap.addEventListener('wheel',      pauseScroll, {{passive:true}});
