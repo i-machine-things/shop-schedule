@@ -350,14 +350,23 @@ function pinSectionHeaders(){{
   const theadH = document.querySelector('thead').offsetHeight;
   document.querySelectorAll('.section-hdr td').forEach(td => td.style.top = theadH + 'px');
 }}
-pinSectionHeaders();
 
-// Auto-scroll: smooth crawl, pauses on user interaction for 60s then resumes
 const wrap = document.getElementById('wrap');
 let pos = 0;
 let paused = false;
 let pauseTimer = null;
 const SPEED = 0.6;
+let singleHeight = 0;
+
+function setupLoop(){{
+  const tbody = document.querySelector('tbody');
+  singleHeight = tbody.offsetHeight;
+  if(singleHeight > wrap.clientHeight){{
+    tbody.innerHTML += tbody.innerHTML;
+  }}
+  pinSectionHeaders();
+}}
+setupLoop();
 
 function pauseScroll(){{
   paused = true;
@@ -371,14 +380,11 @@ wrap.addEventListener('mousedown',  pauseScroll, {{passive:true}});
 
 function step(){{
   if(!paused){{
-    const max = wrap.scrollHeight - wrap.clientHeight;
-    if(max > 0){{
+    if(wrap.scrollHeight - wrap.clientHeight > 0){{
       pos += SPEED;
-      if(pos >= max){{
-        pos = 0;
-        wrap.scrollTop = 0;
-        setTimeout(()=> requestAnimationFrame(step), 3000);
-        return;
+      if(singleHeight > 0 && pos >= singleHeight){{
+        pos -= singleHeight;
+        wrap.scrollTop = pos;
       }}
       wrap.scrollTop = pos;
     }}
@@ -395,11 +401,11 @@ setInterval(async () => {{
     const match = txt.match(/data-gen="(\\d+)"/);
     if (!match || match[1] === currentGen) return;
     currentGen = match[1];
-    const doc = new DOMParser().parseFromString(txt, 'text/html');
-    document.querySelector('.meta-info').innerHTML = doc.querySelector('.meta-info').innerHTML;
-    const saved = wrap.scrollTop;
-    document.querySelector('tbody').innerHTML = doc.querySelector('tbody').innerHTML;
-    pinSectionHeaders();
+    const newDoc = new DOMParser().parseFromString(txt, 'text/html');
+    document.querySelector('.meta-info').innerHTML = newDoc.querySelector('.meta-info').innerHTML;
+    const saved = (singleHeight > 0 && pos >= singleHeight) ? pos - singleHeight : pos;
+    document.querySelector('tbody').innerHTML = newDoc.querySelector('tbody').innerHTML;
+    setupLoop();
     wrap.scrollTop = saved;
     pos = saved;
   }} catch(e) {{}}
