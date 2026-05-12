@@ -357,12 +357,14 @@ let paused = false;
 let pauseTimer = null;
 const SPEED = 0.6;
 let singleHeight = 0;
+let loopReady = false;
 
 function setupLoop(){{
   const tbody = document.querySelector('tbody');
   singleHeight = tbody.offsetHeight;
-  if(singleHeight > wrap.clientHeight){{
+  if(!loopReady && singleHeight > wrap.clientHeight){{
     tbody.innerHTML += tbody.innerHTML;
+    loopReady = true;
   }}
   pinSectionHeaders();
 }}
@@ -405,6 +407,7 @@ setInterval(async () => {{
     document.querySelector('.meta-info').innerHTML = newDoc.querySelector('.meta-info').innerHTML;
     const saved = (singleHeight > 0 && pos >= singleHeight) ? pos - singleHeight : pos;
     document.querySelector('tbody').innerHTML = newDoc.querySelector('tbody').innerHTML;
+    loopReady = false;
     setupLoop();
     wrap.scrollTop = saved;
     pos = saved;
