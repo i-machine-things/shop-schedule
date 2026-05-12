@@ -231,7 +231,9 @@ def generate_html(data, out_path):
     report_date = data['report_date']
     thru_date   = data['thru_date']
     sections    = data['sections']
-    generated   = datetime.now().strftime('%Y-%m-%d %H:%M')
+    now         = datetime.now()
+    generated   = now.strftime('%Y-%m-%d %H:%M')
+    gen_ts      = int(now.timestamp())
     shop_name   = _html.escape(SHOP_NAME)
     local_ip    = _get_local_ip()
     url_line    = f'<div class="url-line">http://{local_ip}:8080/schedule.html</div>' if local_ip else ''
@@ -277,7 +279,6 @@ def generate_html(data, out_path):
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta http-equiv="refresh" content="1800">
 <title>{shop_name} &mdash; Foreman's Report</title>
 <style>
 *{{box-sizing:border-box;margin:0;padding:0}}
@@ -307,7 +308,7 @@ thead th{{position:sticky;top:0;z-index:20;background:#0d0d20;color:#7799ff;font
 .overdue{{color:#f55;font-weight:bold}}
 </style>
 </head>
-<body>
+<body data-gen="{gen_ts}">
 <div id="hdr">
   <h1>{shop_name} &mdash; Foreman's Report</h1>
   <div class="meta">
@@ -345,8 +346,11 @@ thead th{{position:sticky;top:0;z-index:20;background:#0d0d20;color:#7799ff;font
 }})();
 
 // Pin section headers just below the frozen column header row
-const theadH = document.querySelector('thead').offsetHeight;
-document.querySelectorAll('.section-hdr td').forEach(td => td.style.top = theadH + 'px');
+function pinSectionHeaders(){{
+  const theadH = document.querySelector('thead').offsetHeight;
+  document.querySelectorAll('.section-hdr td').forEach(td => td.style.top = theadH + 'px');
+}}
+pinSectionHeaders();
 
 // Auto-scroll: smooth crawl, pauses on user interaction for 60s then resumes
 const wrap = document.getElementById('wrap');
@@ -382,6 +386,24 @@ function step(){{
   requestAnimationFrame(step);
 }}
 requestAnimationFrame(step);
+
+// Poll for updated content every 60s; swap table body in-place to preserve scroll position
+let currentGen = document.body.dataset.gen;
+setInterval(async () => {{
+  try {{
+    const txt = await (await fetch(location.href)).text();
+    const match = txt.match(/data-gen="(\\d+)"/);
+    if (!match || match[1] === currentGen) return;
+    currentGen = match[1];
+    const doc = new DOMParser().parseFromString(txt, 'text/html');
+    document.querySelector('.meta-info').innerHTML = doc.querySelector('.meta-info').innerHTML;
+    const saved = wrap.scrollTop;
+    document.querySelector('tbody').innerHTML = doc.querySelector('tbody').innerHTML;
+    pinSectionHeaders();
+    wrap.scrollTop = saved;
+    pos = saved;
+  }} catch(e) {{}}
+}}, 60000);
 </script>
 </body>
 </html>"""
@@ -397,11 +419,11 @@ def main():
     fetched = fetch_pdf() if GMAIL_USER else False
 
     if os.path.exists(PDF_PATH):
-        if fetched or not os.path.exists(HTML_PATH):
-            data = parse_pdf(PDF_PATH)
-            generate_html(data, HTML_PATH)
-        else:
-            print("No new email. Schedule unchanged.")
+        data = parse_pdf(PDF_PATH)
+        generate_html(data, HTML_PATH)
+        if not fetched:
+            print("No new email. Display refreshed.")
+
     else:
         print("No PDF yet. Send the Foreman's Report PDF to the Gmail inbox.", file=sys.stderr)
 
