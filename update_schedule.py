@@ -10,6 +10,7 @@ import imaplib
 import email
 import os
 import re
+import socket
 import sys
 import pdfplumber
 from datetime import datetime
@@ -23,6 +24,17 @@ BASE_DIR   = os.path.dirname(os.path.abspath(__file__))
 PDF_PATH   = os.path.join(BASE_DIR, 'last_report.pdf')
 HTML_PATH  = os.path.join(BASE_DIR, 'schedule.html')
 # ───────────────────────────────────────────────────────────────────────────────
+
+
+def _get_local_ip():
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(('8.8.8.8', 80))
+        ip = s.getsockname()[0]
+        s.close()
+        return ip
+    except Exception:
+        return None
 
 
 # ── Email ───────────────────────────────────────────────────────────────────────
@@ -221,6 +233,8 @@ def generate_html(data, out_path):
     sections    = data['sections']
     generated   = datetime.now().strftime('%Y-%m-%d %H:%M')
     shop_name   = _html.escape(SHOP_NAME)
+    local_ip    = _get_local_ip()
+    url_line    = f'<div class="url-line">http://{local_ip}:8080/schedule.html</div>' if local_ip else ''
 
     rows = []
     for sec in sections:
@@ -272,7 +286,8 @@ body{{background:#07070f;color:#ddd;font-family:'Courier New',monospace;font-siz
       display:flex;align-items:center;justify-content:space-between;padding:0 18px;z-index:99}}
 #hdr h1{{font-size:18px;color:#fff;letter-spacing:2px;text-transform:uppercase;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}}
 #hdr .meta{{display:flex;align-items:center;gap:20px;flex-shrink:0;white-space:nowrap}}
-.meta-info{{font-size:12px;color:#888;text-align:right;line-height:1.6}}
+.meta-info{{font-size:12px;color:#888;text-align:right;line-height:1.4}}
+.url-line{{font-size:10px;color:#4af;opacity:0.8}}
 #clock{{font-size:24px;color:#4af;font-weight:bold}}
 #wrap{{position:fixed;top:50px;bottom:0;left:0;right:0;overflow-y:scroll}}
 table{{width:100%;border-collapse:separate;border-spacing:0}}
@@ -299,6 +314,7 @@ thead th{{position:sticky;top:0;z-index:20;background:#0d0d20;color:#7799ff;font
     <div class="meta-info">
       <div>Report: {report_date} &nbsp;|&nbsp; Thru: {thru_date}</div>
       <div>Updated: {generated}</div>
+      {url_line}
     </div>
     <div id="clock"></div>
   </div>
