@@ -5,6 +5,7 @@ Run via cron every 15 minutes. Checks Gmail for new Foreman's Report PDF, parses
 and regenerates schedule.html for the kiosk display.
 """
 
+import html as _html
 import imaplib
 import email
 import os
@@ -219,6 +220,7 @@ def generate_html(data, out_path):
     thru_date   = data['thru_date']
     sections    = data['sections']
     generated   = datetime.now().strftime('%Y-%m-%d %H:%M')
+    shop_name   = _html.escape(SHOP_NAME)
 
     rows = []
     for sec in sections:
@@ -262,7 +264,7 @@ def generate_html(data, out_path):
 <head>
 <meta charset="UTF-8">
 <meta http-equiv="refresh" content="1800">
-<title>{SHOP_NAME} &mdash; Foreman's Report</title>
+<title>{shop_name} &mdash; Foreman's Report</title>
 <style>
 *{{box-sizing:border-box;margin:0;padding:0}}
 body{{background:#07070f;color:#ddd;font-family:'Courier New',monospace;font-size:14px;overflow:hidden;height:100vh}}
@@ -292,7 +294,7 @@ thead th{{position:sticky;top:0;z-index:20;background:#0d0d20;color:#7799ff;font
 </head>
 <body>
 <div id="hdr">
-  <h1>{SHOP_NAME} &mdash; Foreman's Report</h1>
+  <h1>{shop_name} &mdash; Foreman's Report</h1>
   <div class="meta">
     <div class="meta-info">
       <div>Report: {report_date} &nbsp;|&nbsp; Thru: {thru_date}</div>
