@@ -17,6 +17,7 @@ from collections import defaultdict
 # ── Config (loaded from .env by run_update.sh) ─────────────────────────────────
 GMAIL_USER = os.environ.get('GMAIL_USER', '')
 GMAIL_PASS = os.environ.get('GMAIL_PASS', '')   # Gmail App Password
+SHOP_NAME  = os.environ.get('SHOP_NAME', 'Foreman Schedule')
 BASE_DIR   = os.path.dirname(os.path.abspath(__file__))
 PDF_PATH   = os.path.join(BASE_DIR, 'last_report.pdf')
 HTML_PATH  = os.path.join(BASE_DIR, 'schedule.html')
@@ -261,7 +262,7 @@ def generate_html(data, out_path):
 <head>
 <meta charset="UTF-8">
 <meta http-equiv="refresh" content="1800">
-<title>Schurman Machine – Foreman Schedule</title>
+<title>{SHOP_NAME} – Foreman Schedule</title>
 <style>
 *{{box-sizing:border-box;margin:0;padding:0}}
 body{{background:#07070f;color:#ddd;font-family:'Courier New',monospace;font-size:14px;overflow:hidden;height:100vh}}
@@ -291,7 +292,7 @@ thead th{{position:sticky;top:0;z-index:20;background:#0d0d20;color:#7799ff;font
 </head>
 <body>
 <div id="hdr">
-  <h1>Schurman Machine &mdash; Foreman's Report</h1>
+  <h1>{SHOP_NAME} &mdash; Foreman's Report</h1>
   <div class="meta">
     <div class="meta-info">
       <div>Report: {report_date} &nbsp;|&nbsp; Thru: {thru_date}</div>
