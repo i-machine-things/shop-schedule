@@ -1,6 +1,10 @@
 # Credentials
 .env
 
+# Claude Code local files
+.claude/settings.local.json
+.claude/scheduled_tasks.lock
+
 # Report PDFs (may contain sensitive job data)
 *.pdf
 
