@@ -35,9 +35,11 @@ if [ ! -f "$INSTALL_DIR/.env" ]; then
     echo ""
 fi
 
-# Placeholder schedule
-if [ ! -f "$INSTALL_DIR/schedule.html" ]; then
-    cat > "$INSTALL_DIR/schedule.html" << 'EOF'
+# Placeholder schedule (served from public/ so .env is never exposed over HTTP)
+sudo mkdir -p "$INSTALL_DIR/public"
+sudo chown pi:pi "$INSTALL_DIR/public"
+if [ ! -f "$INSTALL_DIR/public/schedule.html" ]; then
+    cat > "$INSTALL_DIR/public/schedule.html" << 'EOF'
 <!DOCTYPE html>
 <html><head><meta charset="UTF-8"><meta http-equiv="refresh" content="60">
 <style>body{background:#07070f;color:#4af;font-family:monospace;

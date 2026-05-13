@@ -22,7 +22,7 @@ GMAIL_PASS = os.environ.get('GMAIL_PASS', '')   # Gmail App Password
 SHOP_NAME  = os.environ.get('SHOP_NAME', 'My Shop')
 BASE_DIR   = os.path.dirname(os.path.abspath(__file__))
 PDF_PATH   = os.path.join(BASE_DIR, 'last_report.pdf')
-HTML_PATH  = os.path.join(BASE_DIR, 'schedule.html')
+HTML_PATH  = os.path.join(BASE_DIR, 'public', 'schedule.html')
 # ───────────────────────────────────────────────────────────────────────────────
 
 
@@ -411,12 +411,13 @@ setInterval(async () => {{
     setupLoop();
     wrap.scrollTop = saved;
     pos = saved;
-  }} catch(e) {{}}
+  }} catch(e) {{ console.warn('Poll failed:', e); }}
 }}, 60000);
 </script>
 </body>
 </html>"""
 
+    os.makedirs(os.path.dirname(out_path), exist_ok=True)
     with open(out_path, 'w', encoding='utf-8') as f:
         f.write(html)
     print(f"[{datetime.now():%Y-%m-%d %H:%M}] Generated: {out_path}")
@@ -432,7 +433,6 @@ def main():
         generate_html(data, HTML_PATH)
         if not fetched:
             print("No new email. Display refreshed.")
-
     else:
         print("No PDF yet. Send the Foreman's Report PDF to the Gmail inbox.", file=sys.stderr)
 
