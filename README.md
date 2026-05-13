@@ -2,7 +2,7 @@
 
 Raspberry Pi kiosk display for a machine shop floor. Polls a Gmail inbox every 15 minutes for the Foreman's Report PDF, parses it, and serves an auto-scrolling HTML schedule on a wall-mounted screen.
 
-> Works off the **Foreman's Report** exported from JobBoss. The report is emailed as a PDF attachment and picked up automatically.
+> Works off the **Foreman's Report** exported from JobBoss. The report is emailed as a PDF attachment and picked up automatically — or you can drop a PDF directly into the `incoming/` folder.
 
 ## How it works
 
@@ -42,31 +42,38 @@ SHOP_NAME="Your Shop Name"        # Shown in the page header and browser title
 
 Once the installer runs, the schedule is also served over HTTP on port 8080:
 
-```
+```text
 http://<pi-ip>:8080/schedule.html
 ```
 
-The page auto-refreshes every 30 minutes (matching the cron interval). Any device on the same network can view it — useful for checking the schedule from a desk or phone without walking to the display.
+The page polls for updates every 60 seconds and swaps in new content without reloading. Any device on the same network can view it — useful for checking the schedule from a desk or phone without walking to the display.
 
 ## Manual test
 
 ```bash
-# Place a Foreman's Report PDF in the project directory as last_report.pdf, then:
+# Regenerate schedule.html from the existing last_report.pdf (skips email):
 GMAIL_USER='' python3 update_schedule.py
-# Opens schedule.html from the existing PDF without checking email
+
+# Or drop a PDF into incoming/ and let process_drop.py handle it:
+cp /path/to/report.pdf incoming/
+python3 process_drop.py
 ```
+
+`process_drop.py` picks the newest PDF in `incoming/`, copies it to `last_report.pdf`, moves all processed files to `incoming/processed/`, then calls `update_schedule.py` to regenerate the HTML.
 
 ## Files
 
 | File | Purpose |
 |------|---------|
 | `update_schedule.py` | Email fetch, PDF parse, HTML generation |
+| `process_drop.py` | Drop-dir handler — picks up PDFs from `incoming/` and regenerates the schedule |
 | `run_update.sh` | Cron wrapper — loads `.env` and calls the script |
 | `install.sh` | One-time Pi setup: deps, cron job, kiosk service |
 | `foreman-kiosk.service` | systemd service — opens Chromium in kiosk mode |
 | `foreman-server.service` | systemd service — serves `schedule.html` over HTTP on port 8080 |
 | `.env.example` | Credential template (copy to `.env` and fill in) |
+| `incoming/` | Drop PDFs here; run `process_drop.py` to ingest them |
 
 ## Display
 
-The generated `schedule.html` is a full-screen dark-theme table grouped by work centre. It auto-scrolls continuously and refreshes every 30 minutes via a `<meta http-equiv="refresh">` tag. Overdue promised dates are highlighted in red.
+The generated `schedule.html` is a full-screen dark-theme table grouped by work centre. It auto-scrolls continuously and polls for new content every 60 seconds, swapping in updates without a page reload. Overdue promised dates are highlighted in red.
