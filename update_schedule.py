@@ -387,6 +387,7 @@ function step(){{
       if(singleHeight > 0 && pos >= singleHeight){{
         pos -= singleHeight;
         wrap.scrollTop = pos;
+        if(window.parent !== window) window.parent.postMessage({{type:'scroll-cycle'}},'*');
       }}
       wrap.scrollTop = pos;
     }}
@@ -394,6 +395,12 @@ function step(){{
   requestAnimationFrame(step);
 }}
 requestAnimationFrame(step);
+
+// Pause/resume from kiosk shell
+window.addEventListener('message', e => {{
+  if(e.data?.type === 'pause') {{ clearTimeout(pauseTimer); paused = true; }}
+  else if(e.data?.type === 'resume') {{ paused = false; pos = wrap.scrollTop; }}
+}});
 
 // Poll for updated content every 60s; swap table body in-place to preserve scroll position
 let currentGen = document.body.dataset.gen;
