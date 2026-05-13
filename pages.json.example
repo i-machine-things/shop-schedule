@@ -1,0 +1,7 @@
+{
+  "scroll_cycles": 2,
+  "page_duration": 60,
+  "transition_ms": 800,
+  "after_page": "schedule",
+  "pages": []
+}

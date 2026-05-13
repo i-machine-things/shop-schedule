@@ -40,13 +40,42 @@ SHOP_NAME="Your Shop Name"        # Shown in the page header and browser title
 
 ## Remote access
 
-Once the installer runs, the schedule is also served over HTTP on port 8080:
+Once the installer runs, the kiosk and schedule are served over HTTP on port 8080:
 
 ```text
-http://<pi-ip>:8080/schedule.html
+http://<pi-ip>:8080/kiosk.html    ← kiosk display with page rotation
+http://<pi-ip>:8080/schedule.html ← raw schedule table (no rotation)
 ```
 
-The page polls for updates every 60 seconds and swaps in new content without reloading. Any device on the same network can view it — useful for checking the schedule from a desk or phone without walking to the display.
+The schedule polls for updates every 60 seconds and swaps in new content without reloading.
+
+## Page rotation
+
+The kiosk can rotate through additional web pages between schedule views. After the schedule has scrolled a configurable number of times, it fades to the next page, holds it, then fades back.
+
+Edit `public/pages.json` on the Pi to configure:
+
+```json
+{
+  "scroll_cycles": 2,
+  "page_duration": 60,
+  "transition_ms": 800,
+  "after_page": "schedule",
+  "pages": [
+    "https://example.com/safety-notice",
+    { "url": "https://example.com/dashboard", "duration": 30 }
+  ]
+}
+```
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `scroll_cycles` | `2` | Full scrolls through the schedule before switching |
+| `page_duration` | `60` | Seconds to show each page (overridable per page) |
+| `transition_ms` | `800` | Crossfade duration in milliseconds |
+| `after_page` | `"schedule"` | `"schedule"` — return to schedule after each page, cycling through the list one at a time; `"next"` — play all pages in sequence before returning |
+
+The schedule scroll is paused while a page is displayed and resumes from the same position on return. Leave `pages` as an empty array to disable rotation.
 
 ## Manual test
 
@@ -69,8 +98,10 @@ python3 process_drop.py
 | `process_drop.py` | Drop-dir handler — picks up PDFs from `incoming/` and regenerates the schedule |
 | `run_update.sh` | Cron wrapper — loads `.env` and calls the script |
 | `install.sh` | One-time Pi setup: deps, cron job, kiosk service |
-| `foreman-kiosk.service` | systemd service — opens Chromium in kiosk mode |
-| `foreman-server.service` | systemd service — serves `schedule.html` over HTTP on port 8080 |
+| `foreman-kiosk.service` | systemd service — opens Chromium in kiosk mode pointing at `kiosk.html` |
+| `foreman-server.service` | systemd service — serves `public/` over HTTP on port 8080 |
+| `public/kiosk.html` | Rotation shell — wraps the schedule and fades to configured pages |
+| `pages.json.example` | Template for `public/pages.json` (the page rotation config) |
 | `.env.example` | Credential template (copy to `.env` and fill in) |
 | `incoming/` | Drop PDFs here; run `process_drop.py` to ingest them |
 

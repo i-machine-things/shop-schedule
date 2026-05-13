@@ -14,7 +14,7 @@ ExecStart=/usr/bin/chromium-browser \
   --no-first-run \
   --disable-session-crashed-bubble \
   --disable-restore-session-state \
-  http://localhost:8080/schedule.html
+  http://localhost:8080/kiosk.html
 Restart=always
 RestartSec=5
 

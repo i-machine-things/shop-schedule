@@ -48,6 +48,11 @@ display:flex;align-items:center;justify-content:center;height:100vh;font-size:24
 EOF
 fi
 
+# Create page-rotation config from example if not present
+if [ ! -f "$INSTALL_DIR/public/pages.json" ]; then
+    cp "$INSTALL_DIR/pages.json.example" "$INSTALL_DIR/public/pages.json"
+fi
+
 # Install & start kiosk service (display mode only)
 if $KIOSK_MODE; then
     sudo cp foreman-kiosk.service /etc/systemd/system/
@@ -78,4 +83,6 @@ echo "1. Edit $INSTALL_DIR/.env with your Gmail credentials"
 echo "2. Run: python3 $INSTALL_DIR/update_schedule.py"
 echo "   (point it at an existing PDF first to test the display)"
 echo "3. Email any Foreman's Report PDF — it will appear within 15 min"
-echo "4. View schedule at: http://$(hostname -I | awk '{print $1}'):8080/schedule.html"
+echo "4. View at: http://$(hostname -I | awk '{print $1}'):8080/kiosk.html"
+echo "   (or /schedule.html for the raw table without page rotation)"
+echo "5. Edit $INSTALL_DIR/public/pages.json to add URLs to the rotation"
