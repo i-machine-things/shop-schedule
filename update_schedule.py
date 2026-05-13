@@ -10,6 +10,7 @@ import imaplib
 import email
 import os
 import re
+import socket
 import sys
 import pdfplumber
 from datetime import datetime
@@ -21,8 +22,19 @@ GMAIL_PASS = os.environ.get('GMAIL_PASS', '')   # Gmail App Password
 SHOP_NAME  = os.environ.get('SHOP_NAME', 'My Shop')
 BASE_DIR   = os.path.dirname(os.path.abspath(__file__))
 PDF_PATH   = os.path.join(BASE_DIR, 'last_report.pdf')
-HTML_PATH  = os.path.join(BASE_DIR, 'schedule.html')
+HTML_PATH  = os.path.join(BASE_DIR, 'public', 'schedule.html')
 # ───────────────────────────────────────────────────────────────────────────────
+
+
+def _get_local_ip():
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(('8.8.8.8', 80))
+        ip = s.getsockname()[0]
+        s.close()
+        return ip
+    except Exception:
+        return None
 
 
 # ── Email ───────────────────────────────────────────────────────────────────────
@@ -219,8 +231,12 @@ def generate_html(data, out_path):
     report_date = data['report_date']
     thru_date   = data['thru_date']
     sections    = data['sections']
-    generated   = datetime.now().strftime('%Y-%m-%d %H:%M')
+    now         = datetime.now()
+    generated   = now.strftime('%Y-%m-%d %H:%M')
+    gen_ts      = int(now.timestamp())
     shop_name   = _html.escape(SHOP_NAME)
+    local_ip    = _get_local_ip()
+    url_line    = f'<div class="url-line">http://{local_ip}:8080/schedule.html</div>' if local_ip else ''
 
     rows = []
     for sec in sections:
@@ -263,7 +279,6 @@ def generate_html(data, out_path):
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta http-equiv="refresh" content="1800">
 <title>{shop_name} &mdash; Foreman's Report</title>
 <style>
 *{{box-sizing:border-box;margin:0;padding:0}}
@@ -272,7 +287,8 @@ body{{background:#07070f;color:#ddd;font-family:'Courier New',monospace;font-siz
       display:flex;align-items:center;justify-content:space-between;padding:0 18px;z-index:99}}
 #hdr h1{{font-size:18px;color:#fff;letter-spacing:2px;text-transform:uppercase;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}}
 #hdr .meta{{display:flex;align-items:center;gap:20px;flex-shrink:0;white-space:nowrap}}
-.meta-info{{font-size:12px;color:#888;text-align:right;line-height:1.6}}
+.meta-info{{font-size:12px;color:#888;text-align:right;line-height:1.4}}
+.url-line{{font-size:10px;color:#4af;opacity:0.8}}
 #clock{{font-size:24px;color:#4af;font-weight:bold}}
 #wrap{{position:fixed;top:50px;bottom:0;left:0;right:0;overflow-y:scroll}}
 table{{width:100%;border-collapse:separate;border-spacing:0}}
@@ -292,13 +308,14 @@ thead th{{position:sticky;top:0;z-index:20;background:#0d0d20;color:#7799ff;font
 .overdue{{color:#f55;font-weight:bold}}
 </style>
 </head>
-<body>
+<body data-gen="{gen_ts}">
 <div id="hdr">
   <h1>{shop_name} &mdash; Foreman's Report</h1>
   <div class="meta">
     <div class="meta-info">
       <div>Report: {report_date} &nbsp;|&nbsp; Thru: {thru_date}</div>
       <div>Updated: {generated}</div>
+      {url_line}
     </div>
     <div id="clock"></div>
   </div>
@@ -329,20 +346,34 @@ thead th{{position:sticky;top:0;z-index:20;background:#0d0d20;color:#7799ff;font
 }})();
 
 // Pin section headers just below the frozen column header row
-const theadH = document.querySelector('thead').offsetHeight;
-document.querySelectorAll('.section-hdr td').forEach(td => td.style.top = theadH + 'px');
+function pinSectionHeaders(){{
+  const theadH = document.querySelector('thead').offsetHeight;
+  document.querySelectorAll('.section-hdr td').forEach(td => td.style.top = theadH + 'px');
+}}
 
-// Auto-scroll: smooth crawl, pauses on user interaction for 60s then resumes
 const wrap = document.getElementById('wrap');
 let pos = 0;
 let paused = false;
 let pauseTimer = null;
 const SPEED = 0.6;
+let singleHeight = 0;
+let loopReady = false;
+
+function setupLoop(){{
+  const tbody = document.querySelector('tbody');
+  singleHeight = tbody.offsetHeight;
+  if(!loopReady && singleHeight > wrap.clientHeight){{
+    tbody.innerHTML += tbody.innerHTML;
+    loopReady = true;
+  }}
+  pinSectionHeaders();
+}}
+setupLoop();
 
 function pauseScroll(){{
   paused = true;
   clearTimeout(pauseTimer);
-  pauseTimer = setTimeout(()=>{{ paused = false; pos = wrap.scrollTop; }}, 60000);
+  pauseTimer = setTimeout(()=>{{ paused = false; pos = wrap.scrollTop; }}, 10000);
 }}
 
 wrap.addEventListener('wheel',      pauseScroll, {{passive:true}});
@@ -351,14 +382,12 @@ wrap.addEventListener('mousedown',  pauseScroll, {{passive:true}});
 
 function step(){{
   if(!paused){{
-    const max = wrap.scrollHeight - wrap.clientHeight;
-    if(max > 0){{
+    if(wrap.scrollHeight - wrap.clientHeight > 0){{
       pos += SPEED;
-      if(pos >= max){{
-        pos = 0;
-        wrap.scrollTop = 0;
-        setTimeout(()=> requestAnimationFrame(step), 3000);
-        return;
+      if(singleHeight > 0 && pos >= singleHeight){{
+        pos -= singleHeight;
+        wrap.scrollTop = pos;
+        if(window.parent !== window) window.parent.postMessage({{type:'scroll-cycle'}},'*');
       }}
       wrap.scrollTop = pos;
     }}
@@ -366,10 +395,36 @@ function step(){{
   requestAnimationFrame(step);
 }}
 requestAnimationFrame(step);
+
+// Pause/resume from kiosk shell
+window.addEventListener('message', e => {{
+  if(e.data?.type === 'pause') {{ clearTimeout(pauseTimer); paused = true; }}
+  else if(e.data?.type === 'resume') {{ paused = false; pos = wrap.scrollTop; }}
+}});
+
+// Poll for updated content every 60s; swap table body in-place to preserve scroll position
+let currentGen = document.body.dataset.gen;
+setInterval(async () => {{
+  try {{
+    const txt = await (await fetch(location.href)).text();
+    const match = txt.match(/data-gen="(\\d+)"/);
+    if (!match || match[1] === currentGen) return;
+    currentGen = match[1];
+    const newDoc = new DOMParser().parseFromString(txt, 'text/html');
+    document.querySelector('.meta-info').innerHTML = newDoc.querySelector('.meta-info').innerHTML;
+    const saved = (singleHeight > 0 && pos >= singleHeight) ? pos - singleHeight : pos;
+    document.querySelector('tbody').innerHTML = newDoc.querySelector('tbody').innerHTML;
+    loopReady = false;
+    setupLoop();
+    wrap.scrollTop = saved;
+    pos = saved;
+  }} catch(e) {{ console.warn('Poll failed:', e); }}
+}}, 60000);
 </script>
 </body>
 </html>"""
 
+    os.makedirs(os.path.dirname(out_path), exist_ok=True)
     with open(out_path, 'w', encoding='utf-8') as f:
         f.write(html)
     print(f"[{datetime.now():%Y-%m-%d %H:%M}] Generated: {out_path}")
@@ -381,11 +436,10 @@ def main():
     fetched = fetch_pdf() if GMAIL_USER else False
 
     if os.path.exists(PDF_PATH):
-        if fetched or not os.path.exists(HTML_PATH):
-            data = parse_pdf(PDF_PATH)
-            generate_html(data, HTML_PATH)
-        else:
-            print("No new email. Schedule unchanged.")
+        data = parse_pdf(PDF_PATH)
+        generate_html(data, HTML_PATH)
+        if not fetched:
+            print("No new email. Display refreshed.")
     else:
         print("No PDF yet. Send the Foreman's Report PDF to the Gmail inbox.", file=sys.stderr)
 

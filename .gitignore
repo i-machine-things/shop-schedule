@@ -11,6 +11,9 @@
 # Generated output
 schedule.html
 
+# User-edited kiosk page rotation config (created from pages.json.example by install.sh)
+public/pages.json
+
 # Python
 __pycache__/
 *.pyc

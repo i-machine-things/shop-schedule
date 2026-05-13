@@ -5,10 +5,18 @@ set -e
 INSTALL_DIR="/home/pi/foreman-schedule"
 
 echo "=== Foreman Schedule Installer ==="
+echo ""
+read -rp "Install kiosk display (requires a monitor connected)? [y/N] " _kiosk
+KIOSK_MODE=false
+[[ "${_kiosk,,}" == "y" ]] && KIOSK_MODE=true
 
 # Dependencies
 sudo apt-get update -q
-sudo apt-get install -y python3-pip chromium-browser unclutter
+if $KIOSK_MODE; then
+    sudo apt-get install -y python3-pip chromium-browser unclutter
+else
+    sudo apt-get install -y python3-pip
+fi
 pip3 install pdfplumber
 
 # Copy files
@@ -27,9 +35,11 @@ if [ ! -f "$INSTALL_DIR/.env" ]; then
     echo ""
 fi
 
-# Placeholder schedule so Chromium doesn't open an error page on first boot
-if [ ! -f "$INSTALL_DIR/schedule.html" ]; then
-    cat > "$INSTALL_DIR/schedule.html" << 'EOF'
+# Placeholder schedule (served from public/ so .env is never exposed over HTTP)
+sudo mkdir -p "$INSTALL_DIR/public"
+sudo chown pi:pi "$INSTALL_DIR/public"
+if [ ! -f "$INSTALL_DIR/public/schedule.html" ]; then
+    cat > "$INSTALL_DIR/public/schedule.html" << 'EOF'
 <!DOCTYPE html>
 <html><head><meta charset="UTF-8"><meta http-equiv="refresh" content="60">
 <style>body{background:#07070f;color:#4af;font-family:monospace;
@@ -38,17 +48,30 @@ display:flex;align-items:center;justify-content:center;height:100vh;font-size:24
 EOF
 fi
 
-# Install & start kiosk service
-sudo cp foreman-kiosk.service /etc/systemd/system/
-sudo systemctl daemon-reload
-sudo systemctl enable foreman-kiosk
-sudo systemctl start foreman-kiosk
-
-# Hide mouse cursor on idle
-AUTOSTART="/etc/xdg/lxsession/LXDE-pi/autostart"
-if [ -f "$AUTOSTART" ] && ! grep -q 'unclutter' "$AUTOSTART"; then
-    echo "@unclutter -idle 0.1 -root" | sudo tee -a "$AUTOSTART"
+# Create page-rotation config from example if not present
+if [ ! -f "$INSTALL_DIR/public/pages.json" ]; then
+    cp "$INSTALL_DIR/pages.json.example" "$INSTALL_DIR/public/pages.json"
 fi
+
+# Install & start kiosk service (display mode only)
+if $KIOSK_MODE; then
+    sudo cp foreman-kiosk.service /etc/systemd/system/
+    sudo systemctl daemon-reload
+    sudo systemctl enable foreman-kiosk
+    sudo systemctl start foreman-kiosk
+
+    # Hide mouse cursor on idle
+    AUTOSTART="/etc/xdg/lxsession/LXDE-pi/autostart"
+    if [ -f "$AUTOSTART" ] && ! grep -q 'unclutter' "$AUTOSTART"; then
+        echo "@unclutter -idle 0.1 -root" | sudo tee -a "$AUTOSTART"
+    fi
+fi
+
+# Install & start HTTP server (always — enables remote viewing)
+sudo cp foreman-server.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable foreman-server
+sudo systemctl start foreman-server
 
 # Add cron job (every 15 minutes)
 CRON="*/15 * * * * $INSTALL_DIR/run_update.sh >> /tmp/foreman-schedule.log 2>&1"
@@ -59,4 +82,7 @@ echo "=== Done ==="
 echo "1. Edit $INSTALL_DIR/.env with your Gmail credentials"
 echo "2. Run: python3 $INSTALL_DIR/update_schedule.py"
 echo "   (point it at an existing PDF first to test the display)"
-echo "3. Email any Foreman's Report PDF to $GMAIL_USER — it will appear within 15 min"
+echo "3. Email any Foreman's Report PDF — it will appear within 15 min"
+echo "4. View at: http://$(hostname -I | awk '{print $1}'):8080/kiosk.html"
+echo "   (or /schedule.html for the raw table without page rotation)"
+echo "5. Edit $INSTALL_DIR/public/pages.json to add URLs to the rotation"

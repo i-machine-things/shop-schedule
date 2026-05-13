@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #000; overflow: hidden; width: 100vw; height: 100vh; }
+iframe {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: none;
+}
+#overlay {
+  opacity: 0;
+  transition: opacity var(--fade-ms, 800ms) ease;
+  pointer-events: none;
+  z-index: 10;
+}
+#overlay.visible { opacity: 1; pointer-events: auto; }
+</style>
+</head>
+<body>
+<iframe id="schedule" src="schedule.html"></iframe>
+<iframe id="overlay" src="about:blank"></iframe>
+<script>
+const schedFrame = document.getElementById('schedule');
+const overlay    = document.getElementById('overlay');
+
+let cfg = {
+  scroll_cycles: 2,
+  page_duration:  60,
+  transition_ms:  800,
+  after_page:    'schedule',
+  pages:          []
+};
+let normPages   = [];
+let nextPageIdx = 0;
+let cycleCount  = 0;
+let inOverlay   = false;
+let loadToken   = 0;
+
+async function loadConfig() {
+  try {
+    const r = await fetch('pages.json');
+    if (r.ok) Object.assign(cfg, await r.json());
+  } catch (_) {}
+  document.documentElement.style.setProperty('--fade-ms', cfg.transition_ms + 'ms');
+  normPages = cfg.pages.map(p =>
+    typeof p === 'string'
+      ? { url: p, duration: cfg.page_duration }
+      : { duration: cfg.page_duration, ...p }
+  );
+}
+
+function fadeIn()  { overlay.classList.add('visible'); }
+function fadeOut() { overlay.classList.remove('visible'); }
+
+function pauseSchedule()  { schedFrame.contentWindow?.postMessage({ type: 'pause' },  '*'); }
+function resumeSchedule() { schedFrame.contentWindow?.postMessage({ type: 'resume' }, '*'); }
+
+function endSequence() {
+  const tok = ++loadToken;
+  fadeOut();
+  setTimeout(() => {
+    if (loadToken !== tok) return;
+    overlay.src = 'about:blank';
+    inOverlay  = false;
+    cycleCount = 0;
+    resumeSchedule();
+  }, cfg.transition_ms);
+}
+
+function showStep(idx, tok) {
+  if (loadToken !== tok) return;
+  if (idx >= normPages.length) { endSequence(); return; }
+
+  const page = normPages[idx];
+  overlay.src = page.url;
+
+  overlay.addEventListener('load', function onLoad() {
+    if (loadToken !== tok) return;
+    fadeIn();
+    setTimeout(() => {
+      if (loadToken !== tok) return;
+      const next = idx + 1;
+      const chain = cfg.after_page === 'next' && next < normPages.length;
+      if (chain) {
+        fadeOut();
+        setTimeout(() => showStep(next, tok), cfg.transition_ms);
+      } else {
+        endSequence();
+      }
+    }, page.duration * 1000);
+  }, { once: true });
+}
+
+function startRotation() {
+  if (!normPages.length) return;
+  inOverlay = true;
+  pauseSchedule();
+
+  const startIdx = cfg.after_page === 'next' ? 0 : nextPageIdx;
+  if (cfg.after_page === 'schedule') {
+    nextPageIdx = (nextPageIdx + 1) % normPages.length;
+  }
+
+  const tok = ++loadToken;
+  showStep(startIdx, tok);
+}
+
+window.addEventListener('message', e => {
+  if (e.data?.type !== 'scroll-cycle' || inOverlay || !normPages.length) return;
+  if (++cycleCount >= cfg.scroll_cycles) {
+    cycleCount = 0;
+    startRotation();
+  }
+});
+
+loadConfig();
+</script>
+</body>
+</html>
