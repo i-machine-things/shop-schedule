@@ -42,7 +42,7 @@ def _get_local_ip():
 def fetch_pdf():
     """Check Gmail inbox for unread email with PDF attachment. Returns True if new PDF saved."""
     try:
-        conn = imaplib.IMAP4_SSL('imap.gmail.com')
+        conn = imaplib.IMAP4_SSL('imap.gmail.com', timeout=30)
         conn.login(GMAIL_USER, GMAIL_PASS)
         conn.select('inbox')
         _, data = conn.search(None, 'UNSEEN')
