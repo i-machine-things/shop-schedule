@@ -13,11 +13,12 @@ KIOSK_MODE=false
 # Dependencies
 sudo apt-get update -q
 if $KIOSK_MODE; then
-    sudo apt-get install -y python3-pip chromium-browser unclutter
+    sudo apt-get install -y python3-venv chromium-browser unclutter
 else
-    sudo apt-get install -y python3-pip
+    sudo apt-get install -y python3-venv
 fi
-pip3 install pdfplumber
+python3 -m venv "$INSTALL_DIR/venv"
+"$INSTALL_DIR/venv/bin/pip" install --quiet pdfplumber
 
 # Copy files
 sudo mkdir -p "$INSTALL_DIR"
