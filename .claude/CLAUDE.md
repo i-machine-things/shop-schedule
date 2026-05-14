@@ -6,14 +6,14 @@ You are a senior software developer. These rules override your default behavior.
 
 ## Project Overview
 
-**Foreman Schedule** — a Raspberry Pi kiosk for Schurman Machine's shop floor.
+**Shop Schedule** — a Raspberry Pi kiosk for Schurman Machine's shop floor.
 
 - Runs as a cron job every 15 minutes via `run_update.sh`
 - Polls a Gmail inbox for unread emails with PDF attachments (the Foreman's Report)
 - Parses the PDF with `pdfplumber` and generates `schedule.html`
 - `foreman-kiosk.service` (systemd) opens Chromium in kiosk mode pointing at `schedule.html`
 - Credentials live in `.env` (gitignored) — never commit them
-- Deployed to a Raspberry Pi at `~/foreman-schedule/` (created by `install.sh`)
+- Deployed to a Raspberry Pi at `~/shop-schedule/` (cloned from GitHub, install.sh runs in-place)
 
 Key files:
 - `update_schedule.py` — email fetch, PDF parse, HTML generation
@@ -119,7 +119,7 @@ git push origin v1.2.3
 **Deployment after tagging:** SSH to the Pi and pull the new tag:
 ```bash
 ssh pi@<pi-ip>
-cd ~/foreman-schedule
+cd ~/shop-schedule
 git fetch --tags
 git checkout v1.2.3
 ```

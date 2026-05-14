@@ -1,5 +1,5 @@
 [Unit]
-Description=Foreman Schedule Kiosk
+Description=Shop Schedule Kiosk
 After=graphical.target network.target
 
 [Service]

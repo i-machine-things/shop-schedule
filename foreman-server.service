@@ -1,5 +1,5 @@
 [Unit]
-Description=Foreman Schedule HTTP Server
+Description=Shop Schedule HTTP Server
 After=network.target
 
 [Service]

@@ -9,7 +9,7 @@ if [ "$EUID" -eq 0 ]; then
     exit 1
 fi
 
-echo "=== Foreman Schedule Installer ==="
+echo "=== Shop Schedule Installer ==="
 echo "Install directory: $INSTALL_DIR"
 echo ""
 read -rp "Install kiosk display (requires a monitor connected)? [y/N] " _kiosk
@@ -78,8 +78,8 @@ sudo systemctl enable foreman-server
 sudo systemctl restart foreman-server
 
 # Add cron job (every 15 minutes)
-CRON="*/15 * * * * $INSTALL_DIR/run_update.sh >> /tmp/foreman-schedule.log 2>&1"
-( crontab -l 2>/dev/null | grep -v foreman-schedule; echo "$CRON" ) | crontab -
+CRON="*/15 * * * * $INSTALL_DIR/run_update.sh >> /tmp/shop-schedule.log 2>&1"
+( crontab -l 2>/dev/null | grep -v shop-schedule; echo "$CRON" ) | crontab -
 
 echo ""
 echo "=== Done ==="
