@@ -2,7 +2,7 @@
 # Run this once on the Raspberry Pi to set everything up.
 set -e
 
-INSTALL_DIR="/home/pi/foreman-schedule"
+INSTALL_DIR="$HOME/foreman-schedule"
 
 echo "=== Foreman Schedule Installer ==="
 echo ""
@@ -24,7 +24,7 @@ python3 -m venv "$INSTALL_DIR/venv"
 sudo mkdir -p "$INSTALL_DIR"
 sudo cp update_schedule.py run_update.sh "$INSTALL_DIR/"
 sudo chmod +x "$INSTALL_DIR/run_update.sh"
-sudo chown -R pi:pi "$INSTALL_DIR"
+sudo chown -R "$USER:$USER" "$INSTALL_DIR"
 
 # Create .env from example if not present
 if [ ! -f "$INSTALL_DIR/.env" ]; then
@@ -38,7 +38,7 @@ fi
 
 # Placeholder schedule (served from public/ so .env is never exposed over HTTP)
 sudo mkdir -p "$INSTALL_DIR/public"
-sudo chown pi:pi "$INSTALL_DIR/public"
+sudo chown "$USER:$USER" "$INSTALL_DIR/public"
 if [ ! -f "$INSTALL_DIR/public/schedule.html" ]; then
     cat > "$INSTALL_DIR/public/schedule.html" << 'EOF'
 <!DOCTYPE html>
