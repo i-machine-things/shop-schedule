@@ -5,6 +5,19 @@ Review this file before making changes to the codebase.
 
 ---
 
+## 2026-05-14 — `update_schedule.py` (PR #4 — configurable PDF filename)
+
+**Review:** CodeRabbit review of feat/configurable-pdf-filename
+**Result:** 1 finding, fixed.
+
+### Findings
+
+1. **Empty/whitespace env var collapses PDF_PATH to BASE_DIR**
+   - `os.environ.get('PDF_FILENAME', 'last_report.pdf')` does not guard against `PDF_FILENAME=` (empty) or `PDF_FILENAME=   ` (whitespace), which would set `PDF_PATH` to the repo directory and cause a crash when pdfplumber tries to open a directory
+   - Fix: `os.environ.get('PDF_FILENAME', '').strip() or 'last_report.pdf'`
+
+---
+
 ## 2026-05-12 — `update_schedule.py`, `.env.example` (PR #2 — configurable shop name)
 
 **Review:** CodeRabbit review of feat/configurable-shop-name

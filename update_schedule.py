@@ -17,12 +17,13 @@ from datetime import datetime
 from collections import defaultdict
 
 # ── Config (loaded from .env by run_update.sh) ─────────────────────────────────
-GMAIL_USER = os.environ.get('GMAIL_USER', '')
-GMAIL_PASS = os.environ.get('GMAIL_PASS', '')   # Gmail App Password
-SHOP_NAME  = os.environ.get('SHOP_NAME', 'My Shop')
-BASE_DIR   = os.path.dirname(os.path.abspath(__file__))
-PDF_PATH   = os.path.join(BASE_DIR, 'last_report.pdf')
-HTML_PATH  = os.path.join(BASE_DIR, 'public', 'schedule.html')
+GMAIL_USER   = os.environ.get('GMAIL_USER', '')
+GMAIL_PASS   = os.environ.get('GMAIL_PASS', '')   # Gmail App Password
+SHOP_NAME    = os.environ.get('SHOP_NAME', 'My Shop')
+PDF_FILENAME = os.environ.get('PDF_FILENAME', '').strip() or 'last_report.pdf'
+BASE_DIR     = os.path.dirname(os.path.abspath(__file__))
+PDF_PATH     = os.path.join(BASE_DIR, PDF_FILENAME)
+HTML_PATH    = os.path.join(BASE_DIR, 'public', 'schedule.html')
 # ───────────────────────────────────────────────────────────────────────────────
 
 
