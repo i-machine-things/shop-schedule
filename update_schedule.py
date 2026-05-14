@@ -20,7 +20,7 @@ from collections import defaultdict
 GMAIL_USER   = os.environ.get('GMAIL_USER', '')
 GMAIL_PASS   = os.environ.get('GMAIL_PASS', '')   # Gmail App Password
 SHOP_NAME    = os.environ.get('SHOP_NAME', 'My Shop')
-PDF_FILENAME = os.environ.get('PDF_FILENAME', 'last_report.pdf')
+PDF_FILENAME = os.environ.get('PDF_FILENAME', '').strip() or 'last_report.pdf'
 BASE_DIR     = os.path.dirname(os.path.abspath(__file__))
 PDF_PATH     = os.path.join(BASE_DIR, PDF_FILENAME)
 HTML_PATH    = os.path.join(BASE_DIR, 'public', 'schedule.html')
