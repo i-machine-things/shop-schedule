@@ -61,7 +61,8 @@ fi
 
 # Install & start kiosk service (display mode only)
 if $KIOSK_MODE; then
-    sudo cp foreman-kiosk.service /etc/systemd/system/
+    sed "s|User=pi|User=$USER|g; s|/home/pi|$HOME|g" foreman-kiosk.service \
+        | sudo tee /etc/systemd/system/foreman-kiosk.service > /dev/null
     sudo systemctl daemon-reload
     sudo systemctl enable foreman-kiosk
     sudo systemctl start foreman-kiosk
@@ -74,7 +75,8 @@ if $KIOSK_MODE; then
 fi
 
 # Install & start HTTP server (always — enables remote viewing)
-sudo cp foreman-server.service /etc/systemd/system/
+sed "s|User=pi|User=$USER|g; s|/home/pi|$HOME|g" foreman-server.service \
+    | sudo tee /etc/systemd/system/foreman-server.service > /dev/null
 sudo systemctl daemon-reload
 sudo systemctl enable foreman-server
 sudo systemctl start foreman-server
