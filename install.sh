@@ -4,6 +4,11 @@ set -e
 
 INSTALL_DIR="$HOME/foreman-schedule"
 
+if [ "$EUID" -eq 0 ]; then
+    echo "Do not run as root. Run as your regular user — the script uses sudo internally."
+    exit 1
+fi
+
 echo "=== Foreman Schedule Installer ==="
 echo ""
 read -rp "Install kiosk display (requires a monitor connected)? [y/N] " _kiosk
@@ -22,7 +27,7 @@ python3 -m venv "$INSTALL_DIR/venv"
 
 # Copy files
 sudo mkdir -p "$INSTALL_DIR"
-sudo cp update_schedule.py run_update.sh "$INSTALL_DIR/"
+sudo cp update_schedule.py run_update.sh pages.json.example "$INSTALL_DIR/"
 sudo chmod +x "$INSTALL_DIR/run_update.sh"
 sudo chown -R "$USER:$USER" "$INSTALL_DIR"
 
