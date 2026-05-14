@@ -13,7 +13,7 @@ You are a senior software developer. These rules override your default behavior.
 - Parses the PDF with `pdfplumber` and generates `schedule.html`
 - `foreman-kiosk.service` (systemd) opens Chromium in kiosk mode pointing at `schedule.html`
 - Credentials live in `.env` (gitignored) — never commit them
-- Deployed to a Raspberry Pi at `/home/pi/foreman-schedule/`
+- Deployed to a Raspberry Pi at `~/foreman-schedule/` (created by `install.sh`)
 
 Key files:
 - `update_schedule.py` — email fetch, PDF parse, HTML generation
@@ -119,7 +119,7 @@ git push origin v1.2.3
 **Deployment after tagging:** SSH to the Pi and pull the new tag:
 ```bash
 ssh pi@<pi-ip>
-cd /home/pi/foreman-schedule
+cd ~/foreman-schedule
 git fetch --tags
 git checkout v1.2.3
 ```

@@ -23,8 +23,8 @@ Raspberry Pi kiosk display for a machine shop floor. Polls a Gmail inbox every 1
 
 ```bash
 # Clone on the Pi
-git clone https://github.com/i-machine-things/shop-schedule.git /home/pi/shop-schedule
-cd /home/pi/shop-schedule
+git clone https://github.com/i-machine-things/shop-schedule.git ~/shop-schedule
+cd ~/shop-schedule
 
 # Run the installer (installs deps, sets up cron, starts kiosk service)
 bash install.sh
