@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Foreman Schedule - Email poller & HTML generator for shop floor display.
-Run via cron every 15 minutes. Checks Gmail for new Foreman's Report PDF, parses it,
+Run via cron every 15 minutes. Checks Gmail for new Shop Schedule PDF, parses it,
 and regenerates schedule.html for the kiosk display.
 """
 
@@ -280,7 +280,7 @@ def generate_html(data, out_path):
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>{shop_name} &mdash; Foreman's Report</title>
+<title>{shop_name} &mdash; Shop Schedule</title>
 <style>
 *{{box-sizing:border-box;margin:0;padding:0}}
 body{{background:#07070f;color:#ddd;font-family:'Courier New',monospace;font-size:14px;overflow:hidden;height:100vh}}
@@ -311,7 +311,7 @@ thead th{{position:sticky;top:0;z-index:20;background:#0d0d20;color:#7799ff;font
 </head>
 <body data-gen="{gen_ts}">
 <div id="hdr">
-  <h1>{shop_name} &mdash; Foreman's Report</h1>
+  <h1>{shop_name} &mdash; Shop Schedule</h1>
   <div class="meta">
     <div class="meta-info">
       <div>Report: {report_date} &nbsp;|&nbsp; Thru: {thru_date}</div>
@@ -442,7 +442,7 @@ def main():
         if not fetched:
             print("No new email. Display refreshed.")
     else:
-        print("No PDF yet. Send the Foreman's Report PDF to the Gmail inbox.", file=sys.stderr)
+        print("No PDF yet. Send the Shop Schedule PDF to the Gmail inbox.", file=sys.stderr)
 
 
 if __name__ == '__main__':
