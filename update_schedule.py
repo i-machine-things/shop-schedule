@@ -8,6 +8,7 @@ and regenerates schedule.html for the kiosk display.
 import html as _html
 import imaplib
 import email
+import json
 import os
 import re
 import socket
@@ -381,6 +382,24 @@ wrap.addEventListener('wheel',      pauseScroll, {{passive:true}});
 wrap.addEventListener('touchstart', pauseScroll, {{passive:true}});
 wrap.addEventListener('mousedown',  pauseScroll, {{passive:true}});
 
+// Check for schedule updates; apply only when scrolled back to top
+let currentGen = document.body.dataset.gen;
+let pendingHTML = null;
+
+function applyPendingUpdate() {{
+  const m = pendingHTML.match(/data-gen="(\\d+)"/);
+  if (!m) {{ pendingHTML = null; return; }}
+  currentGen = m[1];
+  const newDoc = new DOMParser().parseFromString(pendingHTML, 'text/html');
+  document.querySelector('.meta-info').innerHTML = newDoc.querySelector('.meta-info').innerHTML;
+  document.querySelector('tbody').innerHTML = newDoc.querySelector('tbody').innerHTML;
+  pendingHTML = null;
+  loopReady = false;
+  setupLoop();
+  wrap.scrollTop = 0;
+  pos = 0;
+}}
+
 function step(){{
   if(!paused){{
     if(wrap.scrollHeight - wrap.clientHeight > 0){{
@@ -393,6 +412,7 @@ function step(){{
       wrap.scrollTop = pos;
     }}
   }}
+  if(pendingHTML !== null && pos < 2) applyPendingUpdate();
   requestAnimationFrame(step);
 }}
 requestAnimationFrame(step);
@@ -403,24 +423,16 @@ window.addEventListener('message', e => {{
   else if(e.data?.type === 'resume') {{ paused = false; pos = wrap.scrollTop; }}
 }});
 
-// Poll for updated content every 60s; swap table body in-place to preserve scroll position
-let currentGen = document.body.dataset.gen;
+// Poll version.json every 15 s; fetch full HTML only when generation timestamp changes
 setInterval(async () => {{
   try {{
-    const txt = await (await fetch(location.href)).text();
-    const match = txt.match(/data-gen="(\\d+)"/);
-    if (!match || match[1] === currentGen) return;
-    currentGen = match[1];
-    const newDoc = new DOMParser().parseFromString(txt, 'text/html');
-    document.querySelector('.meta-info').innerHTML = newDoc.querySelector('.meta-info').innerHTML;
-    const saved = (singleHeight > 0 && pos >= singleHeight) ? pos - singleHeight : pos;
-    document.querySelector('tbody').innerHTML = newDoc.querySelector('tbody').innerHTML;
-    loopReady = false;
-    setupLoop();
-    wrap.scrollTop = saved;
-    pos = saved;
-  }} catch(e) {{ console.warn('Poll failed:', e); }}
-}}, 60000);
+    const v = await (await fetch('version.json?_=' + Date.now())).json();
+    if(String(v.gen) === currentGen || pendingHTML !== null) return;
+    const txt = await (await fetch(location.pathname + '?_=' + Date.now())).text();
+    const m = txt.match(/data-gen="(\\d+)"/);
+    if(m && m[1] !== currentGen) pendingHTML = txt;
+  }} catch(e) {{ console.warn('Update check failed:', e); }}
+}}, 15000);
 </script>
 </body>
 </html>"""
@@ -428,6 +440,9 @@ setInterval(async () => {{
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
     with open(out_path, 'w', encoding='utf-8') as f:
         f.write(html)
+    version_path = os.path.join(os.path.dirname(out_path), 'version.json')
+    with open(version_path, 'w', encoding='utf-8') as f:
+        json.dump({'gen': gen_ts}, f)
     print(f"[{datetime.now():%Y-%m-%d %H:%M}] Generated: {out_path}")
 
 
