@@ -40,7 +40,7 @@ Review this file before making changes to the codebase.
 ### Findings
 
 1. **Hardcoded name in module docstring**
-   - Docstring referenced "Schurman Machine" — contradicts the PR goal of removing hardcoded names
+   - Docstring referenced "shop name" — contradicts the PR goal of removing hardcoded names
    - Fix: changed to "shop floor display"
 
 2. **`<title>` inconsistent with `<h1>`**
