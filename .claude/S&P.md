@@ -5,6 +5,20 @@ Review this file before making changes to the codebase.
 
 ---
 
+## 2026-05-16 — `update_schedule.py` (PR #6 — deferred schedule refresh)
+
+**Review:** CodeRabbit review of feat/deferred-schedule-refresh
+**Result:** 1 finding, fixed.
+
+### Findings
+
+1. **Missing null checks on querySelector results in `applyPendingUpdate`**
+   - `newDoc.querySelector('.meta-info')` and `newDoc.querySelector('tbody')` were called directly without null checks; malformed/unexpected HTML from a failed fetch would throw a TypeError
+   - Clearing `pendingHTML` before the null guard is critical — prevents the function from retrying on every animation frame after a failure
+   - Fix: extract results into `newMeta`/`newTbody`, set `pendingHTML = null` immediately, then bail with `return` if either is null before touching the DOM
+
+---
+
 ## 2026-05-14 — `update_schedule.py` (PR #4 — configurable PDF filename)
 
 **Review:** CodeRabbit review of feat/configurable-pdf-filename
