@@ -391,9 +391,12 @@ function applyPendingUpdate() {{
   if (!m) {{ pendingHTML = null; return; }}
   currentGen = m[1];
   const newDoc = new DOMParser().parseFromString(pendingHTML, 'text/html');
-  document.querySelector('.meta-info').innerHTML = newDoc.querySelector('.meta-info').innerHTML;
-  document.querySelector('tbody').innerHTML = newDoc.querySelector('tbody').innerHTML;
+  const newMeta = newDoc.querySelector('.meta-info');
+  const newTbody = newDoc.querySelector('tbody');
   pendingHTML = null;
+  if (!newMeta || !newTbody) return;
+  document.querySelector('.meta-info').innerHTML = newMeta.innerHTML;
+  document.querySelector('tbody').innerHTML = newTbody.innerHTML;
   loopReady = false;
   setupLoop();
   wrap.scrollTop = 0;
