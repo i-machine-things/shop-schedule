@@ -1,6 +1,6 @@
 # Shop Schedule
 
-Raspberry Pi kiosk display for a machine shop floor. Polls a Gmail inbox every 15 minutes for the Foreman's Report PDF, parses it, and serves an auto-scrolling HTML schedule on a wall-mounted screen.
+Single Board Computer kiosk display for a machine shop floor. Polls a Gmail inbox every 15 minutes for the Foreman's Report PDF, parses it, and serves an auto-scrolling HTML schedule on a wall-mounted screen.
 
 > Works off the **Foreman's Report** exported from JobBoss. The report is emailed as a PDF attachment and picked up automatically — or you can drop a PDF directly into the `incoming/` folder.
 
@@ -14,7 +14,7 @@ Raspberry Pi kiosk display for a machine shop floor. Polls a Gmail inbox every 1
 
 ## Requirements
 
-- Raspberry Pi (tested on Pi 4) running Raspberry Pi OS
+- Single Board Computer (tested on BananaPi M4 zero) running Armbian v26.2.1
 - Python 3 with `pdfplumber` (`pip3 install pdfplumber`)
 - Chromium browser
 - A Gmail account with IMAP enabled and an [App Password](https://myaccount.google.com/apppasswords)
