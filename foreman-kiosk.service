@@ -3,9 +3,9 @@ Description=Shop Schedule Kiosk
 After=graphical.target network.target
 
 [Service]
-User=pi
+User=__USER__
 Environment=DISPLAY=:0
-Environment=XAUTHORITY=/home/pi/.Xauthority
+Environment=XAUTHORITY=%h/.Xauthority
 ExecStartPre=/bin/sleep 5
 ExecStart=/usr/bin/chromium \
   --kiosk \

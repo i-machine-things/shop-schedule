@@ -17,10 +17,11 @@ import pdfplumber
 from datetime import datetime
 
 # ── Config (loaded from .env by run_update.sh) ─────────────────────────────────
-GMAIL_USER   = os.environ.get('GMAIL_USER', '')
-GMAIL_PASS   = os.environ.get('GMAIL_PASS', '')   # Gmail App Password
-SHOP_NAME    = os.environ.get('SHOP_NAME', 'My Shop')
-PDF_FILENAME = os.environ.get('PDF_FILENAME', '').strip() or 'last_report.pdf'
+GMAIL_USER        = os.environ.get('GMAIL_USER', '')
+GMAIL_PASS        = os.environ.get('GMAIL_PASS', '')   # Gmail App Password
+SHOP_NAME         = os.environ.get('SHOP_NAME', 'My Shop')
+PDF_FILENAME      = os.environ.get('PDF_FILENAME', '').strip() or 'last_report.pdf'
+PDF_COMPANY_NAME  = os.environ.get('PDF_COMPANY_NAME', '').strip()
 BASE_DIR     = os.path.dirname(os.path.abspath(__file__))
 PDF_PATH     = os.path.join(BASE_DIR, PDF_FILENAME)
 HTML_PATH    = os.path.join(BASE_DIR, 'public', 'schedule.html')
@@ -88,8 +89,10 @@ _JOB_LINE_RE = re.compile(
 _CUST_LINE_RE = re.compile(
     r'^(.*?)\s+(\S+)\s+(\d{2}-\w{3}-\d{2})\s+(\d+)\s+([\d.]+)\s+(\d+)\s*$', re.I)
 
+_company_pat = re.escape(PDF_COMPANY_NAME) + r'|' if PDF_COMPANY_NAME else ''
 _SKIP_RE = re.compile(
-    r'Foremans Report|Released Jobs Only|SCHURMAN MACHINE|by Work Center|'
+    _company_pat +
+    r'Foremans Report|Released Jobs Only|by Work Center|'
     r'Ship Qty|Sch Start|Make Qty|^\s*Page \d|Thru \d|'
     r'#\s*Ops|Curr WC|Rem Hrs|^\s*Job\s*$|Part\s+Description|Qty Run|'
     r'Rev\s+Make|Customer\s+Oper', re.I)

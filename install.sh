@@ -55,7 +55,7 @@ fi
 
 # Install & start kiosk service (display mode only)
 if $KIOSK_MODE; then
-    sed "s|User=pi|User=$USER|g; s|/home/pi/foreman-schedule|$INSTALL_DIR|g; s|/home/pi|$HOME|g" \
+    sed "s|__USER__|$USER|g" \
         "$INSTALL_DIR/foreman-kiosk.service" \
         | sudo tee /etc/systemd/system/foreman-kiosk.service > /dev/null
     sudo systemctl daemon-reload
@@ -70,7 +70,7 @@ if $KIOSK_MODE; then
 fi
 
 # Install & start HTTP server (always — enables remote viewing)
-sed "s|User=pi|User=$USER|g; s|/home/pi/foreman-schedule|$INSTALL_DIR|g" \
+sed "s|__USER__|$USER|g; s|__INSTALL_DIR__|$INSTALL_DIR|g" \
     "$INSTALL_DIR/foreman-server.service" \
     | sudo tee /etc/systemd/system/foreman-server.service > /dev/null
 sudo systemctl daemon-reload

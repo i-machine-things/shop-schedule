@@ -3,8 +3,8 @@ Description=Shop Schedule HTTP Server
 After=network.target
 
 [Service]
-User=pi
-ExecStart=/usr/bin/python3 -m http.server --directory /home/pi/foreman-schedule/public 8080
+User=__USER__
+ExecStart=/usr/bin/python3 -m http.server --directory __INSTALL_DIR__/public 8080
 Restart=always
 RestartSec=5
 
