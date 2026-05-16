@@ -24,7 +24,7 @@ else
     sudo apt-get install -y python3-venv
 fi
 python3 -m venv "$INSTALL_DIR/venv"
-"$INSTALL_DIR/venv/bin/pip" install --quiet pdfplumber
+"$INSTALL_DIR/venv/bin/pip" install --quiet pdfplumber reportlab
 
 # Create .env from example if not present
 if [ ! -f "$INSTALL_DIR/.env" ]; then
