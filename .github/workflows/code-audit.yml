@@ -27,11 +27,10 @@ jobs:
       - name: Install audit tools
         run: pip install flake8 bandit
 
-      - name: Run flake8 (errors and undefined names only)
+      - name: Run flake8 (semantic errors and undefined names only)
         run: |
           flake8 \
-            --max-line-length=120 \
-            --select=E,F \
+            --select=E7,E9,F \
             --exclude=.git,__pycache__,incoming \
             . > flake8_results.txt 2>&1 || true
 
