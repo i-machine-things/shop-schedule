@@ -14,7 +14,6 @@ import socket
 import sys
 import pdfplumber
 from datetime import datetime
-from collections import defaultdict
 
 # ── Config (loaded from .env by run_update.sh) ─────────────────────────────────
 GMAIL_USER   = os.environ.get('GMAIL_USER', '')
