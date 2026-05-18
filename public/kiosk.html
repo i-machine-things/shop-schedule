@@ -107,8 +107,9 @@
   }
 
   window.addEventListener('message', e => {
-    if (e.data?.type !== 'scroll-cycle') return;
-    if (currentSlide !== schedSlide)    return;
+    if (e.source !== schedFrame.contentWindow) return;
+    if (e.data?.type !== 'scroll-cycle')       return;
+    if (currentSlide !== schedSlide)           return;
     if (++cycleCount >= SCHEDULE_CYCLES && PAGES.length > 1) advance();
   });
 
@@ -123,6 +124,11 @@
         typeof p === 'string' ? { url: p } : p
       );
       PAGES = [{ url: SCHEDULE_URL }, ...extra];
+      // Arm safety valve for initial schedule display — goToPage() isn't called on first render
+      if (PAGES.length > 1) {
+        clearTimeout(advTimer);
+        advTimer = setTimeout(advance, SCHEDULE_MAX_MS);
+      }
     })
     .catch(() => { /* pages.json missing — schedule-only mode */ });
   </script>

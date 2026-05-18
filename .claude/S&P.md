@@ -5,6 +5,28 @@ Review this file before making changes to the codebase.
 
 ---
 
+## 2026-05-18 — `public/kiosk.html`, `public/index.html` (PR #144 — kiosk rotation shell)
+
+**Review:** CodeRabbit review of feat/kiosk-rotation
+**Result:** 3 findings, all fixed.
+
+### Findings
+
+1. **Live clock divs missing accessibility attributes**
+   - `<div id="clock">` in `index.html` lacked `aria-live`, `aria-label`, `aria-atomic`; screen readers would not announce time updates
+   - Fix: `aria-live="polite" aria-label="Current time" aria-atomic="true"` added to the element
+   - Also applies to the clock in the generated `schedule.html` — fix in `update_schedule.py` HTML template when next touching that file
+
+2. **`postMessage` handler trusted any sender for `scroll-cycle`**
+   - `window.addEventListener('message', ...)` in `kiosk.html` only checked `e.data.type`; any frame (including injected content in external iframes) could trigger rotation
+   - Fix: guard with `if (e.source !== schedFrame.contentWindow) return;` before processing
+
+3. **Safety-valve timer not armed on initial render**
+   - `SCHEDULE_MAX_MS` watchdog was only set inside `goToPage()`, but the schedule slide is active by default (not via `goToPage()`), so the first display had no fallback timer
+   - Fix: arm `advTimer = setTimeout(advance, SCHEDULE_MAX_MS)` at the end of the `pages.json` fetch resolution when `PAGES.length > 1`
+
+---
+
 ## 2026-05-16 — `update_schedule.py` (PR #6 — deferred schedule refresh)
 
 **Review:** CodeRabbit review of feat/deferred-schedule-refresh
