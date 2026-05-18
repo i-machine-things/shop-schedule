@@ -21,31 +21,34 @@ echo ""
 
 # Install dependencies
 sudo apt-get update -q
-if apt-cache show chromium-browser &>/dev/null 2>&1; then
-    CHROMIUM_PKG=chromium-browser
-else
-    CHROMIUM_PKG=chromium
-fi
-sudo apt-get install -y "$CHROMIUM_PKG" unclutter curl
+sudo apt-get install -y curl
+# unclutter may be absent on minimal installs — non-fatal
+sudo apt-get install -y unclutter 2>/dev/null || echo "Note: unclutter unavailable — cursor will stay visible"
+# Debian/Armbian uses 'chromium'; Raspberry Pi OS / Ubuntu use 'chromium-browser'
+sudo apt-get install -y chromium 2>/dev/null \
+    || sudo apt-get install -y chromium-browser \
+    || { echo "Error: could not install Chromium — check your apt sources." >&2; exit 1; }
 
-# Resolve actual binary name (varies by distro/arch)
-if command -v chromium-browser &>/dev/null; then
-    CHROMIUM_BIN=chromium-browser
-elif command -v chromium &>/dev/null; then
+# Resolve actual binary path
+if command -v chromium &>/dev/null; then
     CHROMIUM_BIN=chromium
+elif command -v chromium-browser &>/dev/null; then
+    CHROMIUM_BIN=chromium-browser
 else
-    echo "Error: Chromium not found after install." >&2
+    echo "Error: Chromium binary not found after install." >&2
     exit 1
 fi
 
-# Disable screen blanking (Pi-specific; silently skipped elsewhere)
-sudo raspi-config nonint do_blanking 1 2>/dev/null || true
-
-# Launcher: waits for server to be reachable before opening Chromium.
-# This handles the case where the client boots before the server is ready
-# (e.g. after a power outage where boot order is unpredictable).
+# Launcher: disables screen blanking, hides cursor, then polls until the server
+# is reachable before opening Chromium. Handles power outages where boot order
+# is unpredictable — the client simply waits rather than showing an error page.
 sudo tee /usr/local/bin/shop-kiosk > /dev/null << LAUNCHER
 #!/bin/bash
+# Disable DPMS and screen blanking for this X session
+xset s off s noblank -dpms 2>/dev/null || true
+# Hide mouse cursor (requires unclutter)
+unclutter -idle 0.1 -root &>/dev/null &
+
 until curl -sf "$SERVER_URL" > /dev/null 2>&1; do
     sleep 5
 done
@@ -81,12 +84,6 @@ SERVICE
 sudo systemctl daemon-reload
 sudo systemctl enable shop-kiosk
 sudo systemctl start shop-kiosk
-
-# Hide cursor when idle (LXDE-Pi autostart)
-AUTOSTART="/etc/xdg/lxsession/LXDE-pi/autostart"
-if [ -f "$AUTOSTART" ] && ! grep -q 'unclutter' "$AUTOSTART"; then
-    echo "@unclutter -idle 0.1 -root" | sudo tee -a "$AUTOSTART"
-fi
 
 echo ""
 echo "=== Done ==="
