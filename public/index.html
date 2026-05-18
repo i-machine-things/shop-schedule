@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Shop Schedule</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #07070f;
+      color: #ddd;
+      font-family: 'Courier New', monospace;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 48px;
+    }
+
+    #clock {
+      font-size: 48px;
+      color: #4af;
+      font-weight: bold;
+      letter-spacing: 6px;
+    }
+
+    .brand h1 {
+      font-size: 24px;
+      color: #fff;
+      letter-spacing: 5px;
+      text-transform: uppercase;
+      text-align: center;
+    }
+
+    .brand p {
+      font-size: 11px;
+      color: #555;
+      letter-spacing: 3px;
+      text-transform: uppercase;
+      text-align: center;
+      margin-top: 8px;
+    }
+
+    nav {
+      display: flex;
+      gap: 16px;
+    }
+
+    nav a {
+      display: block;
+      padding: 14px 36px;
+      background: #0d0d20;
+      color: #4af;
+      text-decoration: none;
+      letter-spacing: 3px;
+      text-transform: uppercase;
+      font-size: 12px;
+      border: 1px solid #222;
+      transition: border-color 0.2s, background 0.2s, color 0.2s;
+    }
+
+    nav a:hover {
+      border-color: #4af;
+      background: #0d1a30;
+      color: #8cf;
+    }
+  </style>
+</head>
+<body>
+  <div id="clock"></div>
+
+  <div class="brand">
+    <h1>Shop Schedule</h1>
+    <p>Schurman Machine</p>
+  </div>
+
+  <nav>
+    <a href="schedule.html">Schedule</a>
+    <a href="kiosk.html">Kiosk</a>
+  </nav>
+
+  <script>
+    (function tick() {
+      document.getElementById('clock').textContent =
+        new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      setTimeout(tick, 1000);
+    })();
+  </script>
+</body>
+</html>
