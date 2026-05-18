@@ -180,18 +180,18 @@
       <code id="cmd">loading&hellip;</code>
       <button id="copy-btn">Copy</button>
     </div>
-    <p>Requires Raspberry Pi OS or Debian with a desktop environment (LXDE, GNOME, etc.).</p>
+    <p>Requires Debian or Armbian. No desktop environment needed — installs minimal X11 + Chromium only.</p>
     <a class="dl-link" id="dl-link" href="/install" download="install-client.sh">Download script</a>
   </section>
 
   <section>
     <h2>What It Does</h2>
     <ul>
-      <li>Installs Chromium and unclutter</li>
-      <li>Writes <code>/usr/local/bin/shop-kiosk</code> — a launcher that polls this server until reachable, then opens the kiosk in full-screen</li>
-      <li>Creates and enables <code>shop-kiosk.service</code> — auto-starts on boot, restarts automatically on crash or power cycle</li>
-      <li>Disables screen blanking via <code>raspi-config</code></li>
-      <li>Hides the mouse cursor when idle</li>
+      <li>Installs <code>xserver-xorg</code>, <code>xinit</code>, and <code>chromium</code> — no desktop environment</li>
+      <li>Writes <code>/usr/local/bin/shop-kiosk-x</code> — X startup that disables blanking and opens Chromium fullscreen as the only X client</li>
+      <li>Writes <code>/usr/local/bin/shop-kiosk</code> — launcher that starts X on VT7 and polls this server before opening the browser</li>
+      <li>Creates and enables <code>shop-kiosk.service</code> — targets <code>multi-user.target</code>, auto-starts on boot, restarts on crash or power cycle</li>
+      <li>Adds current user to <code>video</code> and <code>input</code> groups for display access</li>
     </ul>
   </section>
 
