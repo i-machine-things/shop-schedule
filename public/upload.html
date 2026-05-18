@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Upload — Shop Schedule</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #07070f;
+      color: #ddd;
+      font-family: 'Courier New', monospace;
+      min-height: 100vh;
+    }
+
+    #hdr {
+      position: sticky;
+      top: 0;
+      background: #0b0b18;
+      border-bottom: 2px solid #222;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 20px;
+      height: 50px;
+      z-index: 10;
+    }
+
+    #hdr h1 { font-size: 16px; color: #fff; letter-spacing: 3px; text-transform: uppercase; }
+
+    #hdr a {
+      color: #4af;
+      text-decoration: none;
+      font-size: 12px;
+      letter-spacing: 2px;
+    }
+
+    main {
+      max-width: 960px;
+      margin: 0 auto;
+      padding: 40px 24px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 32px;
+    }
+
+    @media (max-width: 680px) { main { grid-template-columns: 1fr; } }
+
+    section {
+      background: #0d0d20;
+      border: 1px solid #222;
+      border-radius: 4px;
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    section h2 {
+      font-size: 13px;
+      color: #fff;
+      letter-spacing: 3px;
+      text-transform: uppercase;
+      border-bottom: 1px solid #333;
+      padding-bottom: 12px;
+    }
+
+    section p { font-size: 12px; color: #666; line-height: 1.6; }
+
+    .drop-zone {
+      border: 2px dashed #333;
+      border-radius: 4px;
+      padding: 32px 16px;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color 0.2s, background 0.2s;
+      position: relative;
+    }
+
+    .drop-zone:hover,
+    .drop-zone.drag-over {
+      border-color: #4af;
+      background: rgba(68, 170, 255, 0.05);
+    }
+
+    .drop-zone input[type="file"] {
+      position: absolute;
+      inset: 0;
+      opacity: 0;
+      cursor: pointer;
+      width: 100%;
+      height: 100%;
+    }
+
+    .drop-label {
+      font-size: 12px;
+      color: #555;
+      letter-spacing: 1px;
+      pointer-events: none;
+    }
+
+    .drop-label strong { display: block; font-size: 22px; color: #4af; margin-bottom: 8px; }
+
+    .status {
+      font-size: 12px;
+      padding: 8px 12px;
+      border-radius: 3px;
+      display: none;
+    }
+
+    .status.show { display: block; }
+    .status.ok   { background: rgba(40, 180, 80, 0.15); color: #4c4; border: 1px solid #2a4; }
+    .status.err  { background: rgba(200, 50, 50, 0.15); color: #f66; border: 1px solid #833; }
+    .status.busy { background: rgba(68, 170, 255, 0.1);  color: #4af; border: 1px solid #268; }
+
+    .raw-list { display: flex; flex-direction: column; gap: 8px; }
+
+    .raw-list-header {
+      font-size: 11px;
+      color: #555;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      padding-bottom: 6px;
+      border-bottom: 1px solid #1a1a2e;
+    }
+
+    .raw-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 10px;
+      background: #0a0a1a;
+      border: 1px solid #1a1a2e;
+      border-radius: 3px;
+    }
+
+    .raw-item .fname {
+      flex: 1;
+      font-size: 12px;
+      color: #4af;
+      text-decoration: none;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .raw-item .fname:hover { text-decoration: underline; }
+
+    .raw-item button {
+      flex-shrink: 0;
+      background: none;
+      border: 1px solid #333;
+      color: #666;
+      font-family: inherit;
+      font-size: 11px;
+      padding: 3px 8px;
+      cursor: pointer;
+      letter-spacing: 1px;
+      transition: border-color 0.15s, color 0.15s;
+    }
+
+    .raw-item button:hover { border-color: #f55; color: #f55; }
+
+    .empty-note { font-size: 12px; color: #444; font-style: italic; }
+  </style>
+</head>
+<body>
+
+<div id="hdr">
+  <h1>Upload</h1>
+  <a href="/">&#8592; Home</a>
+</div>
+
+<main>
+
+  <!-- ── Schedule PDF ──────────────────────────────────────────────── -->
+  <section>
+    <h2>Foreman&rsquo;s Report</h2>
+    <p>Drop the PDF exported from JobBoss here. The schedule will regenerate within a few seconds.</p>
+
+    <div class="drop-zone" id="sched-zone">
+      <input type="file" id="sched-input" accept=".pdf">
+      <div class="drop-label">
+        <strong>&#8659;</strong>
+        Drop PDF here or click to browse
+      </div>
+    </div>
+
+    <div class="status" id="sched-status"></div>
+  </section>
+
+  <!-- ── Display PDFs ──────────────────────────────────────────────── -->
+  <section>
+    <h2>Display PDFs</h2>
+    <p>PDFs dropped here are saved and automatically added to the kiosk rotation.</p>
+
+    <div class="drop-zone" id="raw-zone">
+      <input type="file" id="raw-input" accept=".pdf" multiple>
+      <div class="drop-label">
+        <strong>&#8659;</strong>
+        Drop PDFs here or click to browse
+      </div>
+    </div>
+
+    <div class="status" id="raw-status"></div>
+
+    <div class="raw-list" id="raw-list">
+      <div class="raw-list-header">Currently in rotation</div>
+      <div class="empty-note" id="raw-empty">None</div>
+    </div>
+  </section>
+
+</main>
+
+<script>
+// ── Utilities ───────────────────────────────────────────────────────────────
+
+function setStatus(id, type, msg) {
+  const el = document.getElementById(id);
+  el.className = `status show ${type}`;
+  el.textContent = msg;
+}
+
+function clearStatus(id) {
+  const el = document.getElementById(id);
+  el.className = 'status';
+  el.textContent = '';
+}
+
+// ── Schedule upload ─────────────────────────────────────────────────────────
+
+async function uploadSchedule(file) {
+  if (!file) return;
+  if (!file.name.toLowerCase().endsWith('.pdf')) {
+    setStatus('sched-status', 'err', 'Only PDF files are accepted.');
+    return;
+  }
+  setStatus('sched-status', 'busy', `Uploading ${file.name}…`);
+  const fd = new FormData();
+  fd.append('file', file);
+  try {
+    const res = await fetch('/api/upload/schedule', { method: 'POST', body: fd });
+    if (res.ok) {
+      setStatus('sched-status', 'ok', `${file.name} uploaded — schedule will regenerate shortly.`);
+    } else {
+      setStatus('sched-status', 'err', `Upload failed (${res.status}).`);
+    }
+  } catch (e) {
+    setStatus('sched-status', 'err', `Upload failed: ${e.message}`);
+  }
+}
+
+wireDropZone('sched-zone', 'sched-input', files => uploadSchedule(files[0]));
+
+// ── Raw PDF upload ──────────────────────────────────────────────────────────
+
+async function uploadRaw(files) {
+  const pdfs = Array.from(files).filter(f => f.name.toLowerCase().endsWith('.pdf'));
+  if (!pdfs.length) {
+    setStatus('raw-status', 'err', 'Only PDF files are accepted.');
+    return;
+  }
+  setStatus('raw-status', 'busy', `Uploading ${pdfs.length} file(s)…`);
+  let ok = 0;
+  for (const file of pdfs) {
+    const fd = new FormData();
+    fd.append('file', file);
+    try {
+      const res = await fetch('/api/upload/raw', { method: 'POST', body: fd });
+      if (res.ok) ok++;
+    } catch (_) {}
+  }
+  if (ok === pdfs.length) {
+    setStatus('raw-status', 'ok', `${ok} file(s) added to rotation.`);
+  } else {
+    setStatus('raw-status', 'err', `${ok} of ${pdfs.length} uploaded. Check server logs.`);
+  }
+  await loadRawList();
+}
+
+wireDropZone('raw-zone', 'raw-input', files => uploadRaw(files));
+
+// ── Raw PDF list ─────────────────────────────────────────────────────────────
+
+async function loadRawList() {
+  let rawPages = [];
+  try {
+    const res = await fetch('/pages.json?_=' + Date.now());
+    if (res.ok) {
+      const cfg = await res.json();
+      rawPages = (cfg.pages || []).filter(p => {
+        const url = typeof p === 'string' ? p : p.url;
+        return url && url.startsWith('raw/');
+      });
+    }
+  } catch (_) {}
+  renderRawList(rawPages);
+}
+
+function renderRawList(pages) {
+  const list  = document.getElementById('raw-list');
+  const empty = document.getElementById('raw-empty');
+
+  // Remove previous items (keep header and empty note)
+  list.querySelectorAll('.raw-item').forEach(el => el.remove());
+
+  if (!pages.length) {
+    empty.style.display = '';
+    return;
+  }
+  empty.style.display = 'none';
+
+  for (const p of pages) {
+    const url  = typeof p === 'string' ? p : p.url;
+    const name = url.replace(/^raw\//, '');
+    const item = document.createElement('div');
+    item.className = 'raw-item';
+    item.innerHTML =
+      `<a class="fname" href="${url}" target="_blank" title="Preview">${name}</a>` +
+      `<button data-name="${name}">Remove</button>`;
+    item.querySelector('button').addEventListener('click', () => removeRaw(name));
+    list.appendChild(item);
+  }
+}
+
+async function removeRaw(name) {
+  try {
+    const res = await fetch(`/api/raw/${encodeURIComponent(name)}`, { method: 'DELETE' });
+    if (res.ok) {
+      await loadRawList();
+    } else {
+      setStatus('raw-status', 'err', `Could not remove ${name}.`);
+    }
+  } catch (e) {
+    setStatus('raw-status', 'err', `Remove failed: ${e.message}`);
+  }
+}
+
+// ── Drop-zone wiring ─────────────────────────────────────────────────────────
+
+function wireDropZone(zoneId, inputId, onFiles) {
+  const zone  = document.getElementById(zoneId);
+  const input = document.getElementById(inputId);
+
+  zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('drag-over'); });
+  zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
+  zone.addEventListener('drop', e => {
+    e.preventDefault();
+    zone.classList.remove('drag-over');
+    onFiles(e.dataTransfer.files);
+  });
+
+  input.addEventListener('change', () => { if (input.files.length) onFiles(input.files); });
+}
+
+// ── Init ─────────────────────────────────────────────────────────────────────
+
+loadRawList();
+</script>
+</body>
+</html>

@@ -43,11 +43,22 @@ SHOP_NAME="Your Shop Name"        # Shown in the page header and browser title
 Once the installer runs, the kiosk and schedule are served over HTTP on port 8080:
 
 ```text
+http://<pi-ip>:8080/              ← landing page
 http://<pi-ip>:8080/kiosk.html    ← kiosk display with page rotation
 http://<pi-ip>:8080/schedule.html ← raw schedule table (no rotation)
+http://<pi-ip>:8080/upload.html   ← drag-and-drop upload page
 ```
 
 The schedule polls for updates every 60 seconds and swaps in new content without reloading.
+
+## Uploading files
+
+Navigate to `http://<pi-ip>:8080/upload.html` from any device on the same network.
+
+- **Foreman's Report** — drop the PDF exported from JobBoss. The schedule regenerates automatically within a few seconds (same as dropping it in `incoming/`).
+- **Display PDFs** — drop any PDF to add it to the kiosk rotation. It appears immediately in the list and will show as a slide the next time the kiosk loops. Remove it from the list to delete it from the rotation.
+
+Uploaded display PDFs are stored in `public/raw/` and their entries are managed automatically in `public/pages.json`.
 
 ## Page rotation
 
@@ -96,14 +107,18 @@ python3 process_drop.py
 |------|---------|
 | `update_schedule.py` | Email fetch, PDF parse, HTML generation |
 | `process_drop.py` | Drop-dir handler — picks up PDFs from `incoming/` and regenerates the schedule |
+| `server.py` | HTTP server — serves `public/` and handles file-upload API (`/api/upload/*`, `/api/raw/*`) |
 | `run_update.sh` | Cron wrapper — loads `.env` and calls the script |
 | `install.sh` | One-time Pi setup: deps, cron job, kiosk service |
 | `foreman-kiosk.service` | systemd service — opens Chromium in kiosk mode pointing at `kiosk.html` |
-| `foreman-server.service` | systemd service — serves `public/` over HTTP on port 8080 |
+| `foreman-server.service` | systemd service — runs `server.py` on port 8080 |
 | `public/kiosk.html` | Rotation shell — wraps the schedule and fades to configured pages |
+| `public/upload.html` | Drag-and-drop upload page for schedule and display PDFs |
+| `public/index.html` | Landing page with links to all views |
 | `pages.json.example` | Template for `public/pages.json` (the page rotation config) |
 | `.env.example` | Credential template (copy to `.env` and fill in) |
 | `incoming/` | Drop PDFs here; run `process_drop.py` to ingest them |
+| `public/raw/` | Display PDFs uploaded via the web UI (gitignored) |
 
 ## Display
 

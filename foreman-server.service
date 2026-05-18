@@ -4,7 +4,7 @@ After=network.target
 
 [Service]
 User=pi
-ExecStart=/usr/bin/python3 -m http.server --directory /home/pi/foreman-schedule/public 8080
+ExecStart=/usr/bin/python3 /home/pi/foreman-schedule/server.py
 Restart=always
 RestartSec=5
 
