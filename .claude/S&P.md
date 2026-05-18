@@ -1,5 +1,26 @@
 # Standards & Practices — CodeRabbit Review Log
 
+## 2026-05-18 — `server.py` (PR #146 — upload page)
+
+**Review:** CodeRabbit review of feat/pdf-upload
+**Result:** 3 findings, all fixed.
+
+### Findings
+
+1. **Race condition on concurrent schedule uploads**
+   - `process_drop.py` was triggered in a background thread with no guard; two rapid uploads would race on `DROP_DIR` with two concurrent subprocesses
+   - Fix: module-level `_schedule_lock = threading.Lock()`; `_upload_schedule` acquires non-blocking — returns 409 if already running; lock released in `finally` after subprocess completes
+
+2. **Non-atomic `pages.json` write**
+   - Writing directly to `PAGES_JSON` with `open(..., 'w')` leaves a truncated/corrupt file if interrupted mid-write
+   - Fix: write to `tempfile.mkstemp` in the same directory, `fsync`, then `os.replace()` to atomically swap in the new file
+
+3. **Single-threaded `HTTPServer` blocks on long requests**
+   - `HTTPServer` handles one request at a time; a slow upload would stall all other clients
+   - Fix: use `ThreadingHTTPServer` (same import, same API, spawns a thread per request)
+
+---
+
 This file records CodeRabbit recommendations so they can be applied to future changes.
 Review this file before making changes to the codebase.
 

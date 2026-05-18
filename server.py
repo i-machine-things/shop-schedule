@@ -11,8 +11,9 @@ import json
 import os
 import subprocess
 import sys
+import tempfile
 import threading
-from http.server import SimpleHTTPRequestHandler, HTTPServer
+from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse, unquote
 
@@ -23,7 +24,8 @@ PAGES_JSON = PUBLIC_DIR / 'pages.json'
 DROP_DIR   = BASE_DIR / 'incoming'
 MAX_UPLOAD = 50 * 1024 * 1024  # 50 MB
 
-_pages_lock = threading.Lock()
+_pages_lock    = threading.Lock()
+_schedule_lock = threading.Lock()  # prevents concurrent process_drop.py runs
 
 
 def _read_pages():
@@ -34,8 +36,16 @@ def _read_pages():
 
 
 def _write_pages(cfg):
-    with open(PAGES_JSON, 'w') as f:
-        json.dump(cfg, f, indent=2)
+    fd, tmp = tempfile.mkstemp(dir=PAGES_JSON.parent, suffix='.json.tmp')
+    try:
+        with os.fdopen(fd, 'w') as f:
+            json.dump(cfg, f, indent=2)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, PAGES_JSON)
+    except Exception:
+        os.unlink(tmp)
+        raise
 
 
 def _page_url(p):
@@ -71,16 +81,21 @@ class Handler(SimpleHTTPRequestHandler):
         name, data = self._parse_upload()
         if not name:
             return
+        if not _schedule_lock.acquire(blocking=False):
+            self._json(409, {'ok': False, 'error': 'Schedule update already in progress'})
+            return
         DROP_DIR.mkdir(exist_ok=True)
         (DROP_DIR / name).write_bytes(data)
         script = BASE_DIR / 'process_drop.py'
         env = {**os.environ, 'GMAIL_USER': ''}
-        threading.Thread(
-            target=subprocess.run,
-            args=([sys.executable, str(script)],),
-            kwargs={'env': env, 'check': False},
-            daemon=True,
-        ).start()
+
+        def _run():
+            try:
+                subprocess.run([sys.executable, str(script)], env=env, check=False)
+            finally:
+                _schedule_lock.release()
+
+        threading.Thread(target=_run, daemon=True).start()
         self._json(200, {'ok': True, 'file': name})
 
     def _upload_raw(self):
@@ -185,6 +200,6 @@ class Handler(SimpleHTTPRequestHandler):
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 8080))
     PUBLIC_DIR.mkdir(exist_ok=True)
-    httpd = HTTPServer(('', port), Handler)
+    httpd = ThreadingHTTPServer(('', port), Handler)
     print(f'Shop Schedule server on :{port}  (public/ → /)', flush=True)
     httpd.serve_forever()
