@@ -11,7 +11,7 @@
       position: absolute;
       inset: 0;
       opacity: 0;
-      transition: opacity 1.5s ease;
+      transition: opacity var(--fade-ms, 1500ms) ease;
       will-change: opacity;
     }
     .slide.active { opacity: 1; }
@@ -64,9 +64,6 @@
   function crossfadeTo(slide, onDone) {
     if (transitioning) return;
     transitioning = true;
-    document.querySelectorAll('.slide').forEach(s => {
-      s.style.transition = `opacity ${FADE_MS}ms ease`;
-    });
     allSlides().forEach(s => s.classList.toggle('active', s === slide));
     currentSlide = slide;
     setTimeout(() => { transitioning = false; if (onDone) onDone(); }, FADE_MS);
@@ -120,6 +117,7 @@
       SCHEDULE_CYCLES = cfg.scroll_cycles  ?? SCHEDULE_CYCLES;
       PAGE_DURATION   = cfg.page_duration  ?? PAGE_DURATION;
       FADE_MS         = cfg.transition_ms  ?? FADE_MS;
+      document.documentElement.style.setProperty('--fade-ms', FADE_MS + 'ms');
       const extra     = (cfg.pages ?? []).map(p =>
         typeof p === 'string' ? { url: p } : p
       );
