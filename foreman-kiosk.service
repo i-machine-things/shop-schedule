@@ -1,6 +1,6 @@
 [Unit]
 Description=Shop Schedule Kiosk
-After=graphical.target network.target
+After=graphical.target network.target foreman-server.service
 
 [Service]
 User=__USER__

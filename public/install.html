@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Install Client — Shop Schedule</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #07070f;
+      color: #ddd;
+      font-family: 'Courier New', monospace;
+      min-height: 100vh;
+    }
+
+    #hdr {
+      position: sticky;
+      top: 0;
+      background: #0b0b18;
+      border-bottom: 2px solid #333;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 20px;
+      height: 50px;
+      z-index: 10;
+    }
+
+    #hdr h1 { font-size: 16px; color: #fff; letter-spacing: 3px; text-transform: uppercase; }
+
+    #hdr a {
+      color: #4af;
+      text-decoration: none;
+      font-size: 12px;
+      letter-spacing: 2px;
+    }
+
+    main {
+      max-width: 720px;
+      margin: 0 auto;
+      padding: 40px 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+    }
+
+    section {
+      background: #0d0d20;
+      border: 1px solid #2a2a40;
+      border-radius: 4px;
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    section h2 {
+      font-size: 13px;
+      color: #fff;
+      letter-spacing: 3px;
+      text-transform: uppercase;
+      border-bottom: 1px solid #3a3a50;
+      padding-bottom: 12px;
+    }
+
+    section p { font-size: 12px; color: #888; line-height: 1.7; }
+
+    .cmd-block {
+      display: flex;
+      align-items: stretch;
+      background: #070714;
+      border: 1px solid #2a2a40;
+      border-radius: 3px;
+      overflow: hidden;
+    }
+
+    .cmd-block code {
+      flex: 1;
+      padding: 14px 16px;
+      font-size: 13px;
+      color: #4af;
+      letter-spacing: 0.5px;
+      word-break: break-all;
+    }
+
+    .cmd-block button {
+      flex-shrink: 0;
+      background: #111128;
+      border: none;
+      border-left: 1px solid #2a2a40;
+      color: #888;
+      font-family: inherit;
+      font-size: 11px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      padding: 0 18px;
+      cursor: pointer;
+      transition: background 0.15s, color 0.15s;
+    }
+
+    .cmd-block button:hover { background: #1a2a44; color: #4af; }
+    .cmd-block button.copied { color: #4c4; }
+
+    ul {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    ul li {
+      font-size: 12px;
+      color: #888;
+      padding-left: 16px;
+      position: relative;
+      line-height: 1.6;
+    }
+
+    ul li::before {
+      content: '›';
+      position: absolute;
+      left: 0;
+      color: #4af;
+    }
+
+    .mgmt-row {
+      display: grid;
+      grid-template-columns: 120px 1fr;
+      align-items: center;
+      gap: 12px;
+      padding: 8px 0;
+      border-bottom: 1px solid #1a1a2e;
+    }
+
+    .mgmt-row:last-child { border-bottom: none; }
+
+    .mgmt-row .label {
+      font-size: 11px;
+      color: #555;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+    }
+
+    .mgmt-row code {
+      font-size: 12px;
+      color: #4af;
+    }
+
+    .dl-link {
+      display: inline-block;
+      font-size: 11px;
+      color: #4af;
+      letter-spacing: 2px;
+      text-decoration: none;
+      text-transform: uppercase;
+      border: 1px solid #2a2a40;
+      padding: 6px 14px;
+      border-radius: 3px;
+      align-self: flex-start;
+      transition: border-color 0.15s, background 0.15s;
+    }
+
+    .dl-link:hover { border-color: #4af; background: rgba(68,170,255,0.05); }
+  </style>
+</head>
+<body>
+
+<div id="hdr">
+  <h1>Install Client Screen</h1>
+  <a href="/">&#8592; Home</a>
+</div>
+
+<main>
+
+  <section>
+    <h2>One-Line Install</h2>
+    <p>Run this on each display device. It installs a kiosk browser service that starts automatically on boot and reconnects after power outages.</p>
+    <div class="cmd-block">
+      <code id="cmd">loading&hellip;</code>
+      <button id="copy-btn">Copy</button>
+    </div>
+    <p>Requires Raspberry Pi OS or Debian with a desktop environment (LXDE, GNOME, etc.).</p>
+    <a class="dl-link" id="dl-link" href="/install" download="install-client.sh">Download script</a>
+  </section>
+
+  <section>
+    <h2>What It Does</h2>
+    <ul>
+      <li>Installs Chromium and unclutter</li>
+      <li>Writes <code>/usr/local/bin/shop-kiosk</code> — a launcher that polls this server until reachable, then opens the kiosk in full-screen</li>
+      <li>Creates and enables <code>shop-kiosk.service</code> — auto-starts on boot, restarts automatically on crash or power cycle</li>
+      <li>Disables screen blanking via <code>raspi-config</code></li>
+      <li>Hides the mouse cursor when idle</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Manage</h2>
+    <div class="mgmt-row"><span class="label">Status</span><code>sudo systemctl status shop-kiosk</code></div>
+    <div class="mgmt-row"><span class="label">Restart</span><code>sudo systemctl restart shop-kiosk</code></div>
+    <div class="mgmt-row"><span class="label">Logs</span><code>journalctl -u shop-kiosk -f</code></div>
+    <div class="mgmt-row"><span class="label">Remove</span><code>sudo systemctl disable --now shop-kiosk &amp;&amp; sudo rm /etc/systemd/system/shop-kiosk.service /usr/local/bin/shop-kiosk</code></div>
+  </section>
+
+</main>
+
+<script>
+  const origin = window.location.origin;
+  const cmd = `curl ${origin}/install | bash`;
+  document.getElementById('cmd').textContent = cmd;
+
+  document.getElementById('copy-btn').addEventListener('click', function () {
+    navigator.clipboard.writeText(cmd).then(() => {
+      this.textContent = 'Copied';
+      this.classList.add('copied');
+      setTimeout(() => { this.textContent = 'Copy'; this.classList.remove('copied'); }, 2000);
+    });
+  });
+</script>
+
+</body>
+</html>

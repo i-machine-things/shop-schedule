@@ -23,6 +23,7 @@ RAW_DIR    = PUBLIC_DIR / 'raw'
 PAGES_JSON = PUBLIC_DIR / 'pages.json'
 DROP_DIR   = BASE_DIR / 'incoming'
 MAX_UPLOAD = 50 * 1024 * 1024  # 50 MB
+PORT       = int(os.environ.get('PORT', 8080))
 
 _pages_lock    = threading.Lock()
 _schedule_lock = threading.Lock()  # prevents concurrent process_drop.py runs
@@ -57,6 +58,12 @@ class Handler(SimpleHTTPRequestHandler):
         super().__init__(*args, directory=str(PUBLIC_DIR), **kwargs)
 
     # ── Routing ──────────────────────────────────────────────────────────────
+
+    def do_GET(self):
+        if urlparse(self.path).path == '/install':
+            self._serve_client_installer()
+        else:
+            super().do_GET()
 
     def do_POST(self):
         path = urlparse(self.path).path
@@ -129,6 +136,20 @@ class Handler(SimpleHTTPRequestHandler):
 
     # ── Helpers ───────────────────────────────────────────────────────────────
 
+    def _serve_client_installer(self):
+        script_path = BASE_DIR / 'install-client.sh'
+        if not script_path.exists():
+            self.send_error(404, 'Client installer not found')
+            return
+        host = self.headers.get('Host') or f'localhost:{PORT}'
+        script = script_path.read_text().replace('__SERVER_URL__', f'http://{host}')
+        body = script.encode()
+        self.send_response(200)
+        self.send_header('Content-Type', 'text/plain; charset=utf-8')
+        self.send_header('Content-Length', str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
     def _parse_upload(self):
         """Return (safe_filename, bytes) from a multipart/form-data POST, or (None, None)."""
         ct = self.headers.get('Content-Type', '')
@@ -198,8 +219,7 @@ class Handler(SimpleHTTPRequestHandler):
 
 
 if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 8080))
     PUBLIC_DIR.mkdir(exist_ok=True)
-    httpd = ThreadingHTTPServer(('', port), Handler)
-    print(f'Shop Schedule server on :{port}  (public/ → /)', flush=True)
+    httpd = ThreadingHTTPServer(('', PORT), Handler)
+    print(f'Shop Schedule server on :{PORT}  (public/ → /)', flush=True)
     httpd.serve_forever()
