@@ -4,7 +4,7 @@ After=network.target
 
 [Service]
 User=__USER__
-ExecStart=/usr/bin/python3 -m http.server --directory __INSTALL_DIR__/public 8080
+ExecStart=/usr/bin/python3 __INSTALL_DIR__/server.py
 Restart=always
 RestartSec=5
 

@@ -53,6 +53,9 @@ if [ ! -f "$INSTALL_DIR/public/pages.json" ]; then
     cp "$INSTALL_DIR/pages.json.example" "$INSTALL_DIR/public/pages.json"
 fi
 
+# Create raw PDF directory for display uploads
+mkdir -p "$INSTALL_DIR/public/raw"
+
 # Install & start kiosk service (display mode only)
 if $KIOSK_MODE; then
     sed "s|__USER__|$USER|g" \
@@ -85,5 +88,6 @@ echo ""
 echo "=== Done ==="
 echo "1. Edit $INSTALL_DIR/.env with your Gmail credentials"
 echo "2. Drop a PDF into $INSTALL_DIR/incoming/ to test, or email it directly"
-echo "3. View at: http://$(hostname -I | awk '{print $1}'):8080/schedule.html"
-echo "4. Edit $INSTALL_DIR/public/pages.json to add URLs to the kiosk rotation"
+echo "3. View at:    http://$(hostname -I | awk '{print $1}'):8080/"
+echo "4. Upload at:  http://$(hostname -I | awk '{print $1}'):8080/upload.html"
+echo "5. Edit $INSTALL_DIR/public/pages.json to manually add URLs to the kiosk rotation"
