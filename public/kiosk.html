@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Kiosk</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { width: 100%; height: 100%; overflow: hidden; background: #000; }
+
+    .slide {
+      position: absolute;
+      inset: 0;
+      opacity: 0;
+      transition: opacity 1.5s ease;
+      will-change: opacity;
+    }
+    .slide.active { opacity: 1; }
+    .slide iframe { width: 100%; height: 100%; border: none; display: block; }
+  </style>
+</head>
+<body>
+  <div id="sched-slide" class="slide active"><iframe id="sched-frame" src="schedule.html"></iframe></div>
+  <div id="ca-slide"    class="slide"><iframe id="frame-a"></iframe></div>
+  <div id="cb-slide"    class="slide"><iframe id="frame-b"></iframe></div>
+
+  <script>
+  // Page-rotation config is loaded from pages.json (created by install.sh from pages.json.example).
+  // Edit public/pages.json on the Pi to add URLs to the rotation.
+  const SCHEDULE_URL      = 'schedule.html';
+  const SCHEDULE_MAX_MS   = 5 * 60 * 1000; // safety valve if scroll-cycle never fires
+
+  const schedSlide = document.getElementById('sched-slide');
+  const schedFrame = document.getElementById('sched-frame');
+  const slots = [
+    { slide: document.getElementById('ca-slide'), frame: document.getElementById('frame-a') },
+    { slide: document.getElementById('cb-slide'), frame: document.getElementById('frame-b') },
+  ];
+
+  let currentSlide  = schedSlide;
+  let currentIndex  = 0;
+  let cycleCount    = 0;
+  let advTimer      = null;
+  let transitioning = false;
+  let slotPing      = 0;
+
+  // Config — overwritten by pages.json
+  let SCHEDULE_CYCLES = 2;
+  let PAGE_DURATION   = 60;
+  let FADE_MS         = 1500;
+  let PAGES           = [{ url: SCHEDULE_URL }]; // schedule-only fallback
+
+  function nextSlot() {
+    const s = slots[slotPing];
+    slotPing ^= 1;
+    return s;
+  }
+
+  function postToSched(type) {
+    try { schedFrame.contentWindow.postMessage({ type }, '*'); } catch (_) {}
+  }
+
+  function allSlides() { return [schedSlide, slots[0].slide, slots[1].slide]; }
+
+  function crossfadeTo(slide, onDone) {
+    if (transitioning) return;
+    transitioning = true;
+    document.querySelectorAll('.slide').forEach(s => {
+      s.style.transition = `opacity ${FADE_MS}ms ease`;
+    });
+    allSlides().forEach(s => s.classList.toggle('active', s === slide));
+    currentSlide = slide;
+    setTimeout(() => { transitioning = false; if (onDone) onDone(); }, FADE_MS);
+  }
+
+  function advance() {
+    goToPage((currentIndex + 1) % PAGES.length);
+  }
+
+  function goToPage(index) {
+    clearTimeout(advTimer);
+    cycleCount   = 0;
+    currentIndex = index;
+    const page   = PAGES[index];
+
+    if (page.url === SCHEDULE_URL) {
+      crossfadeTo(schedSlide, () => {
+        postToSched('resume');
+        if (PAGES.length > 1) advTimer = setTimeout(advance, SCHEDULE_MAX_MS);
+      });
+    } else {
+      postToSched('pause');
+      const slot = nextSlot();
+      slot.frame.onload = null;
+
+      const show = () => {
+        slot.frame.onload = null;
+        clearTimeout(loadFallback);
+        crossfadeTo(slot.slide, () => {
+          advTimer = setTimeout(advance, (page.seconds ?? PAGE_DURATION) * 1000);
+        });
+      };
+
+      slot.frame.onload = show;
+      slot.frame.src    = page.url;
+      const loadFallback = setTimeout(show, 3000);
+    }
+  }
+
+  window.addEventListener('message', e => {
+    if (e.source !== schedFrame.contentWindow) return;
+    if (e.data?.type !== 'scroll-cycle')       return;
+    if (currentSlide !== schedSlide)           return;
+    if (++cycleCount >= SCHEDULE_CYCLES && PAGES.length > 1) advance();
+  });
+
+  // Load rotation config, then start
+  fetch('pages.json')
+    .then(r => r.json())
+    .then(cfg => {
+      SCHEDULE_CYCLES = cfg.scroll_cycles  ?? SCHEDULE_CYCLES;
+      PAGE_DURATION   = cfg.page_duration  ?? PAGE_DURATION;
+      FADE_MS         = cfg.transition_ms  ?? FADE_MS;
+      const extra     = (cfg.pages ?? []).map(p =>
+        typeof p === 'string' ? { url: p } : p
+      );
+      PAGES = [{ url: SCHEDULE_URL }, ...extra];
+      // Arm safety valve for initial schedule display — goToPage() isn't called on first render
+      if (PAGES.length > 1) {
+        clearTimeout(advTimer);
+        advTimer = setTimeout(advance, SCHEDULE_MAX_MS);
+      }
+    })
+    .catch(() => { /* pages.json missing — schedule-only mode */ });
+  </script>
+</body>
+</html>
