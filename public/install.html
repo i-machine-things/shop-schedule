@@ -101,6 +101,7 @@
 
     .cmd-block button:hover { background: #1a2a44; color: #4af; }
     .cmd-block button.copied { color: #4c4; }
+    .cmd-block button.failed { color: #f66; }
 
     ul {
       list-style: none;
@@ -210,12 +211,34 @@
   const cmd = `curl ${origin}/install | bash`;
   document.getElementById('cmd').textContent = cmd;
 
+  function fallbackCopy(text) {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.cssText = 'position:fixed;opacity:0;top:0;left:0';
+    document.body.appendChild(ta);
+    ta.focus();
+    ta.select();
+    const ok = document.execCommand('copy');
+    document.body.removeChild(ta);
+    return ok;
+  }
+
   document.getElementById('copy-btn').addEventListener('click', function () {
-    navigator.clipboard.writeText(cmd).then(() => {
-      this.textContent = 'Copied';
-      this.classList.add('copied');
-      setTimeout(() => { this.textContent = 'Copy'; this.classList.remove('copied'); }, 2000);
-    });
+    const btn = this;
+    const revert = () => setTimeout(() => {
+      btn.textContent = 'Copy';
+      btn.classList.remove('copied', 'failed');
+    }, 2000);
+    const onSuccess = () => { btn.textContent = 'Copied'; btn.classList.add('copied'); revert(); };
+    const onFail    = () => { btn.textContent = 'Failed';  btn.classList.add('failed');  revert(); };
+
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(cmd)
+        .then(onSuccess)
+        .catch(() => { fallbackCopy(cmd) ? onSuccess() : onFail(); });
+    } else {
+      fallbackCopy(cmd) ? onSuccess() : onFail();
+    }
   });
 </script>
 

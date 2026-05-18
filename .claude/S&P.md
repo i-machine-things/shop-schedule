@@ -1,5 +1,22 @@
 # Standards & Practices — CodeRabbit Review Log
 
+## 2026-05-18 — `server.py`, `public/install.html` (PR #150 — client kiosk installer)
+
+**Review:** CodeRabbit review of feat/client-kiosk-installer
+**Result:** 2 findings, both fixed.
+
+### Findings
+
+1. **Host header embedded in shell script without sanitisation**
+   - `self.headers.get('Host')` was interpolated directly into `install-client.sh` via string replace; a crafted Host header could inject shell metacharacters
+   - Fix: module-level `_HOST_RE` regex + `_sanitize_host(host)` function validates hostname characters (alphanum, dot, hyphen, IPv6 brackets) and port range 1–65535; falls back to `localhost:{PORT}` on any failure
+
+2. **`navigator.clipboard.writeText` missing `.catch` and fallback**
+   - Copy button promise had no error path; browsers with restricted clipboard access or non-HTTPS contexts would silently fail
+   - Fix: added `fallbackCopy()` using `document.execCommand('copy')` in a temporary textarea; `.catch` on the Clipboard API call tries the fallback and shows a "Failed" state if both paths fail; both success and failure revert button text after 2s
+
+---
+
 ## 2026-05-18 — `server.py` (PR #146 — upload page)
 
 **Review:** CodeRabbit review of feat/pdf-upload

@@ -9,6 +9,7 @@ Serves public/ as static files and provides a small upload API:
 
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -51,6 +52,22 @@ def _write_pages(cfg):
 
 def _page_url(p):
     return p if isinstance(p, str) else p.get('url', '')
+
+
+# Only characters safe to embed in a shell script URL
+_HOST_RE = re.compile(r'^(\[[\da-fA-F:]+\]|[A-Za-z0-9.\-]+)(?::(\d{1,5}))?$')
+
+def _sanitize_host(host):
+    """Return host if it is safe to embed in a shell script, else None."""
+    if not host or len(host) > 255:
+        return None
+    m = _HOST_RE.fullmatch(host)
+    if not m:
+        return None
+    port = m.group(2)
+    if port and not (1 <= int(port) <= 65535):
+        return None
+    return host
 
 
 class Handler(SimpleHTTPRequestHandler):
@@ -141,7 +158,8 @@ class Handler(SimpleHTTPRequestHandler):
         if not script_path.exists():
             self.send_error(404, 'Client installer not found')
             return
-        host = self.headers.get('Host') or f'localhost:{PORT}'
+        raw_host = self.headers.get('Host', '')
+        host = _sanitize_host(raw_host) or f'localhost:{PORT}'
         script = script_path.read_text().replace('__SERVER_URL__', f'http://{host}')
         body = script.encode()
         self.send_response(200)
