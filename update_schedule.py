@@ -327,7 +327,7 @@ thead th{{position:sticky;top:0;z-index:20;background:#0d0d20;color:#7799ff;font
       <div>Updated: {generated}</div>
       {url_line}
     </div>
-    <div id="clock"></div>
+    <div id="clock" aria-live="polite" aria-label="Current time" aria-atomic="true"></div>
   </div>
 </div>
 
