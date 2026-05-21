@@ -289,7 +289,10 @@ def generate_html(data, out_path):
 body{{background:#07070f;color:#ddd;font-family:'Courier New',monospace;font-size:14px;overflow:hidden;height:100vh}}
 #hdr{{position:fixed;top:0;left:0;right:0;height:50px;background:#0b0b18;border-bottom:2px solid #222;
       display:flex;align-items:center;justify-content:space-between;padding:0 18px;z-index:99}}
+#hdr-left{{display:flex;align-items:center;gap:12px;min-width:0;overflow:hidden}}
 #hdr h1{{font-size:18px;color:#fff;letter-spacing:2px;text-transform:uppercase;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}}
+#home-btn{{display:flex;align-items:center;justify-content:center;flex-shrink:0;width:32px;height:32px;color:#4af;border:1px solid #4af;text-decoration:none;font-size:16px;opacity:0.7;transition:opacity 0.2s}}
+#home-btn:hover{{opacity:1;background:#1a2a44}}
 #hdr .meta{{display:flex;align-items:center;gap:20px;flex-shrink:0;white-space:nowrap}}
 .meta-info{{font-size:12px;color:#888;text-align:right;line-height:1.4}}
 .url-line{{font-size:10px;color:#4af;opacity:0.8}}
@@ -314,7 +317,10 @@ thead th{{position:sticky;top:0;z-index:20;background:#0d0d20;color:#7799ff;font
 </head>
 <body data-gen="{gen_ts}">
 <div id="hdr">
-  <h1>{shop_name} &mdash; Shop Schedule</h1>
+  <div id="hdr-left">
+    <a href="index.html" id="home-btn" title="Home">&#8962;</a>
+    <h1>{shop_name} &mdash; Shop Schedule</h1>
+  </div>
   <div class="meta">
     <div class="meta-info">
       <div>Report: {report_date} &nbsp;|&nbsp; Thru: {thru_date}</div>
