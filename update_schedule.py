@@ -248,11 +248,13 @@ def generate_html(data, out_path):
             continue
         bg, accent = _dept_colors(sec['department'])
         wc_attr = _html.escape(sec["wc"])
+        dept_e  = _html.escape(sec["department"])
+        wcg_e   = _html.escape(sec["wc_group"])
         rows.append(f'''
       <tr class="section-hdr" data-wc="{wc_attr}">
         <td colspan="11" style="background:{bg};border-left:4px solid {accent}">
-          <span class="wc-name">{sec["wc"]}</span>
-          <span class="dept-name">{sec["department"]} &thinsp;&middot;&thinsp; {sec["wc_group"]}</span>
+          <span class="wc-name">{wc_attr}</span>
+          <span class="dept-name">{dept_e} &thinsp;&middot;&thinsp; {wcg_e}</span>
         </td>
       </tr>''')
         for j in sec['jobs']:
@@ -263,19 +265,20 @@ def generate_html(data, out_path):
                         overdue = 'overdue'
                 except Exception:
                     pass
+            je = {k: _html.escape(str(v)) for k, v in j.items()}
             rows.append(f'''
       <tr class="job" data-wc="{wc_attr}">
-        <td class="jnum">{j["job"]}</td>
-        <td>{j["customer"]}</td>
-        <td class="pdesc"><span class="pnum">{j["part"]}</span><br><span class="desc">{j["description"]}</span></td>
-        <td class="c">{j["rev"]}</td>
-        <td class="c">{j["oper"]}</td>
-        <td class="c">{j["make_qty"]}</td>
-        <td class="c">{j["sch_start"]}<br><span class="sub">{j["sch_end"]}</span></td>
-        <td class="c">{j["curr_wc"]}</td>
-        <td class="c">{j["rem_hrs"]}</td>
-        <td class="c">{j["ship_qty"]}</td>
-        <td class="c {overdue}">{j["promised"]}</td>
+        <td class="jnum">{je["job"]}</td>
+        <td>{je["customer"]}</td>
+        <td class="pdesc"><span class="pnum">{je["part"]}</span><br><span class="desc">{je["description"]}</span></td>
+        <td class="c">{je["rev"]}</td>
+        <td class="c">{je["oper"]}</td>
+        <td class="c">{je["make_qty"]}</td>
+        <td class="c">{je["sch_start"]}<br><span class="sub">{je["sch_end"]}</span></td>
+        <td class="c">{je["curr_wc"]}</td>
+        <td class="c">{je["rem_hrs"]}</td>
+        <td class="c">{je["ship_qty"]}</td>
+        <td class="c {overdue}">{je["promised"]}</td>
       </tr>''')
 
     body = '\n'.join(rows)
