@@ -30,7 +30,7 @@ cd ~/shop-schedule
 bash install.sh
 ```
 
-The installer will prompt you to fill in `.env` before the first run:
+The installer creates `.env` from the example — edit it with your credentials before the first run:
 
 ```dotenv
 GMAIL_USER=your@gmail.com
@@ -50,6 +50,18 @@ http://<pi-ip>:8080/upload.html   ← drag-and-drop upload page
 ```
 
 The schedule polls for updates every 60 seconds and swaps in new content without reloading.
+
+## Client kiosks
+
+Any number of display-only screens can be set up as clients pointing at the server. On a fresh Armbian/Debian machine on the same network:
+
+```bash
+curl http://<server-ip>:8080/install | bash
+```
+
+Or navigate to `http://<server-ip>:8080/install.html` for a copyable one-liner with management commands. The script installs a minimal X11 + Chromium session and a systemd service (`shop-kiosk.service`) that polls the server on boot until it is reachable before opening the browser — so the display recovers automatically after power outages regardless of which device boots first.
+
+> **Note:** `curl | bash` over plain HTTP is only safe on a trusted local network. To verify the script before running it, download it first (`curl -O http://<server-ip>:8080/install`), inspect it, then execute it manually.
 
 ## Uploading files
 
@@ -113,9 +125,11 @@ python3 process_drop.py
 | `process_drop.py` | Drop-dir handler — picks up PDFs from `incoming/` and regenerates the schedule |
 | `server.py` | HTTP server — serves `public/` and handles file-upload API (`/api/upload/*`, `/api/raw/*`) |
 | `run_update.sh` | Cron wrapper — loads `.env` and calls the script |
-| `install.sh` | One-time Pi setup: deps, cron job, kiosk service |
-| `foreman-kiosk.service` | systemd service — opens Chromium in kiosk mode pointing at `kiosk.html` |
+| `install.sh` | One-time server setup: deps, cron job, kiosk and HTTP server services |
+| `install-client.sh` | Client kiosk installer — served pre-filled via `GET /install`; creates `shop-kiosk.service` on the client |
+| `foreman-kiosk.service` | systemd service (server) — opens Chromium in kiosk mode pointing at `kiosk.html` |
 | `foreman-server.service` | systemd service — runs `server.py` on port 8080 |
+| `public/install.html` | Web UI showing the copyable client install one-liner |
 | `public/upload.html` | Drag-and-drop upload page for schedule and display PDFs |
 | `public/kiosk.html` | Rotation shell — wraps the schedule and fades to configured pages |
 | `pages.json.example` | Template for `public/pages.json` (the page rotation config) |
