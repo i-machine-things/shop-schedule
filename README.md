@@ -60,6 +60,10 @@ Navigate to `http://<pi-ip>:8080/upload.html` from any device on the same networ
 
 Uploaded display PDFs are stored in `public/raw/` and their entries are managed automatically in `public/pages.json`.
 
+## Work center filter
+
+The schedule page has a fixed sidebar listing every work center in the current report. Tapping a WC solos it (first tap); subsequent taps toggle additional WCs in or out. Tapping the sole active WC resets to showing all. The **All** button at the top also resets to the full view.
+
 ## Page rotation
 
 The kiosk can rotate through additional web pages between schedule views. After the schedule has scrolled a configurable number of times, it fades to the next page, holds it, then fades back.

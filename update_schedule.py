@@ -247,11 +247,14 @@ def generate_html(data, out_path):
         if not sec['jobs']:
             continue
         bg, accent = _dept_colors(sec['department'])
+        wc_attr = _html.escape(sec["wc"])
+        dept_e  = _html.escape(sec["department"])
+        wcg_e   = _html.escape(sec["wc_group"])
         rows.append(f'''
-      <tr class="section-hdr">
+      <tr class="section-hdr" data-wc="{wc_attr}">
         <td colspan="11" style="background:{bg};border-left:4px solid {accent}">
-          <span class="wc-name">{sec["wc"]}</span>
-          <span class="dept-name">{sec["department"]} &thinsp;&middot;&thinsp; {sec["wc_group"]}</span>
+          <span class="wc-name">{wc_attr}</span>
+          <span class="dept-name">{dept_e} &thinsp;&middot;&thinsp; {wcg_e}</span>
         </td>
       </tr>''')
         for j in sec['jobs']:
@@ -262,19 +265,20 @@ def generate_html(data, out_path):
                         overdue = 'overdue'
                 except Exception:
                     pass
+            je = {k: _html.escape(str(v)) for k, v in j.items()}
             rows.append(f'''
-      <tr class="job">
-        <td class="jnum">{j["job"]}</td>
-        <td>{j["customer"]}</td>
-        <td class="pdesc"><span class="pnum">{j["part"]}</span><br><span class="desc">{j["description"]}</span></td>
-        <td class="c">{j["rev"]}</td>
-        <td class="c">{j["oper"]}</td>
-        <td class="c">{j["make_qty"]}</td>
-        <td class="c">{j["sch_start"]}<br><span class="sub">{j["sch_end"]}</span></td>
-        <td class="c">{j["curr_wc"]}</td>
-        <td class="c">{j["rem_hrs"]}</td>
-        <td class="c">{j["ship_qty"]}</td>
-        <td class="c {overdue}">{j["promised"]}</td>
+      <tr class="job" data-wc="{wc_attr}">
+        <td class="jnum">{je["job"]}</td>
+        <td>{je["customer"]}</td>
+        <td class="pdesc"><span class="pnum">{je["part"]}</span><br><span class="desc">{je["description"]}</span></td>
+        <td class="c">{je["rev"]}</td>
+        <td class="c">{je["oper"]}</td>
+        <td class="c">{je["make_qty"]}</td>
+        <td class="c">{je["sch_start"]}<br><span class="sub">{je["sch_end"]}</span></td>
+        <td class="c">{je["curr_wc"]}</td>
+        <td class="c">{je["rem_hrs"]}</td>
+        <td class="c">{je["ship_qty"]}</td>
+        <td class="c {overdue}">{je["promised"]}</td>
       </tr>''')
 
     body = '\n'.join(rows)
@@ -297,7 +301,15 @@ body{{background:#07070f;color:#ddd;font-family:'Courier New',monospace;font-siz
 .meta-info{{font-size:12px;color:#888;text-align:right;line-height:1.4}}
 .url-line{{font-size:10px;color:#4af;opacity:0.8}}
 #clock{{font-size:24px;color:#4af;font-weight:bold}}
-#wrap{{position:fixed;top:50px;bottom:0;left:0;right:0;overflow-y:scroll}}
+#sidebar{{position:fixed;top:50px;left:0;bottom:0;width:160px;background:#0b0b18;border-right:1px solid #222;z-index:50;display:flex;flex-direction:column;overflow:hidden}}
+#sidebar-hdr{{padding:8px 10px 4px;font-size:10px;color:#555;letter-spacing:2px;text-transform:uppercase;flex-shrink:0}}
+#wc-all{{margin:2px 8px 6px;padding:5px 4px;background:transparent;border:1px solid #4af;color:#4af;cursor:pointer;font-family:inherit;font-size:11px;letter-spacing:1px;text-transform:uppercase}}
+#wc-all:hover{{background:#1a2a44}}
+#wc-list{{flex:1;overflow-y:auto;padding:0 8px 8px;display:flex;flex-direction:column;gap:2px}}
+.wc-btn{{padding:5px 8px;background:#0d1a2b;border:1px solid #222;color:#666;cursor:pointer;font-family:inherit;font-size:11px;letter-spacing:1px;text-transform:uppercase;text-align:left;transition:background 0.15s,border-color 0.15s,color 0.15s}}
+.wc-btn.active{{background:#0d2010;border-color:#3a7a3a;color:#8f8}}
+.wc-btn:hover{{background:#1a2233;color:#ddd;border-color:#4af}}
+#wrap{{position:fixed;top:50px;bottom:0;left:160px;right:0;overflow-y:scroll}}
 table{{width:100%;border-collapse:separate;border-spacing:0}}
 thead th{{position:sticky;top:0;z-index:20;background:#0d0d20;color:#7799ff;font-size:11px;
           text-transform:uppercase;letter-spacing:1px;padding:6px 8px;border-bottom:2px solid #333}}
@@ -327,10 +339,15 @@ thead th{{position:sticky;top:0;z-index:20;background:#0d0d20;color:#7799ff;font
       <div>Updated: {generated}</div>
       {url_line}
     </div>
-    <div id="clock"></div>
+    <div id="clock" aria-live="polite" aria-label="Current time" aria-atomic="true"></div>
   </div>
 </div>
 
+<div id="sidebar">
+  <div id="sidebar-hdr">Work Centers</div>
+  <button id="wc-all">All</button>
+  <div id="wc-list"></div>
+</div>
 <div id="wrap">
 <table>
   <thead>
@@ -406,6 +423,7 @@ function applyPendingUpdate() {{
   document.querySelector('.meta-info').innerHTML = newMeta.innerHTML;
   document.querySelector('tbody').innerHTML = newTbody.innerHTML;
   loopReady = false;
+  buildSidebar();
   setupLoop();
   wrap.scrollTop = 0;
   pos = 0;
@@ -427,6 +445,70 @@ function step(){{
   requestAnimationFrame(step);
 }}
 requestAnimationFrame(step);
+
+// WC sidebar filter
+const activeWCs = new Set();
+let allWCs = [];
+
+function buildSidebar(){{
+  allWCs = [...new Set(
+    [...document.querySelectorAll('tbody .section-hdr')].map(tr => tr.dataset.wc).filter(Boolean)
+  )];
+  activeWCs.clear();
+  allWCs.forEach(wc => activeWCs.add(wc));
+  const list = document.getElementById('wc-list');
+  list.innerHTML = '';
+  allWCs.forEach(wc => {{
+    const btn = document.createElement('button');
+    btn.className = 'wc-btn active';
+    btn.dataset.wc = wc;
+    btn.textContent = wc;
+    btn.addEventListener('click', () => toggleWC(wc));
+    list.appendChild(btn);
+  }});
+}}
+
+function syncButtons(){{
+  document.querySelectorAll('.wc-btn').forEach(btn => {{
+    btn.classList.toggle('active', activeWCs.has(btn.dataset.wc));
+  }});
+}}
+
+function applyFilter(){{
+  if(loopReady){{
+    const rows = [...document.querySelectorAll('tbody tr')];
+    const half = rows.length / 2;
+    rows.slice(half).forEach(r => r.remove());
+    loopReady = false;
+  }}
+  document.querySelectorAll('tbody tr').forEach(tr => {{
+    tr.style.display = activeWCs.has(tr.dataset.wc) ? '' : 'none';
+  }});
+  pos = 0;
+  wrap.scrollTop = 0;
+  setupLoop();
+}}
+
+function toggleWC(wc){{
+  if(activeWCs.size === allWCs.length){{
+    activeWCs.clear();
+    activeWCs.add(wc);
+  }} else if(activeWCs.size === 1 && activeWCs.has(wc)){{
+    allWCs.forEach(w => activeWCs.add(w));
+  }} else {{
+    if(activeWCs.has(wc)) activeWCs.delete(wc); else activeWCs.add(wc);
+  }}
+  syncButtons();
+  applyFilter();
+}}
+
+document.getElementById('wc-all').addEventListener('click', ()=>{{
+  allWCs.forEach(wc => activeWCs.add(wc));
+  syncButtons();
+  applyFilter();
+}});
+
+buildSidebar();
 
 // Pause/resume from kiosk shell
 window.addEventListener('message', e => {{

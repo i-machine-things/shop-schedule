@@ -1,5 +1,18 @@
 # Standards & Practices — CodeRabbit Review Log
 
+## 2026-05-21 — `update_schedule.py` (PR #151 — WC sidebar filter)
+
+**Review:** CodeRabbit review of feat/wc-sidebar-filter
+**Result:** 1 finding, fixed.
+
+### Findings
+
+1. **PDF-derived values inserted raw into HTML template**
+   - `sec["wc"]`, `sec["department"]`, `sec["wc_group"]`, and all job field values (`customer`, `part`, `description`, `curr_wc`, etc.) were interpolated directly into the f-string template without HTML escaping, allowing injection from malformed PDF content
+   - Fix: compute `dept_e = _html.escape(sec["department"])`, `wcg_e = _html.escape(sec["wc_group"])` alongside the existing `wc_attr`; compute `je = {k: _html.escape(str(v)) for k, v in j.items()}` at the top of the job loop and use `je[...]` throughout the job row template
+
+---
+
 ## 2026-05-18 — `server.py`, `public/install.html` (PR #150 — client kiosk installer)
 
 **Review:** CodeRabbit review of feat/client-kiosk-installer
