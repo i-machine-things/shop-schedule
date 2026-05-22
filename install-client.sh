@@ -32,8 +32,9 @@ sudo usermod -aG video,input "$USER" 2>/dev/null || true
 
 USER_HOME=$(getent passwd "$USER" | cut -d: -f6)
 
-# X startup: invoked by xinit as the sole X client — no WM, no DE
-sudo tee /usr/local/bin/shop-kiosk-x > /dev/null << XSTART
+# X session: wait for server, then launch Chromium full-screen.
+# If Chromium exits, startx exits, getty respawns and auto-logs in again — self-recovering.
+cat > "$USER_HOME/.xinitrc" << XINITRC
 #!/bin/bash
 xset s off s noblank -dpms
 unclutter -idle 0.1 -root &>/dev/null &
@@ -49,44 +50,33 @@ exec /usr/bin/chromium \\
   --disable-session-crashed-bubble \\
   --disable-restore-session-state \\
   "$SERVER_URL/kiosk.html"
-XSTART
-sudo chmod +x /usr/local/bin/shop-kiosk-x
+XINITRC
+chmod +x "$USER_HOME/.xinitrc"
 
-# Launcher: starts X on VT7 with the kiosk as the only client.
-# xinit exits when Chromium exits, so Restart=always in the service handles recovery.
-sudo tee /usr/local/bin/shop-kiosk > /dev/null << LAUNCHER
-#!/bin/bash
-exec xinit /usr/local/bin/shop-kiosk-x -- :0 vt7 -keeptty -auth "$USER_HOME/.kiosk-xauth"
-LAUNCHER
-sudo chmod +x /usr/local/bin/shop-kiosk
+# Auto-start X when this user logs in on TTY1.
+# exec replaces the shell so logout = X session exit = getty respawn = auto-login again.
+if ! grep -q 'shop-kiosk' "$USER_HOME/.bash_profile" 2>/dev/null; then
+    cat >> "$USER_HOME/.bash_profile" << 'PROFILE'
 
-# Systemd service — StandardInput=tty gives the service ownership of VT7
-sudo tee /etc/systemd/system/shop-kiosk.service > /dev/null << SERVICE
-[Unit]
-Description=Shop Schedule Client Kiosk
-After=multi-user.target
+# shop-kiosk: start X automatically on TTY1
+if [[ -z $DISPLAY && $(tty) == /dev/tty1 ]]; then
+    exec startx
+fi
+PROFILE
+fi
 
+# Configure TTY1 to auto-login this user on boot
+sudo mkdir -p /etc/systemd/system/getty@tty1.service.d/
+sudo tee /etc/systemd/system/getty@tty1.service.d/autologin.conf > /dev/null << EOF
 [Service]
-User=$USER
-Group=tty
-WorkingDirectory=$USER_HOME
-Environment=HOME=$USER_HOME
-ExecStart=/usr/local/bin/shop-kiosk
-Restart=always
-RestartSec=10
-StandardInput=tty
-TTYPath=/dev/tty7
-
-[Install]
-WantedBy=multi-user.target
-SERVICE
-
+ExecStart=
+ExecStart=-/sbin/agetty --autologin $USER --noclear %I \$TERM
+EOF
 sudo systemctl daemon-reload
-sudo systemctl enable shop-kiosk
-sudo systemctl start shop-kiosk
+sudo systemctl restart getty@tty1
 
 echo ""
 echo "=== Done ==="
 echo "Displaying: $SERVER_URL/kiosk.html"
-echo "If the display stays blank, log out and back in — group changes need a new session."
-echo "Check status: sudo systemctl status shop-kiosk"
+echo "Reboot to start the kiosk."
+echo "Check status: journalctl -u getty@tty1 -f"
