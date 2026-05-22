@@ -12,17 +12,10 @@ fi
 echo "=== Shop Schedule Installer ==="
 echo "Install directory: $INSTALL_DIR"
 echo ""
-read -rp "Install kiosk display (requires a monitor connected)? [y/N] " _kiosk
-KIOSK_MODE=false
-[[ "${_kiosk,,}" == "y" ]] && KIOSK_MODE=true
 
 # Dependencies
 sudo apt-get update -q
-if $KIOSK_MODE; then
-    sudo apt-get install -y python3-venv chromium-browser unclutter
-else
-    sudo apt-get install -y python3-venv
-fi
+sudo apt-get install -y python3-venv
 python3 -m venv "$INSTALL_DIR/venv"
 "$INSTALL_DIR/venv/bin/pip" install --quiet pdfplumber reportlab
 
@@ -92,23 +85,7 @@ fi
 # Create raw PDF directory for display uploads
 mkdir -p "$INSTALL_DIR/public/raw"
 
-# Install & start kiosk service (display mode only)
-if $KIOSK_MODE; then
-    sed "s|__USER__|$USER|g" \
-        "$INSTALL_DIR/foreman-kiosk.service" \
-        | sudo tee /etc/systemd/system/foreman-kiosk.service > /dev/null
-    sudo systemctl daemon-reload
-    sudo systemctl enable foreman-kiosk
-    sudo systemctl start foreman-kiosk
-
-    # Hide mouse cursor on idle
-    AUTOSTART="/etc/xdg/lxsession/LXDE-pi/autostart"
-    if [ -f "$AUTOSTART" ] && ! grep -q 'unclutter' "$AUTOSTART"; then
-        echo "@unclutter -idle 0.1 -root" | sudo tee -a "$AUTOSTART"
-    fi
-fi
-
-# Install & start HTTP server (always — enables remote viewing)
+# Install & start HTTP server
 sed "s|__USER__|$USER|g; s|__INSTALL_DIR__|$INSTALL_DIR|g" \
     "$INSTALL_DIR/foreman-server.service" \
     | sudo tee /etc/systemd/system/foreman-server.service > /dev/null
