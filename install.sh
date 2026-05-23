@@ -27,13 +27,25 @@ fi
 # Read a single key from .env (strips surrounding quotes)
 _get_env() { grep -m1 "^$1=" "$2" 2>/dev/null | cut -d= -f2- | tr -d '"'"'"; }
 
-# Write or replace a key="value" line in .env
+# Write or replace a key='value' line in .env (safe for & | " \ $ and backticks)
 _set_env() {
     local key="$1" val="$2" file="$3"
+    local q="'" dq='"'
+    local escaped="${val//$q/${q}${dq}${q}${dq}${q}}"
+    local line="${key}='${escaped}'"
     if grep -q "^${key}=" "$file" 2>/dev/null; then
-        sed -i "s|^${key}=.*|${key}=\"${val}\"|" "$file"
+        local tmp
+        tmp="$(mktemp)"
+        while IFS= read -r l; do
+            if [[ "$l" == "${key}="* ]]; then
+                printf '%s\n' "$line"
+            else
+                printf '%s\n' "$l"
+            fi
+        done < "$file" > "$tmp"
+        mv "$tmp" "$file"
     else
-        printf '%s="%s"\n' "$key" "$val" >> "$file"
+        printf '%s\n' "$line" >> "$file"
     fi
 }
 

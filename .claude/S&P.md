@@ -1,5 +1,22 @@
 # Standards & Practices — CodeRabbit Review Log
 
+## 2026-05-23 — `install.sh`, `install-client.sh` (PR #153 — installer env prompts)
+
+**Review:** CodeRabbit review of feat/installer-env-prompts
+**Result:** 2 findings, both fixed.
+
+### Findings
+
+1. **`getty@tty1` restarted from within the installer (install-client.sh)**
+   - `sudo systemctl restart getty@tty1` kills the agetty instance managing the current TTY; if the installer runs from TTY1 the session is cut off mid-install
+   - Fix: removed the restart call — `daemon-reload` alone is sufficient; autologin takes effect at next boot
+
+2. **Raw user input injected into `sed` replacement in `_set_env` (install.sh)**
+   - `sed -i "s|^${key}=.*|${key}=\"${val}\"|"` interpolated `val` directly; `&` and `|` corrupt the sed command, `\` and `"` corrupt the written value, and `$()` patterns execute when `.env` is later `source`d in `run_update.sh`
+   - Fix: replaced sed-based update with a temp-file line rewriter; values are written as single-quoted assignments with embedded single quotes escaped as `'"'"'`, neutralising all shell metacharacters on source
+
+---
+
 ## 2026-05-21 — `update_schedule.py` (PR #151 — WC sidebar filter)
 
 **Review:** CodeRabbit review of feat/wc-sidebar-filter
