@@ -22,7 +22,7 @@ echo ""
 
 # Minimal X11 stack + Chromium — no desktop environment needed
 sudo apt-get update -q
-sudo apt-get install -y curl xserver-xorg xinit x11-xserver-utils chromium
+sudo apt-get install -y curl xserver-xorg xinit x11-xserver-utils openbox chromium
 # unclutter may be absent on minimal installs — non-fatal
 sudo apt-get install -y unclutter 2>/dev/null \
     || echo "Note: unclutter unavailable — cursor will remain visible"
@@ -39,13 +39,14 @@ cat > "$USER_HOME/.xinitrc" << XINITRC
 xset s off s noblank -dpms
 xrandr --auto
 unclutter -idle 0.1 -root &>/dev/null &
+openbox &
+sleep 0.5
 
 until curl -sf "$SERVER_URL" > /dev/null 2>&1; do
     sleep 5
 done
 exec /usr/bin/chromium \\
   --kiosk \\
-  --force-device-scale-factor=1 \\
   --noerrdialogs \\
   --disable-infobars \\
   --no-first-run \\
