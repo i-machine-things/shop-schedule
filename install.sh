@@ -15,7 +15,7 @@ echo ""
 
 # Dependencies
 sudo apt-get update -q
-sudo apt-get install -y python3-venv
+sudo apt-get install -y python3-venv samba
 python3 -m venv "$INSTALL_DIR/venv"
 "$INSTALL_DIR/venv/bin/pip" install --quiet pdfplumber reportlab
 
@@ -77,6 +77,13 @@ if [ -z "$_v" ] || [ "$_v" = "Your Company Name" ]; then
     [ -n "$_v" ] && _set_env PDF_COMPANY_NAME "$_v" "$INSTALL_DIR/.env"
 fi
 
+_v=$(_get_env SMB_PASS "$INSTALL_DIR/.env")
+if [ -z "$_v" ]; then
+    echo "  (Password for the SMB share — used to drop PDFs from Windows/Mac)"
+    read -rsp "  SMB password for $USER: " _v || true; echo
+    [ -n "$_v" ] && _set_env SMB_PASS "$_v" "$INSTALL_DIR/.env"
+fi
+
 # Placeholder schedule
 mkdir -p "$INSTALL_DIR/public"
 if [ ! -f "$INSTALL_DIR/public/schedule.html" ]; then
@@ -97,6 +104,9 @@ fi
 # Create raw PDF directory for display uploads
 mkdir -p "$INSTALL_DIR/public/raw"
 
+# Create PDF drop-in directory
+mkdir -p "$INSTALL_DIR/incoming"
+
 # Install & start HTTP server
 sed "s|__USER__|$USER|g; s|__INSTALL_DIR__|$INSTALL_DIR|g" \
     "$INSTALL_DIR/foreman-server.service" \
@@ -104,6 +114,31 @@ sed "s|__USER__|$USER|g; s|__INSTALL_DIR__|$INSTALL_DIR|g" \
 sudo systemctl daemon-reload
 sudo systemctl enable foreman-server
 sudo systemctl restart foreman-server
+
+# Configure SMB share for incoming/ drop folder
+if ! grep -q '\[schedule-drop\]' /etc/samba/smb.conf 2>/dev/null; then
+    sudo tee -a /etc/samba/smb.conf > /dev/null << EOF
+
+[schedule-drop]
+   comment = Shop Schedule PDF Drop
+   path = $INSTALL_DIR/incoming
+   valid users = $USER
+   writable = yes
+   browseable = yes
+   create mask = 0664
+   directory mask = 0775
+EOF
+fi
+_smb_pass=$(_get_env SMB_PASS "$INSTALL_DIR/.env")
+if [ -n "$_smb_pass" ]; then
+    if ! sudo pdbedit -L -u "$USER" &>/dev/null; then
+        printf '%s\n%s\n' "$_smb_pass" "$_smb_pass" | sudo smbpasswd -a -s "$USER"
+    else
+        printf '%s\n%s\n' "$_smb_pass" "$_smb_pass" | sudo smbpasswd -s "$USER"
+    fi
+fi
+sudo systemctl enable smbd
+sudo systemctl restart smbd
 
 # Add cron job (every 15 minutes)
 CRON="*/15 * * * * $INSTALL_DIR/run_update.sh >> /tmp/shop-schedule.log 2>&1"
@@ -116,3 +151,4 @@ echo "2. Drop a PDF into $INSTALL_DIR/incoming/ to test, or email it directly"
 echo "3. View at:    http://$(hostname -I | awk '{print $1}'):8080/"
 echo "4. Upload at:  http://$(hostname -I | awk '{print $1}'):8080/upload.html"
 echo "5. Edit $INSTALL_DIR/public/pages.json to manually add URLs to the kiosk rotation"
+echo "6. Drop PDFs via SMB: \\\\$(hostname -I | awk '{print $1}')\\schedule-drop  (user: $USER)"
