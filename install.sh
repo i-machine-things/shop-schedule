@@ -15,7 +15,7 @@ echo ""
 
 # Dependencies
 sudo apt-get update -q
-sudo apt-get install -y python3-venv samba
+sudo apt-get install -y python3-venv samba wsdd
 python3 -m venv "$INSTALL_DIR/venv"
 "$INSTALL_DIR/venv/bin/pip" install --quiet pdfplumber reportlab
 
@@ -145,8 +145,8 @@ if [ -n "$_smb_pass" ]; then
         printf '%s\n%s\n' "$_smb_pass" "$_smb_pass" | sudo smbpasswd -s "$USER"
     fi
 fi
-sudo systemctl enable smbd
-sudo systemctl restart smbd
+sudo systemctl enable smbd nmbd wsdd
+sudo systemctl restart smbd nmbd wsdd
 
 # Add cron job (every 15 minutes)
 CRON="*/15 * * * * $INSTALL_DIR/run_update.sh >> /tmp/shop-schedule.log 2>&1"
