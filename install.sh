@@ -29,6 +29,21 @@ fi
 # Read a single key from .env (strips surrounding quotes)
 _get_env() { grep -m1 "^$1=" "$2" 2>/dev/null | cut -d= -f2- | tr -d '"'"'"; }
 
+# Prompt for a password, echoing * per character; outputs the value on stdout
+_read_masked() {
+    local prompt="$1" pass="" char
+    printf '%s' "$prompt" > /dev/tty
+    while IFS= read -r -s -n1 char; do
+        case "$char" in
+            '') break ;;
+            $'\x7f') [[ -n "$pass" ]] && { pass="${pass%?}"; printf '\b \b' > /dev/tty; } ;;
+            *) pass+="$char"; printf '*' > /dev/tty ;;
+        esac
+    done
+    printf '\n' > /dev/tty
+    printf '%s' "$pass"
+}
+
 # Write or replace a key='value' line in .env (safe for & | " \ $ and backticks)
 _set_env() {
     local key="$1" val="$2" file="$3"
@@ -69,7 +84,7 @@ fi
 _v=$(_get_env GMAIL_PASS "$INSTALL_DIR/.env")
 if [ -z "$_v" ] || [ "$_v" = "xxxx-xxxx-xxxx-xxxx" ]; then
     echo "  (App Password — generate at https://myaccount.google.com/apppasswords)"
-    read -rsp "  Gmail App Password: " _v || true; echo
+    _v=$(_read_masked "  Gmail App Password: ") || true
     [ -n "$_v" ] && _set_env GMAIL_PASS "$_v" "$INSTALL_DIR/.env"
 fi
 
@@ -82,7 +97,7 @@ fi
 _v=$(_get_env SMB_PASS "$INSTALL_DIR/.env")
 if [ -z "$_v" ]; then
     echo "  (Password for the SMB share — used to drop PDFs from Windows/Mac)"
-    read -rsp "  SMB password for $USER: " _v || true; echo
+    _v=$(_read_masked "  SMB password for $USER: ") || true
     [ -n "$_v" ] && _set_env SMB_PASS "$_v" "$INSTALL_DIR/.env"
 fi
 
