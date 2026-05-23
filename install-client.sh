@@ -73,7 +73,6 @@ ExecStart=
 ExecStart=-/sbin/agetty --autologin $USER --noclear %I \$TERM
 EOF
 sudo systemctl daemon-reload
-sudo systemctl restart getty@tty1
 
 echo ""
 echo "=== Done ==="
