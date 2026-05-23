@@ -37,6 +37,7 @@ USER_HOME=$(getent passwd "$USER" | cut -d: -f6)
 cat > "$USER_HOME/.xinitrc" << XINITRC
 #!/bin/bash
 xset s off s noblank -dpms
+xrandr --auto
 unclutter -idle 0.1 -root &>/dev/null &
 
 until curl -sf "$SERVER_URL" > /dev/null 2>&1; do
