@@ -45,6 +45,7 @@ until curl -sf "$SERVER_URL" > /dev/null 2>&1; do
 done
 exec /usr/bin/chromium \\
   --kiosk \\
+  --force-device-scale-factor=1 \\
   --noerrdialogs \\
   --disable-infobars \\
   --no-first-run \\
