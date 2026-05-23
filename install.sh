@@ -115,6 +115,14 @@ sudo systemctl daemon-reload
 sudo systemctl enable foreman-server
 sudo systemctl restart foreman-server
 
+# Disable guest access in Samba
+if ! grep -q 'map to guest = never' /etc/samba/smb.conf 2>/dev/null; then
+    tmp=$(mktemp)
+    awk '/^\[global\]/{print; print "   map to guest = never"; print "   usershare allow guests = no"; next}1' \
+        /etc/samba/smb.conf > "$tmp"
+    sudo mv "$tmp" /etc/samba/smb.conf
+fi
+
 # Configure SMB share for incoming/ drop folder
 if ! grep -q '\[schedule-drop\]' /etc/samba/smb.conf 2>/dev/null; then
     sudo tee -a /etc/samba/smb.conf > /dev/null << EOF
