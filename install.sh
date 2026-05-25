@@ -20,6 +20,7 @@ sudo apt-get install -y python3-venv samba
 sudo apt-get install -y wsdd 2>/dev/null || sudo apt-get install -y wsdd2 2>/dev/null || true
 python3 -m venv "$INSTALL_DIR/venv"
 "$INSTALL_DIR/venv/bin/pip" install --quiet pdfplumber reportlab
+chmod +x "$INSTALL_DIR/run_update.sh"
 
 # Create .env from example if not present
 if [ ! -f "$INSTALL_DIR/.env" ]; then
