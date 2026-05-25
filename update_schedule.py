@@ -5,6 +5,7 @@ Run via cron every 15 minutes. Checks Gmail for new Shop Schedule PDF, parses it
 and regenerates schedule.html for the kiosk display.
 """
 
+import hashlib
 import html as _html
 import imaplib
 import email
@@ -25,6 +26,7 @@ PDF_COMPANY_NAME = os.environ.get('PDF_COMPANY_NAME', '').strip()
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 PDF_PATH = os.path.join(BASE_DIR, PDF_FILENAME)
 HTML_PATH = os.path.join(BASE_DIR, 'public', 'schedule.html')
+DEPT_COLORS_PATH = os.path.join(BASE_DIR, 'public', 'dept_colors.json')
 # ───────────────────────────────────────────────────────────────────────────────
 
 
@@ -212,7 +214,8 @@ def parse_pdf(path):
 
 # ── HTML Generation ─────────────────────────────────────────────────────────────
 
-_DEPT_COLORS = {
+# Keyword defaults — matched against lowercase dept name when a new dept is first seen.
+_DEPT_DEFAULTS = {
     'assembly':  ('#0d2b1a', '#1a6640'),
     'cnc':       ('#0d1a2b', '#1a4466'),
     'inspection': ('#1e0d2b', '#4d2080'),
@@ -224,12 +227,34 @@ _DEPT_COLORS = {
 }
 
 
-def _dept_colors(dept):
-    dl = dept.lower()
-    for k, (bg, accent) in _DEPT_COLORS.items():
-        if k in dl:
+def _load_dept_colors():
+    """Return {lowercase_name: {name, bg, accent}} from dept_colors.json."""
+    try:
+        with open(DEPT_COLORS_PATH) as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+
+def _save_dept_colors(colors):
+    tmp = DEPT_COLORS_PATH + '.tmp'
+    with open(tmp, 'w') as f:
+        json.dump(colors, f, indent=2, sort_keys=True)
+    os.replace(tmp, DEPT_COLORS_PATH)
+
+
+def _default_color(dept_lower):
+    """Keyword match first; fall back to a deterministic hash-generated dark palette."""
+    for keyword, (bg, accent) in _DEPT_DEFAULTS.items():
+        if keyword in dept_lower:
             return bg, accent
-    return '#111122', '#334'
+    h = int(hashlib.sha1(dept_lower.encode()).hexdigest()[:6], 16)
+    r, g, b = (h >> 16) & 0xFF, (h >> 8) & 0xFF, h & 0xFF
+    bg = '#{:02x}{:02x}{:02x}'.format(max(r // 8, 5), max(g // 8, 5), max(b // 8, 5))
+    accent = '#{:02x}{:02x}{:02x}'.format(
+        min(r // 2 + 20, 200), min(g // 2 + 20, 200), min(b // 2 + 20, 200)
+    )
+    return bg, accent
 
 
 def generate_html(data, out_path):
@@ -243,11 +268,24 @@ def generate_html(data, out_path):
     local_ip = _get_local_ip()
     url_line = f'<div class="url-line">http://{local_ip}:8080/schedule.html</div>' if local_ip else ''
 
+    colors = _load_dept_colors()
+    colors_dirty = False
+
     rows = []
     for sec in sections:
         if not sec['jobs']:
             continue
-        bg, accent = _dept_colors(sec['department'])
+        dept = sec['department']
+        dl = dept.lower()
+        if dl not in colors:
+            bg, accent = _default_color(dl)
+            colors[dl] = {'name': dept, 'bg': bg, 'accent': accent}
+            colors_dirty = True
+        elif colors[dl].get('name') != dept:
+            colors[dl]['name'] = dept
+            colors_dirty = True
+        bg = colors[dl]['bg']
+        accent = colors[dl]['accent']
         wc_attr = _html.escape(sec["wc"])
         dept_e = _html.escape(sec["department"])
         wcg_e = _html.escape(sec["wc_group"])
@@ -281,6 +319,9 @@ def generate_html(data, out_path):
         <td class="c">{je["ship_qty"]}</td>
         <td class="c {overdue}">{je["promised"]}</td>
       </tr>''')
+
+    if colors_dirty:
+        _save_dept_colors(colors)
 
     body = '\n'.join(rows)
 

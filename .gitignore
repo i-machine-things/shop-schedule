@@ -29,3 +29,4 @@ __pycache__/
 
 # db files
 *.db
+public/dept_colors.json
