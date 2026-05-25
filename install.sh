@@ -147,6 +147,14 @@ if ! grep -q 'map to guest = never' /etc/samba/smb.conf 2>/dev/null; then
     sudo mv "$tmp" /etc/samba/smb.conf
 fi
 
+# Migrate legacy incoming/processed/ to BASE_DIR/processed/ if it exists
+if [ -d "$INSTALL_DIR/incoming/processed" ]; then
+    mkdir -p "$INSTALL_DIR/processed"
+    find "$INSTALL_DIR/incoming/processed" -name "*.pdf" \
+        -exec mv {} "$INSTALL_DIR/processed/" \; 2>/dev/null || true
+    rmdir "$INSTALL_DIR/incoming/processed" 2>/dev/null || true
+fi
+
 # Configure SMB share for incoming/ drop folder
 if ! grep -q '\[schedule-drop\]' /etc/samba/smb.conf 2>/dev/null; then
     sudo tee -a /etc/samba/smb.conf > /dev/null << EOF
@@ -159,7 +167,15 @@ if ! grep -q '\[schedule-drop\]' /etc/samba/smb.conf 2>/dev/null; then
    browseable = yes
    create mask = 0664
    directory mask = 0775
+   veto files = /processed/
 EOF
+fi
+
+# Patch existing installs: add veto files if not already set
+if grep -q '\[schedule-drop\]' /etc/samba/smb.conf 2>/dev/null; then
+    if ! grep -A10 '\[schedule-drop\]' /etc/samba/smb.conf | grep -q 'veto files'; then
+        sudo sed -i '/\[schedule-drop\]/a\   veto files = \/processed\/' /etc/samba/smb.conf
+    fi
 fi
 _smb_pass=$(_get_env SMB_PASS "$INSTALL_DIR/.env")
 if [ -n "$_smb_pass" ]; then

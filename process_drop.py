@@ -2,8 +2,9 @@
 """
 process_drop.py — Pick up a PDF dropped into incoming/ and regenerate the schedule.
 
-Run manually or via cron alongside update_schedule.py:
-  python3 process_drop.py
+Usage:
+  python3 process_drop.py            # stage PDF + regenerate schedule (web upload path)
+  python3 process_drop.py --no-regen # stage PDF only; caller handles regeneration (cron path)
 """
 
 import os
@@ -12,17 +13,32 @@ import subprocess
 import sys
 from datetime import datetime
 
-BASE_DIR     = os.path.dirname(os.path.abspath(__file__))
-DROP_DIR     = os.path.join(BASE_DIR, 'incoming')
-PROCESSED    = os.path.join(DROP_DIR, 'processed')
-PDF_PATH     = os.path.join(BASE_DIR, 'last_report.pdf')
-MAIN_SCRIPT  = os.path.join(BASE_DIR, 'update_schedule.py')
+BASE_DIR    = os.path.dirname(os.path.abspath(__file__))
+DROP_DIR    = os.path.join(BASE_DIR, 'incoming')
+PROCESSED   = os.path.join(BASE_DIR, 'processed')   # outside incoming/ — not visible in SMB share
+PDF_PATH    = os.path.join(BASE_DIR, 'last_report.pdf')
+MAIN_SCRIPT = os.path.join(BASE_DIR, 'update_schedule.py')
 
 
-def main():
+def _cleanup_junk():
+    """Remove non-PDF files and any subdirectories from incoming/."""
+    for name in os.listdir(DROP_DIR):
+        path = os.path.join(DROP_DIR, name)
+        if os.path.isdir(path):
+            shutil.rmtree(path, ignore_errors=True)
+        elif not name.lower().endswith('.pdf'):
+            try:
+                os.remove(path)
+            except OSError:
+                pass
+
+
+def main(regen=True):
     if not os.path.isdir(DROP_DIR):
         print("No incoming/ directory found.", file=sys.stderr)
         sys.exit(1)
+
+    _cleanup_junk()
 
     pdfs = [
         os.path.join(DROP_DIR, f)
@@ -49,9 +65,10 @@ def main():
 
     print(f"[{datetime.now():%Y-%m-%d %H:%M}] Drop-dir: picked up {os.path.basename(newest)}")
 
-    env = {**os.environ, 'GMAIL_USER': ''}
-    subprocess.run([sys.executable, MAIN_SCRIPT], env=env, check=True)
+    if regen:
+        env = {**os.environ, 'GMAIL_USER': ''}
+        subprocess.run([sys.executable, MAIN_SCRIPT], env=env, check=True)
 
 
 if __name__ == '__main__':
-    main()
+    main(regen='--no-regen' not in sys.argv)
