@@ -1,5 +1,35 @@
 # Standards & Practices — CodeRabbit Review Log
 
+## 2026-05-25 — `server.py`, `update_schedule.py`, `options.html` (PR #168 — dynamic dept colors & options page)
+
+**Review:** CodeRabbit on feat/dynamic-dept-colors
+**Result:** 5 findings, all fixed by linter before merge.
+
+### Findings
+
+1. **`Content-Length` header not guarded against non-numeric values (server.py)**
+   - `int(self.headers.get('Content-Length', 0))` raises `ValueError` on malformed requests → unhandled 500
+   - Fix: wrap in `try/except ValueError`, return 400; also reject negative values
+   - Pattern: apply to every handler that reads `Content-Length`
+
+2. **Color strings not validated before persisting or injecting into HTML (server.py, update_schedule.py)**
+   - POST `/api/dept-colors` only checked key presence, not that `bg`/`accent` were valid hex — allowed injection into inline styles
+   - Fix: compile `r'^#[0-9a-fA-F]{6}$'` and `fullmatch()` both fields in the API handler; also validate at render time in `generate_html()` with fallback to `_default_color()`
+
+3. **`innerHTML` interpolation with untrusted filenames (options.html)**
+   - `item.innerHTML = \`<a href="${url}">${name}</a>\`` — crafted filename executes script in admin page
+   - Fix: use `document.createElement`, set `textContent` and `href`; add `rel="noopener noreferrer"` on `target="_blank"` links
+
+4. **DELETE response status ignored before declaring success (options.html)**
+   - `await fetch(...DELETE...)` without checking `res.ok` — UI showed "Reset" even on server error
+   - Fix: `if (!r.ok) throw new Error(...)` inside the try block
+
+5. **File input not cleared after upload — same file can't be re-selected (options.html)**
+   - Browser suppresses `change` event when the same file is chosen again
+   - Fix: `input.value = ''` after calling `onFiles()`
+
+---
+
 ## 2026-05-25 — `install.sh` (PR #153 — follow-up CR findings)
 
 **Review:** CodeRabbit rounds 2–4 on feat/installer-env-prompts
