@@ -113,6 +113,13 @@ display:flex;align-items:center;justify-content:center;height:100vh;font-size:24
 EOF
 fi
 
+# If a PDF already exists, regenerate schedule.html immediately so the sidebar
+# is populated on first boot rather than waiting for the first cron run.
+if [ -f "$INSTALL_DIR/last_report.pdf" ]; then
+    echo "Regenerating schedule from existing PDF..."
+    GMAIL_USER='' "$INSTALL_DIR/venv/bin/python3" "$INSTALL_DIR/update_schedule.py" || true
+fi
+
 # Create page-rotation config from example if not present
 if [ ! -f "$INSTALL_DIR/public/pages.json" ]; then
     cp "$INSTALL_DIR/pages.json.example" "$INSTALL_DIR/public/pages.json"
