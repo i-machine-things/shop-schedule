@@ -27,8 +27,13 @@ if [ ! -f "$INSTALL_DIR/.env" ]; then
     cp "$INSTALL_DIR/.env.example" "$INSTALL_DIR/.env"
 fi
 
-# Read a single key from .env (strips surrounding quotes)
-_get_env() { grep -m1 "^$1=" "$2" 2>/dev/null | cut -d= -f2- | tr -d '"'"'"; }
+# Read a single key from .env; handles single-quoted values written by _set_env.
+_get_env() {
+    local raw
+    raw=$(grep -m1 "^$1=" "$2" 2>/dev/null | cut -d= -f2-) || true
+    [ -z "$raw" ] && return 0
+    eval "printf '%s' $raw" 2>/dev/null || true
+}
 
 # Prompt for a password, echoing * per character; outputs the value on stdout
 _read_masked() {
@@ -65,6 +70,7 @@ _set_env() {
     else
         printf '%s\n' "$line" >> "$file"
     fi
+    chmod 600 "$file"
 }
 
 echo ""
@@ -119,7 +125,8 @@ fi
 GMAIL_USER='' "$INSTALL_DIR/venv/bin/python3" "$INSTALL_DIR/process_drop.py" --no-regen 2>&1 || true
 if [ -f "$INSTALL_DIR/last_report.pdf" ]; then
     echo "Regenerating schedule from existing PDF..."
-    GMAIL_USER='' "$INSTALL_DIR/venv/bin/python3" "$INSTALL_DIR/update_schedule.py" || true
+    ( set -a; source "$INSTALL_DIR/.env" 2>/dev/null; set +a
+      GMAIL_USER='' "$INSTALL_DIR/venv/bin/python3" "$INSTALL_DIR/update_schedule.py" ) || true
 fi
 
 # Create page-rotation config from example if not present
@@ -196,7 +203,7 @@ for svc in wsdd wsdd2; do
 done
 
 # Add cron job (every 15 minutes)
-CRON="*/15 * * * * $INSTALL_DIR/run_update.sh >> /tmp/shop-schedule.log 2>&1"
+CRON="*/15 * * * * \"$INSTALL_DIR/run_update.sh\" >> /tmp/shop-schedule.log 2>&1"
 ( crontab -l 2>/dev/null || true ) | grep -v shop-schedule | { cat; echo "$CRON"; } | crontab -
 
 echo ""
