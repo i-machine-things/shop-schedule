@@ -26,8 +26,11 @@ DROP_DIR = BASE_DIR / 'incoming'
 MAX_UPLOAD = 50 * 1024 * 1024  # 50 MB
 PORT = int(os.environ.get('PORT', 8080))
 
+DEPT_COLORS_PATH = PUBLIC_DIR / 'dept_colors.json'
+
 _pages_lock = threading.Lock()
 _schedule_lock = threading.Lock()  # prevents concurrent process_drop.py runs
+_dept_colors_lock = threading.Lock()
 
 
 def _read_pages():
@@ -78,8 +81,13 @@ class Handler(SimpleHTTPRequestHandler):
     # ── Routing ──────────────────────────────────────────────────────────────
 
     def do_GET(self):
-        if urlparse(self.path).path == '/install':
+        path = urlparse(self.path).path
+        if path == '/install':
             self._serve_client_installer()
+        elif path == '/api/dept-colors':
+            self._get_dept_colors()
+        elif path == '/api/pages':
+            self._get_pages()
         else:
             super().do_GET()
 
@@ -89,6 +97,10 @@ class Handler(SimpleHTTPRequestHandler):
             self._upload_schedule()
         elif path == '/api/upload/raw':
             self._upload_raw()
+        elif path == '/api/dept-colors':
+            self._post_dept_colors()
+        elif path == '/api/pages':
+            self._post_pages()
         else:
             self.send_error(404)
 
@@ -97,6 +109,8 @@ class Handler(SimpleHTTPRequestHandler):
         if path.startswith('/api/raw/'):
             name = os.path.basename(unquote(path[len('/api/raw/'):]))
             self._delete_raw(name)
+        elif path == '/api/dept-colors':
+            self._delete_dept_colors()
         else:
             self.send_error(404)
 
@@ -149,6 +163,83 @@ class Handler(SimpleHTTPRequestHandler):
         with _pages_lock:
             cfg = _read_pages()
             cfg['pages'] = [p for p in cfg.get('pages', []) if _page_url(p) != url]
+            _write_pages(cfg)
+        self._json(200, {'ok': True})
+
+    def _get_dept_colors(self):
+        with _dept_colors_lock:
+            data = DEPT_COLORS_PATH.read_bytes() if DEPT_COLORS_PATH.exists() else b'{}'
+        self.send_response(200)
+        self.send_header('Content-Type', 'application/json')
+        self.send_header('Content-Length', str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
+
+    def _post_dept_colors(self):
+        try:
+            length = int(self.headers.get('Content-Length', '0'))
+        except ValueError:
+            self.send_error(400, 'Bad Request')
+            return
+        if length < 0 or length > 64 * 1024:
+            self.send_error(413 if length > 0 else 400, 'Bad Request')
+            return
+        body = self.rfile.read(length)
+        _hex = re.compile(r'^#[0-9a-fA-F]{6}$')
+        try:
+            data = json.loads(body)
+            if not isinstance(data, dict):
+                raise ValueError
+            for k, v in data.items():
+                if not isinstance(k, str) or not isinstance(v, dict):
+                    raise ValueError
+                if not isinstance(v.get('bg'), str) or not _hex.fullmatch(v['bg']):
+                    raise ValueError
+                if not isinstance(v.get('accent'), str) or not _hex.fullmatch(v['accent']):
+                    raise ValueError
+        except (json.JSONDecodeError, ValueError):
+            self.send_error(400, 'Invalid payload')
+            return
+        with _dept_colors_lock:
+            tmp = DEPT_COLORS_PATH.with_suffix('.json.tmp')
+            tmp.write_text(json.dumps(data, indent=2, sort_keys=True))
+            tmp.replace(DEPT_COLORS_PATH)
+        self._json(200, {'ok': True})
+
+    def _delete_dept_colors(self):
+        with _dept_colors_lock:
+            if DEPT_COLORS_PATH.exists():
+                DEPT_COLORS_PATH.unlink()
+        self._json(200, {'ok': True})
+
+    def _get_pages(self):
+        with _pages_lock:
+            cfg = _read_pages()
+        data = json.dumps(cfg, indent=2).encode()
+        self.send_response(200)
+        self.send_header('Content-Type', 'application/json')
+        self.send_header('Content-Length', str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
+
+    def _post_pages(self):
+        try:
+            length = int(self.headers.get('Content-Length', '0'))
+        except ValueError:
+            self.send_error(400, 'Bad Request')
+            return
+        if length < 0 or length > 64 * 1024:
+            self.send_error(413 if length > 0 else 400, 'Bad Request')
+            return
+        body = self.rfile.read(length)
+        try:
+            cfg = json.loads(body)
+            if not isinstance(cfg, dict) or not isinstance(cfg.get('pages', []), list):
+                raise ValueError
+        except (json.JSONDecodeError, ValueError):
+            self.send_error(400, 'Invalid payload')
+            return
+        with _pages_lock:
             _write_pages(cfg)
         self._json(200, {'ok': True})
 

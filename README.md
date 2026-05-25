@@ -4,6 +4,12 @@ Single Board Computer kiosk display for a machine shop floor. Polls a Gmail inbo
 
 > Works off the **Foreman's Report** exported from JobBoss. The report is emailed as a PDF attachment and picked up automatically — or you can drop a PDF directly into the `incoming/` folder.
 
+## Screenshots
+
+| Landing page | Options | Schedule |
+|---|---|---|
+| ![Landing page — live clock and navigation](screenshots/index.png) | ![Options page — rotation config, upload, and department colors](screenshots/options.png) | ![Schedule — dark-theme table grouped by work centre](screenshots/schedule.png) |
+
 ## How it works
 
 1. `run_update.sh` is called by cron every 15 minutes
@@ -46,7 +52,7 @@ Once the installer runs, the kiosk and schedule are served over HTTP on port 808
 http://<pi-ip>:8080/              ← landing page
 http://<pi-ip>:8080/kiosk.html    ← kiosk display with page rotation
 http://<pi-ip>:8080/schedule.html ← raw schedule table (no rotation)
-http://<pi-ip>:8080/upload.html   ← drag-and-drop upload page
+http://<pi-ip>:8080/options.html  ← rotation config, uploads, and department colors
 ```
 
 The schedule polls for updates every 60 seconds and swaps in new content without reloading.
@@ -65,7 +71,7 @@ Or navigate to `http://<server-ip>:8080/install.html` for a copyable one-liner w
 
 ## Uploading files
 
-Navigate to `http://<pi-ip>:8080/upload.html` from any device on the same network.
+Navigate to `http://<pi-ip>:8080/options.html` from any device on the same network (Upload section).
 
 - **Foreman's Report** — drop the PDF exported from JobBoss. The schedule regenerates automatically within a few seconds (same as dropping it in `incoming/`).
 - **Display PDFs** — drop any PDF to add it to the kiosk rotation. It appears immediately in the list and will show as a slide the next time the kiosk loops. Remove it from the list to delete it from the rotation.
@@ -139,7 +145,7 @@ python3 process_drop.py
 | `foreman-kiosk.service` | systemd service (server) — opens Chromium in kiosk mode pointing at `kiosk.html` |
 | `foreman-server.service` | systemd service — runs `server.py` on port 8080 |
 | `public/install.html` | Web UI showing the copyable client install one-liner |
-| `public/upload.html` | Drag-and-drop upload page for schedule and display PDFs |
+| `public/options.html` | Admin UI — page rotation config, uploads, and department color pickers |
 | `public/kiosk.html` | Rotation shell — wraps the schedule and fades to configured pages |
 | `pages.json.example` | Template for `public/pages.json` (the page rotation config) |
 | `.env.example` | Credential template (copy to `.env` and fill in) |
