@@ -214,6 +214,8 @@ def parse_pdf(path):
 
 # ── HTML Generation ─────────────────────────────────────────────────────────────
 
+_HEX_COLOR_RE = re.compile(r'^#[0-9a-fA-F]{6}$')
+
 # Keyword defaults — matched against lowercase dept name when a new dept is first seen.
 _DEPT_DEFAULTS = {
     'assembly':  ('#0d2b1a', '#1a6640'),
@@ -237,9 +239,20 @@ def _load_dept_colors():
 
 
 def _save_dept_colors(colors):
+    """Merge colors into dept_colors.json; preserves user-set bg/accent for existing depts."""
+    try:
+        with open(DEPT_COLORS_PATH) as f:
+            on_disk = json.load(f)
+    except Exception:
+        on_disk = {}
+    for k, v in colors.items():
+        if k not in on_disk:
+            on_disk[k] = v
+        else:
+            on_disk[k]['name'] = v.get('name', on_disk[k].get('name', ''))
     tmp = DEPT_COLORS_PATH + '.tmp'
     with open(tmp, 'w') as f:
-        json.dump(colors, f, indent=2, sort_keys=True)
+        json.dump(on_disk, f, indent=2, sort_keys=True)
     os.replace(tmp, DEPT_COLORS_PATH)
 
 
@@ -286,6 +299,10 @@ def generate_html(data, out_path):
             colors_dirty = True
         bg = colors[dl]['bg']
         accent = colors[dl]['accent']
+        if not (isinstance(bg, str) and _HEX_COLOR_RE.fullmatch(bg)):
+            bg, _ = _default_color(dl)
+        if not (isinstance(accent, str) and _HEX_COLOR_RE.fullmatch(accent)):
+            _, accent = _default_color(dl)
         wc_attr = _html.escape(sec["wc"])
         dept_e = _html.escape(sec["department"])
         wcg_e = _html.escape(sec["wc_group"])

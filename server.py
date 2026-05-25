@@ -176,11 +176,16 @@ class Handler(SimpleHTTPRequestHandler):
         self.wfile.write(data)
 
     def _post_dept_colors(self):
-        length = int(self.headers.get('Content-Length', 0))
-        if length > 64 * 1024:
-            self.send_error(413, 'Too large')
+        try:
+            length = int(self.headers.get('Content-Length', '0'))
+        except ValueError:
+            self.send_error(400, 'Bad Request')
+            return
+        if length < 0 or length > 64 * 1024:
+            self.send_error(413 if length > 0 else 400, 'Bad Request')
             return
         body = self.rfile.read(length)
+        _hex = re.compile(r'^#[0-9a-fA-F]{6}$')
         try:
             data = json.loads(body)
             if not isinstance(data, dict):
@@ -188,7 +193,9 @@ class Handler(SimpleHTTPRequestHandler):
             for k, v in data.items():
                 if not isinstance(k, str) or not isinstance(v, dict):
                     raise ValueError
-                if 'bg' not in v or 'accent' not in v:
+                if not isinstance(v.get('bg'), str) or not _hex.fullmatch(v['bg']):
+                    raise ValueError
+                if not isinstance(v.get('accent'), str) or not _hex.fullmatch(v['accent']):
                     raise ValueError
         except (json.JSONDecodeError, ValueError):
             self.send_error(400, 'Invalid payload')
@@ -216,9 +223,13 @@ class Handler(SimpleHTTPRequestHandler):
         self.wfile.write(data)
 
     def _post_pages(self):
-        length = int(self.headers.get('Content-Length', 0))
-        if length > 64 * 1024:
-            self.send_error(413, 'Too large')
+        try:
+            length = int(self.headers.get('Content-Length', '0'))
+        except ValueError:
+            self.send_error(400, 'Bad Request')
+            return
+        if length < 0 or length > 64 * 1024:
+            self.send_error(413 if length > 0 else 400, 'Bad Request')
             return
         body = self.rfile.read(length)
         try:
