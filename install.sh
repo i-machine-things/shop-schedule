@@ -196,7 +196,7 @@ done
 
 # Add cron job (every 15 minutes)
 CRON="*/15 * * * * $INSTALL_DIR/run_update.sh >> /tmp/shop-schedule.log 2>&1"
-( crontab -l 2>/dev/null | grep -v shop-schedule; echo "$CRON" ) | crontab -
+( crontab -l 2>/dev/null || true ) | grep -v shop-schedule | { cat; echo "$CRON"; } | crontab -
 
 echo ""
 echo "=== Done ==="
