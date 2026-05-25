@@ -72,6 +72,15 @@ Navigate to `http://<pi-ip>:8080/upload.html` from any device on the same networ
 
 Uploaded display PDFs are stored in `public/raw/` and their entries are managed automatically in `public/pages.json`.
 
+## SMB file drop (Windows / Mac)
+
+The installer sets up a password-protected Samba share pointing at `incoming/`. From any machine on the same network:
+
+- **Windows:** `\\<device-ip>\schedule-drop` — map as a network drive if desired
+- **Mac:** `smb://<device-ip>/schedule-drop` in Finder → Go → Connect to Server
+
+Log in with the device username and the SMB password set during `install.sh`. Drop a PDF and the schedule regenerates within seconds.
+
 ## Work center filter
 
 The schedule page has a fixed sidebar listing every work center in the current report. Tapping a WC solos it (first tap); subsequent taps toggle additional WCs in or out. Tapping the sole active WC resets to showing all. The **All** button at the top also resets to the full view.

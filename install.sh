@@ -12,28 +12,100 @@ fi
 echo "=== Shop Schedule Installer ==="
 echo "Install directory: $INSTALL_DIR"
 echo ""
-read -rp "Install kiosk display (requires a monitor connected)? [y/N] " _kiosk
-KIOSK_MODE=false
-[[ "${_kiosk,,}" == "y" ]] && KIOSK_MODE=true
 
 # Dependencies
 sudo apt-get update -q
-if $KIOSK_MODE; then
-    sudo apt-get install -y python3-venv chromium-browser unclutter
-else
-    sudo apt-get install -y python3-venv
-fi
+sudo apt-get install -y python3-venv samba
+# wsdd enables WSD discovery for Windows clients — package name varies by distro
+sudo apt-get install -y wsdd 2>/dev/null || sudo apt-get install -y wsdd2 2>/dev/null || true
 python3 -m venv "$INSTALL_DIR/venv"
 "$INSTALL_DIR/venv/bin/pip" install --quiet pdfplumber reportlab
+chmod +x "$INSTALL_DIR/run_update.sh"
 
 # Create .env from example if not present
 if [ ! -f "$INSTALL_DIR/.env" ]; then
     cp "$INSTALL_DIR/.env.example" "$INSTALL_DIR/.env"
-    echo ""
-    echo ">>> Edit $INSTALL_DIR/.env with your Gmail credentials before continuing <<<"
-    echo "    Use a Gmail App Password (not your regular password)."
-    echo "    Generate one at: https://myaccount.google.com/apppasswords"
-    echo ""
+fi
+
+# Read a single key from .env; handles single-quoted values written by _set_env.
+_get_env() {
+    local raw
+    raw=$(grep -m1 "^$1=" "$2" 2>/dev/null | cut -d= -f2-) || true
+    [ -z "$raw" ] && return 0
+    eval "printf '%s' $raw" 2>/dev/null || true
+}
+
+# Prompt for a password, echoing * per character; outputs the value on stdout
+_read_masked() {
+    local prompt="$1" pass="" char
+    printf '%s' "$prompt" > /dev/tty
+    while IFS= read -r -s -n1 char; do
+        case "$char" in
+            '') break ;;
+            $'\x7f') [[ -n "$pass" ]] && { pass="${pass%?}"; printf '\b \b' > /dev/tty; } ;;
+            *) pass+="$char"; printf '*' > /dev/tty ;;
+        esac
+    done
+    printf '\n' > /dev/tty
+    printf '%s' "$pass"
+}
+
+# Write or replace a key='value' line in .env (safe for & | " \ $ and backticks)
+_set_env() {
+    local key="$1" val="$2" file="$3"
+    local q="'" dq='"'
+    local escaped="${val//$q/${q}${dq}${q}${dq}${q}}"
+    local line="${key}='${escaped}'"
+    if grep -q "^${key}=" "$file" 2>/dev/null; then
+        local tmp
+        tmp="$(mktemp)"
+        while IFS= read -r l; do
+            if [[ "$l" == "${key}="* ]]; then
+                printf '%s\n' "$line"
+            else
+                printf '%s\n' "$l"
+            fi
+        done < "$file" > "$tmp"
+        mv "$tmp" "$file"
+    else
+        printf '%s\n' "$line" >> "$file"
+    fi
+    chmod 600 "$file"
+}
+
+echo ""
+echo "=== Configure .env ==="
+
+_v=$(_get_env SHOP_NAME "$INSTALL_DIR/.env")
+if [ -z "$_v" ] || [ "$_v" = "Your Shop Name" ]; then
+    read -rp "  Shop name (shown in schedule header): " _v || true
+    [ -n "$_v" ] && _set_env SHOP_NAME "$_v" "$INSTALL_DIR/.env"
+fi
+
+_v=$(_get_env GMAIL_USER "$INSTALL_DIR/.env")
+if [ -z "$_v" ] || [ "$_v" = "your@gmail.com" ]; then
+    read -rp "  Gmail address: " _v || true
+    [ -n "$_v" ] && _set_env GMAIL_USER "$_v" "$INSTALL_DIR/.env"
+fi
+
+_v=$(_get_env GMAIL_PASS "$INSTALL_DIR/.env")
+if [ -z "$_v" ] || [ "$_v" = "xxxx-xxxx-xxxx-xxxx" ]; then
+    echo "  (App Password — generate at https://myaccount.google.com/apppasswords)"
+    _v=$(_read_masked "  Gmail App Password: ") || true
+    [ -n "$_v" ] && _set_env GMAIL_PASS "$_v" "$INSTALL_DIR/.env"
+fi
+
+_v=$(_get_env PDF_COMPANY_NAME "$INSTALL_DIR/.env")
+if [ -z "$_v" ] || [ "$_v" = "Your Company Name" ]; then
+    read -rp "  Company name as it appears in the PDF header (optional, Enter to skip): " _v || true
+    [ -n "$_v" ] && _set_env PDF_COMPANY_NAME "$_v" "$INSTALL_DIR/.env"
+fi
+
+_v=$(_get_env SMB_PASS "$INSTALL_DIR/.env")
+if [ -z "$_v" ]; then
+    echo "  (Password for the SMB share — used to drop PDFs from Windows/Mac)"
+    _v=$(_read_masked "  SMB password for $USER: ") || true
+    [ -n "$_v" ] && _set_env SMB_PASS "$_v" "$INSTALL_DIR/.env"
 fi
 
 # Placeholder schedule
@@ -48,6 +120,15 @@ display:flex;align-items:center;justify-content:center;height:100vh;font-size:24
 EOF
 fi
 
+# Process any PDFs in incoming/ and regenerate schedule.html so the sidebar
+# is populated on first boot rather than waiting for the first cron run.
+GMAIL_USER='' "$INSTALL_DIR/venv/bin/python3" "$INSTALL_DIR/process_drop.py" --no-regen 2>&1 || true
+if [ -f "$INSTALL_DIR/last_report.pdf" ]; then
+    echo "Regenerating schedule from existing PDF..."
+    ( set -a; source "$INSTALL_DIR/.env" 2>/dev/null; set +a
+      GMAIL_USER='' "$INSTALL_DIR/venv/bin/python3" "$INSTALL_DIR/update_schedule.py" ) || true
+fi
+
 # Create page-rotation config from example if not present
 if [ ! -f "$INSTALL_DIR/public/pages.json" ]; then
     cp "$INSTALL_DIR/pages.json.example" "$INSTALL_DIR/public/pages.json"
@@ -56,23 +137,10 @@ fi
 # Create raw PDF directory for display uploads
 mkdir -p "$INSTALL_DIR/public/raw"
 
-# Install & start kiosk service (display mode only)
-if $KIOSK_MODE; then
-    sed "s|__USER__|$USER|g" \
-        "$INSTALL_DIR/foreman-kiosk.service" \
-        | sudo tee /etc/systemd/system/foreman-kiosk.service > /dev/null
-    sudo systemctl daemon-reload
-    sudo systemctl enable foreman-kiosk
-    sudo systemctl start foreman-kiosk
+# Create PDF drop-in directory
+mkdir -p "$INSTALL_DIR/incoming"
 
-    # Hide mouse cursor on idle
-    AUTOSTART="/etc/xdg/lxsession/LXDE-pi/autostart"
-    if [ -f "$AUTOSTART" ] && ! grep -q 'unclutter' "$AUTOSTART"; then
-        echo "@unclutter -idle 0.1 -root" | sudo tee -a "$AUTOSTART"
-    fi
-fi
-
-# Install & start HTTP server (always — enables remote viewing)
+# Install & start HTTP server
 sed "s|__USER__|$USER|g; s|__INSTALL_DIR__|$INSTALL_DIR|g" \
     "$INSTALL_DIR/foreman-server.service" \
     | sudo tee /etc/systemd/system/foreman-server.service > /dev/null
@@ -80,14 +148,69 @@ sudo systemctl daemon-reload
 sudo systemctl enable foreman-server
 sudo systemctl restart foreman-server
 
+# Disable guest access in Samba
+if ! grep -q 'map to guest = never' /etc/samba/smb.conf 2>/dev/null; then
+    tmp=$(mktemp)
+    awk '/^\[global\]/{print; print "   map to guest = never"; print "   usershare allow guests = no"; next}1' \
+        /etc/samba/smb.conf > "$tmp"
+    sudo mv "$tmp" /etc/samba/smb.conf
+fi
+
+# Migrate legacy incoming/processed/ to BASE_DIR/processed/ if it exists
+if [ -d "$INSTALL_DIR/incoming/processed" ]; then
+    mkdir -p "$INSTALL_DIR/processed"
+    find "$INSTALL_DIR/incoming/processed" -name "*.pdf" \
+        -exec mv {} "$INSTALL_DIR/processed/" \; 2>/dev/null || true
+    rmdir "$INSTALL_DIR/incoming/processed" 2>/dev/null || true
+fi
+
+# Configure SMB share for incoming/ drop folder
+if ! grep -q '\[schedule-drop\]' /etc/samba/smb.conf 2>/dev/null; then
+    sudo tee -a /etc/samba/smb.conf > /dev/null << EOF
+
+[schedule-drop]
+   comment = Shop Schedule PDF Drop
+   path = $INSTALL_DIR/incoming
+   valid users = $USER
+   writable = yes
+   browseable = yes
+   create mask = 0664
+   directory mask = 0775
+   veto files = /processed/
+EOF
+fi
+
+# Patch existing installs: add veto files if not already set
+if grep -q '\[schedule-drop\]' /etc/samba/smb.conf 2>/dev/null; then
+    if ! grep -A10 '\[schedule-drop\]' /etc/samba/smb.conf | grep -q 'veto files'; then
+        sudo sed -i '/\[schedule-drop\]/a\   veto files = \/processed\/' /etc/samba/smb.conf
+    fi
+fi
+_smb_pass=$(_get_env SMB_PASS "$INSTALL_DIR/.env")
+if [ -n "$_smb_pass" ]; then
+    if ! sudo pdbedit -L -u "$USER" &>/dev/null; then
+        printf '%s\n%s\n' "$_smb_pass" "$_smb_pass" | sudo smbpasswd -a -s "$USER"
+    else
+        printf '%s\n%s\n' "$_smb_pass" "$_smb_pass" | sudo smbpasswd -s "$USER"
+    fi
+fi
+sudo systemctl enable smbd nmbd
+sudo systemctl restart smbd nmbd
+# Enable wsdd/wsdd2 if either was installed
+for svc in wsdd wsdd2; do
+    systemctl list-unit-files "${svc}.service" &>/dev/null \
+        && sudo systemctl enable "$svc" && sudo systemctl restart "$svc" || true
+done
+
 # Add cron job (every 15 minutes)
-CRON="*/15 * * * * $INSTALL_DIR/run_update.sh >> /tmp/shop-schedule.log 2>&1"
-( crontab -l 2>/dev/null | grep -v shop-schedule; echo "$CRON" ) | crontab -
+CRON="*/15 * * * * \"$INSTALL_DIR/run_update.sh\" >> /tmp/shop-schedule.log 2>&1"
+( crontab -l 2>/dev/null || true ) | grep -v shop-schedule | { cat; echo "$CRON"; } | crontab -
 
 echo ""
 echo "=== Done ==="
-echo "1. Edit $INSTALL_DIR/.env with your Gmail credentials"
+echo "1. Review/edit $INSTALL_DIR/.env if any credentials need updating"
 echo "2. Drop a PDF into $INSTALL_DIR/incoming/ to test, or email it directly"
 echo "3. View at:    http://$(hostname -I | awk '{print $1}'):8080/"
 echo "4. Upload at:  http://$(hostname -I | awk '{print $1}'):8080/upload.html"
 echo "5. Edit $INSTALL_DIR/public/pages.json to manually add URLs to the kiosk rotation"
+echo "6. Drop PDFs via SMB: \\\\$(hostname -I | awk '{print $1}')\\schedule-drop  (user: $USER)"

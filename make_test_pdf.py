@@ -152,7 +152,114 @@ def write_sections(c, sections, start_y, x=40):
     return y
 
 
-def make_pdf(path):
+# ---------------------------------------------------------------------------
+# Variants — clearly different content so refreshes are visually obvious.
+# ---------------------------------------------------------------------------
+
+VARIANTS = {
+    1: {
+        'label': 'REPORT-ALPHA',
+        'sections': [
+            {
+                'dept': 'CNC', 'wc_group': 'CNC Lathe', 'wc': 'LAT-001',
+                'jobs': [
+                    ('10001', 'A', '5',  'ea', '1', _d(-5),  'LAT-001', '1', '5',  _d(+10),
+                     'ALPHA PARTS',   '010', _d(+5),  '2', '3.0', '0', 'AP-001', 'Alpha Shaft'),
+                    ('10002', '',  '12', 'ea', '2', _d(-10), 'LAT-001', '2', '12', _d(+5),
+                     'ALPHA MFG',     '020', _d(+2),  '3', '6.0', '4', 'AP-002', 'Alpha Bracket'),
+                ],
+            },
+            {
+                'dept': 'Welding', 'wc_group': 'MIG Weld', 'wc': 'WLD-001',
+                'jobs': [
+                    ('10003', '',  '8',  'ea', '3', _d(-3),  'WLD-001', '1', '8',  _d(+15),
+                     'ALPHA WELD',    '010', _d(+12), '2', '2.5', '0', 'AW-001', 'Alpha Frame'),
+                ],
+            },
+        ],
+    },
+    2: {
+        'label': 'REPORT-BRAVO',
+        'sections': [
+            {
+                'dept': 'CNC', 'wc_group': 'CNC Mill', 'wc': 'MIL-002',
+                'jobs': [
+                    ('20001', 'B', '3',  'ea', '1', _d(-20), 'MIL-002', '1', '3',  _d(-5),
+                     'BRAVO MACHINE',  '010', _d(-10), '4', '10.0', '1', 'BM-001', 'Bravo Housing'),
+                    ('20002', '',  '6',  'ea', '2', _d(-7),  'MIL-002', '2', '6',  _d(+8),
+                     'BRAVO PARTS',   '020', _d(+3),  '3', '4.5',  '2', 'BM-002', 'Bravo Flange'),
+                    ('20003', 'A', '15', 'ea', '3', _d(-2),  'MIL-002', '3', '15', _d(+20),
+                     'BRAVO IND',     '030', _d(+18), '2', '1.0',  '0', 'BM-003', 'Bravo Pin'),
+                ],
+            },
+            {
+                'dept': 'Assembly', 'wc_group': 'Final Assembly', 'wc': 'ASM-001',
+                'jobs': [
+                    ('20004', '',  '2',  'ea', '1', _d(-14), 'ASM-001', '1', '2',  _d(-2),
+                     'BRAVO WORKS',   '010', _d(-5),  '3', '7.0',  '0', 'BA-001', 'Bravo Gearbox'),
+                    ('20005', '',  '4',  'ea', '2', _d(-9),  'ASM-001', '2', '4',  _d(+6),
+                     'BRAVO CTRL',    '020', _d(+2),  '2', '3.5',  '1', 'BA-002', 'Bravo Panel'),
+                ],
+            },
+            {
+                'dept': 'Shipping', 'wc_group': 'Shipping', 'wc': 'SHP-001',
+                'jobs': [
+                    ('20006', '',  '20', 'ea', '5', _d(0),   'SHP-001', '1', '20', _d(+3),
+                     'BRAVO LOG',     '010', _d(+2),  '1', '0.5',  '15', 'BS-001', 'Bravo Kit'),
+                ],
+            },
+        ],
+    },
+    3: {
+        'label': 'REPORT-CHARLIE',
+        'sections': [
+            {
+                'dept': 'CNC', 'wc_group': 'CNC Lathe', 'wc': 'LAT-001',
+                'jobs': [
+                    ('30001', '',  '7',  'ea', '2', _d(-6),  'LAT-001', '1', '7',  _d(+12),
+                     'CHARLIE CO',    '010', _d(+8),  '2', '2.0', '3', 'CC-001', 'Charlie Shaft'),
+                ],
+            },
+            {
+                'dept': 'CNC', 'wc_group': 'CNC Mill', 'wc': 'MIL-002',
+                'jobs': [
+                    ('30002', 'C', '4',  'ea', '1', _d(-30), 'MIL-002', '1', '4',  _d(-10),
+                     'CHARLIE MACH',  '010', _d(-15), '5', '14.0', '0', 'CM-001', 'Charlie Housing'),
+                ],
+            },
+            {
+                'dept': 'Welding', 'wc_group': 'TIG Weld', 'wc': 'WLD-002',
+                'jobs': [
+                    ('30003', '',  '10', 'ea', '3', _d(-4),  'WLD-002', '2', '10', _d(+18),
+                     'CHARLIE FAB',   '010', _d(+14), '3', '4.0',  '2', 'CW-001', 'Charlie Frame'),
+                    ('30004', 'A', '2',  'ea', '2', _d(-18), 'WLD-002', '1', '2',  _d(-3),
+                     'CHARLIE STL',   '020', _d(-8),  '2', '9.5',  '0', 'CW-002', 'Charlie Bracket'),
+                ],
+            },
+            {
+                'dept': 'Assembly', 'wc_group': 'Sub Assembly', 'wc': 'ASM-002',
+                'jobs': [
+                    ('30005', '',  '1',  'ea', '1', _d(-22), 'ASM-002', '1', '1',  _d(-7),
+                     'CHARLIE CTRL',  '010', _d(-12), '4', '16.0', '0', 'CA-001', 'Charlie Control Box'),
+                ],
+            },
+        ],
+    },
+}
+
+
+def make_pdf(path, variant=None):
+    """Generate a test PDF. variant=None uses the original SECTIONS data."""
+    if variant is not None:
+        v = VARIANTS[variant]
+        sections_p1 = v['sections']
+        sections_p2 = []
+        label = v['label']
+    else:
+        sections_p1 = SECTIONS
+        sections_p2 = SECTIONS_P2
+        label = 'ORIGINAL'
+
     c = canvas.Canvas(path, pagesize=letter)
     c.setFont(FONT, FONT_SIZE)
 
@@ -168,30 +275,42 @@ def make_pdf(path):
 
     report_date = ANCHOR.strftime('%d-%b-%y') + ' 08:30AM'
 
-    # Header — contains the tokens the parser's regex searches for
     line('SCHURMAN MACHINE')
     line(f'Foremans Report    {report_date}    Released Jobs Only    Thru {_thru()}')
-    line('by Work Center')
+    line(f'by Work Center                                              [{label}]')
     line()
-    # Column headers — all caught by _SKIP_RE so harmless
     line('Job   Rev  Make Qty  Pri  Sch Start   Curr WC   Ship Qty  Promised')
     line('Customer              Oper  Sch End   # Ops  Rem Hrs  Qty Run')
     line('Part  Description')
     line()
 
-    y = write_sections(c, SECTIONS, y, x)
+    y = write_sections(c, sections_p1, y, x)
 
-    # ── Page 2 ────────────────────────────────────────────────────────────────
-    c.showPage()
-    c.setFont(FONT, FONT_SIZE)
-
-    write_sections(c, SECTIONS_P2, H - 40, x)
+    if sections_p2:
+        c.showPage()
+        c.setFont(FONT, FONT_SIZE)
+        write_sections(c, sections_p2, H - 40, x)
 
     c.save()
-    print(f'Created: {path}')
-    print(f'Jobs: {sum(len(s["jobs"]) for s in SECTIONS + SECTIONS_P2)} across '
-          f'{len(SECTIONS + SECTIONS_P2)} sections (Welding split across pages to test merge)')
+    all_secs = sections_p1 + sections_p2
+    print(f'Created: {path}  [{label}]  '
+          f'{sum(len(s["jobs"]) for s in all_secs)} jobs / {len(all_secs)} sections')
 
 
 if __name__ == '__main__':
-    make_pdf(OUTPUT)
+    import argparse
+    parser = argparse.ArgumentParser(description='Generate test Foreman Report PDFs')
+    parser.add_argument('--variant', type=int, choices=[1, 2, 3],
+                        help='Generate a specific variant (1=Alpha, 2=Bravo, 3=Charlie)')
+    parser.add_argument('--all', action='store_true', help='Generate all 3 variants')
+    args = parser.parse_args()
+
+    if args.all:
+        names = {1: 'test_report_alpha.pdf', 2: 'test_report_bravo.pdf', 3: 'test_report_charlie.pdf'}
+        for n, fname in names.items():
+            make_pdf(os.path.join(BASE_DIR, fname), variant=n)
+    elif args.variant:
+        names = {1: 'test_report_alpha.pdf', 2: 'test_report_bravo.pdf', 3: 'test_report_charlie.pdf'}
+        make_pdf(os.path.join(BASE_DIR, names[args.variant]), variant=args.variant)
+    else:
+        make_pdf(OUTPUT)

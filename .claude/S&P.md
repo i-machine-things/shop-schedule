@@ -1,5 +1,47 @@
 # Standards & Practices — CodeRabbit Review Log
 
+## 2026-05-25 — `install.sh` (PR #153 — follow-up CR findings)
+
+**Review:** CodeRabbit rounds 2–4 on feat/installer-env-prompts
+**Result:** 4 findings, all fixed.
+
+### Findings
+
+1. **`_get_env` stripped all quote characters, corrupting values with embedded quotes**
+   - `tr -d '"'"'"` deleted every `'` and `"` byte; a value like `Bob's Shop` became `Bobs Shop`
+   - Fix: replaced with `eval "printf '%s' $raw"` which correctly handles the single-quoted format written by `_set_env`
+
+2. **`_set_env` did not enforce restrictive permissions on `.env` after writes**
+   - Credentials written without enforcing file mode; world-readable on some systems
+   - Fix: added `chmod 600 "$file"` in both the overwrite and append branches of `_set_env`
+
+3. **Cron `$INSTALL_DIR` path unquoted — breaks installs with spaces in path**
+   - `CRON="... $INSTALL_DIR/run_update.sh ..."` produces a broken crontab entry if `INSTALL_DIR` contains spaces
+   - Fix: wrapped path in escaped quotes: `\"$INSTALL_DIR/run_update.sh\"`
+
+4. **Initial schedule regeneration bypassed `.env`, ignoring `SHOP_NAME` / `PDF_COMPANY_NAME`**
+   - Direct `GMAIL_USER='' python3 update_schedule.py` call didn't load the `.env` written by the installer
+   - Fix: wrapped the call in a subshell that sources `.env` first: `( set -a; source .env; set +a; GMAIL_USER='' python3 update_schedule.py )`
+
+---
+
+## 2026-05-23 — `install.sh`, `install-client.sh` (PR #153 — installer env prompts)
+
+**Review:** CodeRabbit review of feat/installer-env-prompts
+**Result:** 2 findings, both fixed.
+
+### Findings
+
+1. **`getty@tty1` restarted from within the installer (install-client.sh)**
+   - `sudo systemctl restart getty@tty1` kills the agetty instance managing the current TTY; if the installer runs from TTY1 the session is cut off mid-install
+   - Fix: removed the restart call — `daemon-reload` alone is sufficient; autologin takes effect at next boot
+
+2. **Raw user input injected into `sed` replacement in `_set_env` (install.sh)**
+   - `sed -i "s|^${key}=.*|${key}=\"${val}\"|"` interpolated `val` directly; `&` and `|` corrupt the sed command, `\` and `"` corrupt the written value, and `$()` patterns execute when `.env` is later `source`d in `run_update.sh`
+   - Fix: replaced sed-based update with a temp-file line rewriter; values are written as single-quoted assignments with embedded single quotes escaped as `'"'"'`, neutralising all shell metacharacters on source
+
+---
+
 ## 2026-05-21 — `update_schedule.py` (PR #151 — WC sidebar filter)
 
 **Review:** CodeRabbit review of feat/wc-sidebar-filter
