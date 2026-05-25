@@ -343,10 +343,23 @@
     urlInput.focus();
   }
 
+  function normalizeUrl(raw) {
+    const s = raw.trim();
+    if (!s) return '';
+    // Relative paths (raw/file.pdf, schedule.html, /path) — leave as-is
+    if (s.startsWith('/') || s.startsWith('raw/') || !s.includes('.')) return s;
+    // Already has a protocol
+    if (/^https?:\/\//i.test(s)) return s;
+    // Bare domain — prepend https://
+    return 'https://' + s;
+  }
+
   function collectPages() {
     return [...document.querySelectorAll('.page-row')].map(row => {
       const [urlEl, secEl] = row.querySelectorAll('input');
-      const entry = { url: urlEl.value.trim() };
+      const url = normalizeUrl(urlEl.value);
+      urlEl.value = url;
+      const entry = { url };
       if (secEl.value) entry.seconds = parseInt(secEl.value, 10);
       return entry;
     }).filter(e => e.url);
