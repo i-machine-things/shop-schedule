@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Department Colors — Shop Schedule</title>
+  <title>Options — Shop Schedule</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -22,38 +22,40 @@
       margin-bottom: 36px;
     }
 
-    header a {
-      color: #4af;
-      text-decoration: none;
-      font-size: 20px;
-      opacity: 0.7;
-    }
-
+    header a { color: #4af; text-decoration: none; font-size: 20px; opacity: 0.7; }
     header a:hover { opacity: 1; }
 
-    h1 {
-      font-size: 16px;
-      color: #fff;
+    h1 { font-size: 16px; color: #fff; letter-spacing: 3px; text-transform: uppercase; }
+
+    section { max-width: 700px; margin-bottom: 48px; }
+
+    h2 {
+      font-size: 11px;
+      color: #555;
       letter-spacing: 3px;
       text-transform: uppercase;
+      margin-bottom: 16px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid #1a1a2e;
     }
 
-    #status {
-      margin-bottom: 24px;
+    .status {
       font-size: 12px;
       color: #4af;
       letter-spacing: 1px;
       min-height: 18px;
+      margin-bottom: 16px;
     }
 
-    #status.err { color: #f55; }
+    .status.err { color: #f55; }
 
-    #dept-list {
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-      max-width: 640px;
-    }
+    /* upload inline statuses */
+    .status.ok   { color: #4c4; }
+    .status.busy { color: #4af; }
+    .status:empty { min-height: 0; margin-bottom: 0; }
+
+    /* ── Department colors ── */
+    #dept-list { display: flex; flex-direction: column; gap: 10px; }
 
     .dept-row {
       display: grid;
@@ -65,50 +67,77 @@
       padding: 12px 16px;
     }
 
-    .dept-name {
-      font-size: 13px;
-      letter-spacing: 1px;
-      text-transform: uppercase;
-      color: #fff;
-    }
+    .dept-name { font-size: 13px; letter-spacing: 1px; text-transform: uppercase; color: #fff; }
 
-    .color-group {
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
-    }
-
-    .color-group label {
-      font-size: 10px;
-      color: #555;
-      letter-spacing: 1px;
-      text-transform: uppercase;
-    }
-
+    .color-group { display: flex; flex-direction: column; gap: 4px; }
+    .color-group label { font-size: 10px; color: #555; letter-spacing: 1px; text-transform: uppercase; }
     .color-group input[type="color"] {
-      width: 100%;
-      height: 28px;
-      border: 1px solid #333;
-      background: #111;
-      cursor: pointer;
-      padding: 2px;
+      width: 100%; height: 28px; border: 1px solid #333;
+      background: #111; cursor: pointer; padding: 2px;
     }
 
-    .swatch {
-      height: 48px;
-      border-left: 4px solid var(--accent);
-      background: var(--bg);
-    }
+    .swatch { height: 48px; border-left: 4px solid var(--accent); background: var(--bg); }
 
-    .actions {
-      display: flex;
+    .empty { color: #555; font-size: 13px; letter-spacing: 1px; padding: 20px 0; }
+
+    /* ── Page rotation ── */
+    .global-settings {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
       gap: 12px;
-      margin-top: 32px;
-      max-width: 640px;
+      margin-bottom: 20px;
     }
+
+    .field { display: flex; flex-direction: column; gap: 6px; }
+
+    .field label { font-size: 10px; color: #555; letter-spacing: 2px; text-transform: uppercase; }
+
+    .field input[type="number"], .field input[type="text"] {
+      background: #0b0b18;
+      border: 1px solid #333;
+      color: #ddd;
+      font-family: inherit;
+      font-size: 13px;
+      padding: 8px 10px;
+      width: 100%;
+    }
+
+    .field input:focus { outline: none; border-color: #4af; }
+
+    #page-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
+
+    .page-row {
+      display: grid;
+      grid-template-columns: 1fr 90px 36px;
+      align-items: center;
+      gap: 8px;
+      background: #0b0b18;
+      border: 1px solid #222;
+      padding: 10px 12px;
+    }
+
+    .page-row input[type="text"] { background: transparent; border: none; color: #ddd; font-family: inherit; font-size: 13px; width: 100%; }
+    .page-row input[type="text"]:focus { outline: none; }
+    .page-row input[type="number"] { background: transparent; border: none; color: #888; font-family: inherit; font-size: 12px; width: 100%; text-align: right; }
+    .page-row input[type="number"]:focus { outline: none; }
+
+    .remove-btn {
+      background: transparent;
+      border: 1px solid #444;
+      color: #f55;
+      font-size: 14px;
+      cursor: pointer;
+      padding: 4px 8px;
+      font-family: inherit;
+    }
+
+    .remove-btn:hover { background: #2a0f0f; border-color: #f55; }
+
+    /* ── Shared buttons ── */
+    .actions { display: flex; gap: 12px; margin-top: 16px; }
 
     button {
-      padding: 12px 28px;
+      padding: 10px 24px;
       font-family: inherit;
       font-size: 12px;
       letter-spacing: 2px;
@@ -122,45 +151,260 @@
 
     button:hover { background: #1a2a44; }
 
-    #btn-reset {
-      border-color: #f55;
-      color: #f55;
+    .btn-danger { border-color: #f55; color: #f55; }
+    .btn-danger:hover { background: #2a0f0f; }
+
+    .btn-add { border-color: #3a3; color: #3a3; }
+    .btn-add:hover { background: #0d2010; }
+
+    /* ── Upload ── */
+    .upload-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+      margin-bottom: 20px;
     }
 
-    #btn-reset:hover { background: #2a0f0f; }
+    @media (max-width: 600px) { .upload-grid { grid-template-columns: 1fr; } }
 
-    .empty {
-      color: #555;
-      font-size: 13px;
+    .drop-zone {
+      border: 2px dashed #555;
+      padding: 28px 16px;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color 0.2s, background 0.2s;
+      position: relative;
+    }
+
+    .drop-zone:hover, .drop-zone.drag-over { border-color: #4af; background: rgba(68,170,255,0.05); }
+
+    .drop-zone input[type="file"] {
+      position: absolute;
+      inset: 0;
+      opacity: 0;
+      cursor: pointer;
+      width: 100%;
+      height: 100%;
+    }
+
+    .drop-label { font-size: 12px; color: #888; letter-spacing: 1px; pointer-events: none; }
+    .drop-label strong { display: block; font-size: 22px; color: #4af; margin-bottom: 6px; }
+
+    .upload-col { display: flex; flex-direction: column; gap: 12px; }
+    .upload-col h3 { font-size: 11px; color: #777; letter-spacing: 2px; text-transform: uppercase; }
+    .upload-col p  { font-size: 11px; color: #555; line-height: 1.5; }
+
+    .raw-list { display: flex; flex-direction: column; gap: 6px; }
+
+    .raw-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 7px 10px;
+      background: #0b0b18;
+      border: 1px solid #222;
+    }
+
+    .raw-item .fname {
+      flex: 1;
+      font-size: 12px;
+      color: #4af;
+      text-decoration: none;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .raw-item .fname:hover { text-decoration: underline; }
+
+    .raw-item button {
+      flex-shrink: 0;
+      background: none;
+      border: 1px solid #444;
+      color: #888;
+      font-family: inherit;
+      font-size: 11px;
+      padding: 3px 8px;
+      cursor: pointer;
       letter-spacing: 1px;
-      padding: 20px 0;
+      transition: border-color 0.15s, color 0.15s;
     }
+
+    .raw-item button:hover { border-color: #f55; color: #f55; }
   </style>
 </head>
 <body>
   <header>
     <a href="index.html" title="Home">&#8962;</a>
-    <h1>Department Colors</h1>
+    <h1>Options</h1>
   </header>
 
-  <div id="status"></div>
-  <div id="dept-list"></div>
+  <!-- ── Page Rotation ─────────────────────────────────────── -->
+  <section>
+    <h2>Page Rotation</h2>
+    <div id="rot-status" class="status"></div>
 
-  <div class="actions">
-    <button id="btn-save">Save</button>
-    <button id="btn-reset">Reset to Defaults</button>
-  </div>
+    <div class="global-settings">
+      <div class="field">
+        <label>Schedule scroll cycles</label>
+        <input id="scroll-cycles" type="number" min="1" max="20" value="2">
+      </div>
+      <div class="field">
+        <label>Page duration (s)</label>
+        <input id="page-duration" type="number" min="5" max="3600" value="60">
+      </div>
+      <div class="field">
+        <label>Fade (ms)</label>
+        <input id="transition-ms" type="number" min="0" max="5000" value="800">
+      </div>
+    </div>
+
+    <div id="page-list"></div>
+
+    <div class="actions">
+      <button class="btn-add" id="btn-add-page">+ Add URL</button>
+      <button id="btn-save-rot">Save Rotation</button>
+    </div>
+  </section>
+
+  <!-- ── Uploads ──────────────────────────────────────────────── -->
+  <section>
+    <h2>Upload</h2>
+    <div class="upload-grid">
+      <div class="upload-col">
+        <h3>Foreman&rsquo;s Report</h3>
+        <p>PDF from JobBoss. Schedule regenerates within seconds.</p>
+        <div class="drop-zone" id="sched-zone">
+          <input type="file" id="sched-input" accept=".pdf">
+          <div class="drop-label"><strong>&#8659;</strong>Drop or click to browse</div>
+        </div>
+        <div id="sched-status" class="status"></div>
+      </div>
+
+      <div class="upload-col">
+        <h3>Display PDFs</h3>
+        <p>Added directly to the kiosk rotation.</p>
+        <div class="drop-zone" id="raw-zone">
+          <input type="file" id="raw-input" accept=".pdf" multiple>
+          <div class="drop-label"><strong>&#8659;</strong>Drop or click to browse</div>
+        </div>
+        <div id="raw-status" class="status"></div>
+        <div class="raw-list" id="raw-list"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Department Colors ──────────────────────────────────── -->
+  <section>
+    <h2>Department Colors</h2>
+    <div id="dept-status" class="status"></div>
+    <div id="dept-list"></div>
+    <div class="actions">
+      <button id="btn-save-dept">Save Colors</button>
+      <button class="btn-danger" id="btn-reset-dept">Reset to Defaults</button>
+    </div>
+  </section>
 
   <script>
-  let colors = {};
+  // ── Page Rotation ─────────────────────────────────────────────────────────
 
-  function setStatus(msg, isErr) {
-    const el = document.getElementById('status');
+  let pagesCfg = { scroll_cycles: 2, page_duration: 60, transition_ms: 800, pages: [] };
+
+  function setRotStatus(msg, err) {
+    const el = document.getElementById('rot-status');
     el.textContent = msg;
-    el.className = isErr ? 'err' : '';
+    el.className = 'status' + (err ? ' err' : '');
   }
 
-  function renderRow(key, entry) {
+  function addPageRow(url, seconds) {
+    const list = document.getElementById('page-list');
+    const row = document.createElement('div');
+    row.className = 'page-row';
+
+    const urlInput = document.createElement('input');
+    urlInput.type = 'text';
+    urlInput.placeholder = 'https://...';
+    urlInput.value = url || '';
+
+    const secInput = document.createElement('input');
+    secInput.type = 'number';
+    secInput.min = 5;
+    secInput.placeholder = 'default';
+    secInput.title = 'Seconds to display (leave blank for default)';
+    if (seconds != null) secInput.value = seconds;
+
+    const removeBtn = document.createElement('button');
+    removeBtn.className = 'remove-btn';
+    removeBtn.textContent = '✕';
+    removeBtn.addEventListener('click', () => row.remove());
+
+    row.append(urlInput, secInput, removeBtn);
+    list.appendChild(row);
+    urlInput.focus();
+  }
+
+  function collectPages() {
+    return [...document.querySelectorAll('.page-row')].map(row => {
+      const [urlEl, secEl] = row.querySelectorAll('input');
+      const entry = { url: urlEl.value.trim() };
+      if (secEl.value) entry.seconds = parseInt(secEl.value, 10);
+      return entry;
+    }).filter(e => e.url);
+  }
+
+  async function loadRotation() {
+    try {
+      const r = await fetch('/api/pages');
+      pagesCfg = await r.json();
+      document.getElementById('scroll-cycles').value = pagesCfg.scroll_cycles ?? 2;
+      document.getElementById('page-duration').value = pagesCfg.page_duration ?? 60;
+      document.getElementById('transition-ms').value = pagesCfg.transition_ms ?? 800;
+      const list = document.getElementById('page-list');
+      list.innerHTML = '';
+      (pagesCfg.pages || []).forEach(p => {
+        const url = typeof p === 'string' ? p : p.url;
+        const sec = typeof p === 'object' ? p.seconds : undefined;
+        addPageRow(url, sec);
+      });
+      renderRawList();
+    } catch (e) {
+      setRotStatus('Failed to load rotation config.', true);
+    }
+  }
+
+  document.getElementById('btn-add-page').addEventListener('click', () => addPageRow());
+
+  document.getElementById('btn-save-rot').addEventListener('click', async () => {
+    const cfg = {
+      scroll_cycles: parseInt(document.getElementById('scroll-cycles').value, 10) || 2,
+      page_duration: parseInt(document.getElementById('page-duration').value, 10) || 60,
+      transition_ms: parseInt(document.getElementById('transition-ms').value, 10) || 800,
+      pages: collectPages(),
+    };
+    try {
+      const r = await fetch('/api/pages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(cfg),
+      });
+      const j = await r.json();
+      setRotStatus(j.ok ? 'Saved.' : 'Save failed.', !j.ok);
+    } catch (e) {
+      setRotStatus('Save failed.', true);
+    }
+  });
+
+  // ── Department Colors ─────────────────────────────────────────────────────
+
+  let deptColors = {};
+
+  function setDeptStatus(msg, err) {
+    const el = document.getElementById('dept-status');
+    el.textContent = msg;
+    el.className = 'status' + (err ? ' err' : '');
+  }
+
+  function renderDeptRow(key, entry) {
     const row = document.createElement('div');
     row.className = 'dept-row';
     row.dataset.key = key;
@@ -193,8 +437,8 @@
     function sync() {
       swatch.style.setProperty('--bg', bgInput.value);
       swatch.style.setProperty('--accent', accentInput.value);
-      colors[key].bg = bgInput.value;
-      colors[key].accent = accentInput.value;
+      deptColors[key].bg = bgInput.value;
+      deptColors[key].accent = accentInput.value;
     }
     bgInput.addEventListener('input', sync);
     accentInput.addEventListener('input', sync);
@@ -203,54 +447,159 @@
     return row;
   }
 
-  function render() {
+  function renderDepts() {
     const list = document.getElementById('dept-list');
     list.innerHTML = '';
-    const keys = Object.keys(colors).sort();
+    const keys = Object.keys(deptColors).sort();
     if (!keys.length) {
       list.innerHTML = '<div class="empty">No departments yet — run a report first.</div>';
       return;
     }
-    keys.forEach(k => list.appendChild(renderRow(k, colors[k])));
+    keys.forEach(k => list.appendChild(renderDeptRow(k, deptColors[k])));
   }
 
-  async function load() {
+  async function loadDepts() {
     try {
       const r = await fetch('/api/dept-colors');
-      colors = await r.json();
-      render();
+      deptColors = await r.json();
+      renderDepts();
     } catch (e) {
-      setStatus('Failed to load department colors.', true);
+      setDeptStatus('Failed to load department colors.', true);
     }
   }
 
-  document.getElementById('btn-save').addEventListener('click', async () => {
+  document.getElementById('btn-save-dept').addEventListener('click', async () => {
     try {
       const r = await fetch('/api/dept-colors', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(colors),
+        body: JSON.stringify(deptColors),
       });
       const j = await r.json();
-      setStatus(j.ok ? 'Saved.' : 'Save failed.', !j.ok);
+      setDeptStatus(j.ok ? 'Saved.' : 'Save failed.', !j.ok);
     } catch (e) {
-      setStatus('Save failed.', true);
+      setDeptStatus('Save failed.', true);
     }
   });
 
-  document.getElementById('btn-reset').addEventListener('click', async () => {
+  document.getElementById('btn-reset-dept').addEventListener('click', async () => {
     if (!confirm('Reset all department colors to defaults? This cannot be undone.')) return;
     try {
       await fetch('/api/dept-colors', { method: 'DELETE' });
-      colors = {};
-      render();
-      setStatus('Reset. Colors will regenerate on the next report run.');
+      deptColors = {};
+      renderDepts();
+      setDeptStatus('Reset. Colors will regenerate on the next report run.');
     } catch (e) {
-      setStatus('Reset failed.', true);
+      setDeptStatus('Reset failed.', true);
     }
   });
 
-  load();
+  // ── Uploads ───────────────────────────────────────────────────────────────
+
+  function setUploadStatus(id, type, msg) {
+    const el = document.getElementById(id);
+    el.textContent = msg;
+    el.className = 'status ' + type;
+  }
+
+  function wireDropZone(zoneId, inputId, onFiles) {
+    const zone  = document.getElementById(zoneId);
+    const input = document.getElementById(inputId);
+    zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('drag-over'); });
+    zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
+    zone.addEventListener('drop', e => {
+      e.preventDefault();
+      zone.classList.remove('drag-over');
+      onFiles(e.dataTransfer.files);
+    });
+    input.addEventListener('change', () => { if (input.files.length) onFiles(input.files); });
+  }
+
+  async function uploadSchedule(file) {
+    if (!file) return;
+    if (!file.name.toLowerCase().endsWith('.pdf')) {
+      setUploadStatus('sched-status', 'err', 'Only PDF files are accepted.');
+      return;
+    }
+    setUploadStatus('sched-status', 'busy', `Uploading ${file.name}…`);
+    const fd = new FormData();
+    fd.append('file', file);
+    try {
+      const res = await fetch('/api/upload/schedule', { method: 'POST', body: fd });
+      if (res.ok) {
+        setUploadStatus('sched-status', 'ok', `${file.name} uploaded — schedule regenerating.`);
+      } else {
+        setUploadStatus('sched-status', 'err', `Upload failed (${res.status}).`);
+      }
+    } catch (e) {
+      setUploadStatus('sched-status', 'err', `Upload failed: ${e.message}`);
+    }
+  }
+
+  async function uploadRaw(files) {
+    const pdfs = Array.from(files).filter(f => f.name.toLowerCase().endsWith('.pdf'));
+    if (!pdfs.length) {
+      setUploadStatus('raw-status', 'err', 'Only PDF files are accepted.');
+      return;
+    }
+    setUploadStatus('raw-status', 'busy', `Uploading ${pdfs.length} file(s)…`);
+    let ok = 0;
+    for (const file of pdfs) {
+      const fd = new FormData();
+      fd.append('file', file);
+      try {
+        const res = await fetch('/api/upload/raw', { method: 'POST', body: fd });
+        if (res.ok) ok++;
+      } catch (_) {}
+    }
+    if (ok === pdfs.length) {
+      setUploadStatus('raw-status', 'ok', `${ok} file(s) added to rotation.`);
+    } else {
+      setUploadStatus('raw-status', 'err', `${ok} of ${pdfs.length} uploaded.`);
+    }
+    await loadRotation();
+  }
+
+  function renderRawList() {
+    const list = document.getElementById('raw-list');
+    list.innerHTML = '';
+    const rawPages = (pagesCfg.pages || []).filter(p => {
+      const url = typeof p === 'string' ? p : p.url;
+      return url && url.startsWith('raw/');
+    });
+    if (!rawPages.length) return;
+    rawPages.forEach(p => {
+      const url  = typeof p === 'string' ? p : p.url;
+      const name = url.replace(/^raw\//, '');
+      const item = document.createElement('div');
+      item.className = 'raw-item';
+      item.innerHTML =
+        `<a class="fname" href="${url}" target="_blank">${name}</a>` +
+        `<button>Remove</button>`;
+      item.querySelector('button').addEventListener('click', () => removeRaw(name));
+      list.appendChild(item);
+    });
+  }
+
+  async function removeRaw(name) {
+    try {
+      const res = await fetch(`/api/raw/${encodeURIComponent(name)}`, { method: 'DELETE' });
+      if (res.ok) {
+        await loadRotation();
+      } else {
+        setUploadStatus('raw-status', 'err', `Could not remove ${name}.`);
+      }
+    } catch (e) {
+      setUploadStatus('raw-status', 'err', `Remove failed: ${e.message}`);
+    }
+  }
+
+  wireDropZone('sched-zone', 'sched-input', files => uploadSchedule(files[0]));
+  wireDropZone('raw-zone',   'raw-input',   files => uploadRaw(files));
+
+  // ── Init ──────────────────────────────────────────────────────────────────
+  loadRotation();
+  loadDepts();
   </script>
 </body>
 </html>

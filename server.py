@@ -86,6 +86,8 @@ class Handler(SimpleHTTPRequestHandler):
             self._serve_client_installer()
         elif path == '/api/dept-colors':
             self._get_dept_colors()
+        elif path == '/api/pages':
+            self._get_pages()
         else:
             super().do_GET()
 
@@ -97,6 +99,8 @@ class Handler(SimpleHTTPRequestHandler):
             self._upload_raw()
         elif path == '/api/dept-colors':
             self._post_dept_colors()
+        elif path == '/api/pages':
+            self._post_pages()
         else:
             self.send_error(404)
 
@@ -199,6 +203,33 @@ class Handler(SimpleHTTPRequestHandler):
         with _dept_colors_lock:
             if DEPT_COLORS_PATH.exists():
                 DEPT_COLORS_PATH.unlink()
+        self._json(200, {'ok': True})
+
+    def _get_pages(self):
+        with _pages_lock:
+            cfg = _read_pages()
+        data = json.dumps(cfg, indent=2).encode()
+        self.send_response(200)
+        self.send_header('Content-Type', 'application/json')
+        self.send_header('Content-Length', str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
+
+    def _post_pages(self):
+        length = int(self.headers.get('Content-Length', 0))
+        if length > 64 * 1024:
+            self.send_error(413, 'Too large')
+            return
+        body = self.rfile.read(length)
+        try:
+            cfg = json.loads(body)
+            if not isinstance(cfg, dict) or not isinstance(cfg.get('pages', []), list):
+                raise ValueError
+        except (json.JSONDecodeError, ValueError):
+            self.send_error(400, 'Invalid payload')
+            return
+        with _pages_lock:
+            _write_pages(cfg)
         self._json(200, {'ok': True})
 
     # ── Helpers ───────────────────────────────────────────────────────────────
