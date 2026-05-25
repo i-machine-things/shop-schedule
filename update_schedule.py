@@ -17,14 +17,14 @@ import pdfplumber
 from datetime import datetime
 
 # ── Config (loaded from .env by run_update.sh) ─────────────────────────────────
-GMAIL_USER        = os.environ.get('GMAIL_USER', '')
-GMAIL_PASS        = os.environ.get('GMAIL_PASS', '')   # Gmail App Password
-SHOP_NAME         = os.environ.get('SHOP_NAME', 'My Shop')
-PDF_FILENAME      = os.environ.get('PDF_FILENAME', '').strip() or 'last_report.pdf'
-PDF_COMPANY_NAME  = os.environ.get('PDF_COMPANY_NAME', '').strip()
-BASE_DIR     = os.path.dirname(os.path.abspath(__file__))
-PDF_PATH     = os.path.join(BASE_DIR, PDF_FILENAME)
-HTML_PATH    = os.path.join(BASE_DIR, 'public', 'schedule.html')
+GMAIL_USER = os.environ.get('GMAIL_USER', '')
+GMAIL_PASS = os.environ.get('GMAIL_PASS', '')   # Gmail App Password
+SHOP_NAME = os.environ.get('SHOP_NAME', 'My Shop')
+PDF_FILENAME = os.environ.get('PDF_FILENAME', '').strip() or 'last_report.pdf'
+PDF_COMPANY_NAME = os.environ.get('PDF_COMPANY_NAME', '').strip()
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+PDF_PATH = os.path.join(BASE_DIR, PDF_FILENAME)
+HTML_PATH = os.path.join(BASE_DIR, 'public', 'schedule.html')
 # ───────────────────────────────────────────────────────────────────────────────
 
 
@@ -147,7 +147,7 @@ def parse_pdf(path):
                     'rev':      m.group(2) or '',
                     'make_qty': m.group(3),
                     'pri':      m.group(4),
-                    'sch_start':m.group(5),
+                    'sch_start': m.group(5),
                     'curr_wc':  m.group(6).strip(),
                     'ship_qty': m.group(7),
                     'promised': m.group(8),
@@ -161,11 +161,11 @@ def parse_pdf(path):
             m = _CUST_LINE_RE.match(line)
             if m:
                 job_data['customer'] = m.group(1).strip()
-                job_data['oper']     = m.group(2)
-                job_data['sch_end']  = m.group(3)
-                job_data['num_ops']  = m.group(4)
-                job_data['rem_hrs']  = m.group(5)
-                job_data['qty_run']  = m.group(6)
+                job_data['oper'] = m.group(2)
+                job_data['sch_end'] = m.group(3)
+                job_data['num_ops'] = m.group(4)
+                job_data['rem_hrs'] = m.group(5)
+                job_data['qty_run'] = m.group(6)
                 state = 2
             else:
                 # Unexpected line — check if it's actually a new job line
@@ -176,7 +176,7 @@ def parse_pdf(path):
                         'rev':      m2.group(2) or '',
                         'make_qty': m2.group(3),
                         'pri':      m2.group(4),
-                        'sch_start':m2.group(5),
+                        'sch_start': m2.group(5),
                         'curr_wc':  m2.group(6).strip(),
                         'ship_qty': m2.group(7),
                         'promised': m2.group(8),
@@ -189,7 +189,7 @@ def parse_pdf(path):
 
         elif state == 2:
             parts = line.split(' ', 1)
-            job_data['part']        = parts[0]
+            job_data['part'] = parts[0]
             job_data['description'] = parts[1] if len(parts) > 1 else ''
             cur_section['jobs'].append(job_data)
             job_data = {}
@@ -215,13 +215,14 @@ def parse_pdf(path):
 _DEPT_COLORS = {
     'assembly':  ('#0d2b1a', '#1a6640'),
     'cnc':       ('#0d1a2b', '#1a4466'),
-    'inspection':('#1e0d2b', '#4d2080'),
+    'inspection': ('#1e0d2b', '#4d2080'),
     'shipping':  ('#2b1a0d', '#664020'),
     'welding':   ('#2b0d0d', '#661a1a'),
     'manual':    ('#0d2b2b', '#1a6666'),
     'machine':   ('#1a1a0d', '#404020'),
     'engineer':  ('#1a0d1a', '#401a40'),
 }
+
 
 def _dept_colors(dept):
     dl = dept.lower()
@@ -233,14 +234,14 @@ def _dept_colors(dept):
 
 def generate_html(data, out_path):
     report_date = data['report_date']
-    thru_date   = data['thru_date']
-    sections    = data['sections']
-    now         = datetime.now()
-    generated   = now.strftime('%Y-%m-%d %H:%M')
-    gen_ts      = int(now.timestamp())
-    shop_name   = _html.escape(SHOP_NAME)
-    local_ip    = _get_local_ip()
-    url_line    = f'<div class="url-line">http://{local_ip}:8080/schedule.html</div>' if local_ip else ''
+    thru_date = data['thru_date']
+    sections = data['sections']
+    now = datetime.now()
+    generated = now.strftime('%Y-%m-%d %H:%M')
+    gen_ts = int(now.timestamp())
+    shop_name = _html.escape(SHOP_NAME)
+    local_ip = _get_local_ip()
+    url_line = f'<div class="url-line">http://{local_ip}:8080/schedule.html</div>' if local_ip else ''
 
     rows = []
     for sec in sections:
@@ -248,8 +249,8 @@ def generate_html(data, out_path):
             continue
         bg, accent = _dept_colors(sec['department'])
         wc_attr = _html.escape(sec["wc"])
-        dept_e  = _html.escape(sec["department"])
-        wcg_e   = _html.escape(sec["wc_group"])
+        dept_e = _html.escape(sec["department"])
+        wcg_e = _html.escape(sec["wc_group"])
         rows.append(f'''
       <tr class="section-hdr" data-wc="{wc_attr}">
         <td colspan="11" style="background:{bg};border-left:4px solid {accent}">
@@ -294,19 +295,28 @@ body{{background:#07070f;color:#ddd;font-family:'Courier New',monospace;font-siz
 #hdr{{position:fixed;top:0;left:0;right:0;height:50px;background:#0b0b18;border-bottom:2px solid #222;
       display:flex;align-items:center;justify-content:space-between;padding:0 18px;z-index:99}}
 #hdr-left{{display:flex;align-items:center;gap:12px;min-width:0;overflow:hidden}}
-#hdr h1{{font-size:18px;color:#fff;letter-spacing:2px;text-transform:uppercase;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}}
-#home-btn{{display:flex;align-items:center;justify-content:center;flex-shrink:0;width:32px;height:32px;color:#4af;border:1px solid #4af;text-decoration:none;font-size:16px;opacity:0.7;transition:opacity 0.2s}}
+#hdr h1{{font-size:18px;color:#fff;letter-spacing:2px;text-transform:uppercase;
+         white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}}
+#home-btn{{display:flex;align-items:center;justify-content:center;flex-shrink:0;
+           width:32px;height:32px;color:#4af;border:1px solid #4af;
+           text-decoration:none;font-size:16px;opacity:0.7;transition:opacity 0.2s}}
 #home-btn:hover{{opacity:1;background:#1a2a44}}
 #hdr .meta{{display:flex;align-items:center;gap:20px;flex-shrink:0;white-space:nowrap}}
 .meta-info{{font-size:12px;color:#888;text-align:right;line-height:1.4}}
 .url-line{{font-size:10px;color:#4af;opacity:0.8}}
 #clock{{font-size:24px;color:#4af;font-weight:bold}}
-#sidebar{{position:fixed;top:50px;left:0;bottom:0;width:160px;background:#0b0b18;border-right:1px solid #222;z-index:50;display:flex;flex-direction:column;overflow:hidden}}
-#sidebar-hdr{{padding:8px 10px 4px;font-size:10px;color:#555;letter-spacing:2px;text-transform:uppercase;flex-shrink:0}}
-#wc-all{{margin:2px 8px 6px;padding:5px 4px;background:transparent;border:1px solid #4af;color:#4af;cursor:pointer;font-family:inherit;font-size:11px;letter-spacing:1px;text-transform:uppercase}}
+#sidebar{{position:fixed;top:50px;left:0;bottom:0;width:160px;background:#0b0b18;
+          border-right:1px solid #222;z-index:50;display:flex;flex-direction:column;overflow:hidden}}
+#sidebar-hdr{{padding:8px 10px 4px;font-size:10px;color:#555;
+              letter-spacing:2px;text-transform:uppercase;flex-shrink:0}}
+#wc-all{{margin:2px 8px 6px;padding:5px 4px;background:transparent;border:1px solid #4af;
+         color:#4af;cursor:pointer;font-family:inherit;font-size:11px;
+         letter-spacing:1px;text-transform:uppercase}}
 #wc-all:hover{{background:#1a2a44}}
 #wc-list{{flex:1;overflow-y:auto;padding:0 8px 8px;display:flex;flex-direction:column;gap:2px}}
-.wc-btn{{padding:5px 8px;background:#0d1a2b;border:1px solid #222;color:#666;cursor:pointer;font-family:inherit;font-size:11px;letter-spacing:1px;text-transform:uppercase;text-align:left;transition:background 0.15s,border-color 0.15s,color 0.15s}}
+.wc-btn{{padding:5px 8px;background:#0d1a2b;border:1px solid #222;color:#666;cursor:pointer;
+         font-family:inherit;font-size:11px;letter-spacing:1px;text-transform:uppercase;
+         text-align:left;transition:background 0.15s,border-color 0.15s,color 0.15s}}
 .wc-btn.active{{background:#0d2010;border-color:#3a7a3a;color:#8f8}}
 .wc-btn:hover{{background:#1a2233;color:#ddd;border-color:#4af}}
 #wrap{{position:fixed;top:50px;bottom:0;left:160px;right:0;overflow-y:scroll}}

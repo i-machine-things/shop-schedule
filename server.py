@@ -18,15 +18,15 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse, unquote
 
-BASE_DIR   = Path(__file__).parent
+BASE_DIR = Path(__file__).parent
 PUBLIC_DIR = BASE_DIR / 'public'
-RAW_DIR    = PUBLIC_DIR / 'raw'
+RAW_DIR = PUBLIC_DIR / 'raw'
 PAGES_JSON = PUBLIC_DIR / 'pages.json'
-DROP_DIR   = BASE_DIR / 'incoming'
+DROP_DIR = BASE_DIR / 'incoming'
 MAX_UPLOAD = 50 * 1024 * 1024  # 50 MB
-PORT       = int(os.environ.get('PORT', 8080))
+PORT = int(os.environ.get('PORT', 8080))
 
-_pages_lock    = threading.Lock()
+_pages_lock = threading.Lock()
 _schedule_lock = threading.Lock()  # prevents concurrent process_drop.py runs
 
 
@@ -56,6 +56,7 @@ def _page_url(p):
 
 # Only characters safe to embed in a shell script URL
 _HOST_RE = re.compile(r'^(\[[\da-fA-F:]+\]|[A-Za-z0-9.\-]+)(?::(\d{1,5}))?$')
+
 
 def _sanitize_host(host):
     """Return host if it is safe to embed in a shell script, else None."""
