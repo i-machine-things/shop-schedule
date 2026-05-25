@@ -113,8 +113,9 @@ display:flex;align-items:center;justify-content:center;height:100vh;font-size:24
 EOF
 fi
 
-# If a PDF already exists, regenerate schedule.html immediately so the sidebar
+# Process any PDFs in incoming/ and regenerate schedule.html so the sidebar
 # is populated on first boot rather than waiting for the first cron run.
+GMAIL_USER='' "$INSTALL_DIR/venv/bin/python3" "$INSTALL_DIR/process_drop.py" --no-regen 2>&1 || true
 if [ -f "$INSTALL_DIR/last_report.pdf" ]; then
     echo "Regenerating schedule from existing PDF..."
     GMAIL_USER='' "$INSTALL_DIR/venv/bin/python3" "$INSTALL_DIR/update_schedule.py" || true
