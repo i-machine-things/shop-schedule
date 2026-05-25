@@ -24,10 +24,8 @@
   <div id="cb-slide"    class="slide"><iframe id="frame-b"></iframe></div>
 
   <script>
-  // Page-rotation config is loaded from pages.json (created by install.sh from pages.json.example).
-  // Edit public/pages.json on the Pi to add URLs to the rotation.
-  const SCHEDULE_URL      = 'schedule.html';
-  const SCHEDULE_MAX_MS   = 5 * 60 * 1000; // safety valve if scroll-cycle never fires
+  const SCHEDULE_URL    = 'schedule.html';
+  const SCHEDULE_MAX_MS = 5 * 60 * 1000; // rotation time when schedule doesn't scroll
 
   const schedSlide = document.getElementById('sched-slide');
   const schedFrame = document.getElementById('sched-frame');
@@ -42,12 +40,12 @@
   let advTimer      = null;
   let transitioning = false;
   let slotPing      = 0;
+  let configLoaded  = false;
 
-  // Config — overwritten by pages.json
   let SCHEDULE_CYCLES = 2;
   let PAGE_DURATION   = 60;
   let FADE_MS         = 1500;
-  let PAGES           = [{ url: SCHEDULE_URL }]; // schedule-only fallback
+  let PAGES           = [{ url: SCHEDULE_URL }];
 
   function nextSlot() {
     const s = slots[slotPing];
@@ -105,30 +103,38 @@
 
   window.addEventListener('message', e => {
     if (e.source !== schedFrame.contentWindow) return;
-    if (e.data?.type !== 'scroll-cycle')       return;
-    if (currentSlide !== schedSlide)           return;
-    if (++cycleCount >= SCHEDULE_CYCLES && PAGES.length > 1) advance();
+    if (e.data?.type === 'scroll-cycle') {
+      if (currentSlide !== schedSlide) return;
+      if (++cycleCount >= SCHEDULE_CYCLES && PAGES.length > 1) advance();
+    } else if (e.data?.type === 'fits-screen') {
+      // Content fits without scrolling — arm/reset the 5-min rotation timer
+      if (currentSlide !== schedSlide || PAGES.length <= 1) return;
+      clearTimeout(advTimer);
+      advTimer = setTimeout(advance, SCHEDULE_MAX_MS);
+    }
   });
 
-  // Load rotation config, then start
-  fetch('pages.json')
-    .then(r => r.json())
-    .then(cfg => {
-      SCHEDULE_CYCLES = cfg.scroll_cycles  ?? SCHEDULE_CYCLES;
-      PAGE_DURATION   = cfg.page_duration  ?? PAGE_DURATION;
-      FADE_MS         = cfg.transition_ms  ?? FADE_MS;
-      document.documentElement.style.setProperty('--fade-ms', FADE_MS + 'ms');
-      const extra     = (cfg.pages ?? []).map(p =>
-        typeof p === 'string' ? { url: p } : p
-      );
-      PAGES = [{ url: SCHEDULE_URL }, ...extra];
-      // Arm safety valve for initial schedule display — goToPage() isn't called on first render
-      if (PAGES.length > 1) {
-        clearTimeout(advTimer);
-        advTimer = setTimeout(advance, SCHEDULE_MAX_MS);
-      }
-    })
-    .catch(() => { /* pages.json missing — schedule-only mode */ });
+  function applyConfig(cfg) {
+    SCHEDULE_CYCLES = cfg.scroll_cycles ?? 2;
+    PAGE_DURATION   = cfg.page_duration ?? 60;
+    FADE_MS         = cfg.transition_ms ?? 1500;
+    document.documentElement.style.setProperty('--fade-ms', FADE_MS + 'ms');
+    const extra = (cfg.pages ?? []).map(p => typeof p === 'string' ? { url: p } : p);
+    PAGES = [{ url: SCHEDULE_URL }, ...extra];
+    // On first load, arm the safety valve if extra pages are configured
+    if (!configLoaded && PAGES.length > 1 && currentSlide === schedSlide) {
+      clearTimeout(advTimer);
+      advTimer = setTimeout(advance, SCHEDULE_MAX_MS);
+    }
+    configLoaded = true;
+  }
+
+  // Use /api/pages so we always get valid JSON even when pages.json doesn't exist yet.
+  // Reload every 60 s so options-page changes take effect without a kiosk restart.
+  fetch('/api/pages').then(r => r.json()).then(applyConfig).catch(() => { configLoaded = true; });
+  setInterval(() => {
+    fetch('/api/pages').then(r => r.json()).then(applyConfig).catch(() => {});
+  }, 60 * 1000);
   </script>
 </body>
 </html>

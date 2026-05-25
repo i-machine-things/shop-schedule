@@ -445,6 +445,8 @@ function setupLoop(){{
     loopReady = true;
   }}
   pinSectionHeaders();
+  if(!loopReady && window.parent !== window)
+    window.parent.postMessage({{type:'fits-screen'}},'*');
 }}
 setupLoop();
 
