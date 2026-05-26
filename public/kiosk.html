@@ -67,20 +67,28 @@
     setTimeout(() => { transitioning = false; if (onDone) onDone(); }, FADE_MS);
   }
 
+  // advTimer is null when no countdown is running; set to null on fire so
+  // fits-screen can tell whether to start a new one.
+  function _armAdv(ms) {
+    clearTimeout(advTimer);
+    advTimer = setTimeout(() => { advTimer = null; advance(); }, ms);
+  }
+
   function advance() {
     goToPage((currentIndex + 1) % PAGES.length);
   }
 
   function goToPage(index) {
     clearTimeout(advTimer);
-    cycleCount   = 0;
+    advTimer    = null;
+    cycleCount  = 0;
     currentIndex = index;
-    const page   = PAGES[index];
+    const page  = PAGES[index];
 
     if (page.url === SCHEDULE_URL) {
       crossfadeTo(schedSlide, () => {
         postToSched('resume');
-        if (PAGES.length > 1) advTimer = setTimeout(advance, SCHEDULE_MAX_MS);
+        if (PAGES.length > 1) _armAdv(SCHEDULE_MAX_MS);
       });
     } else {
       postToSched('pause');
@@ -91,7 +99,7 @@
         slot.frame.onload = null;
         clearTimeout(loadFallback);
         crossfadeTo(slot.slide, () => {
-          advTimer = setTimeout(advance, (page.seconds ?? PAGE_DURATION) * 1000);
+          _armAdv((page.seconds ?? PAGE_DURATION) * 1000);
         });
       };
 
@@ -107,10 +115,11 @@
       if (currentSlide !== schedSlide) return;
       if (++cycleCount >= SCHEDULE_CYCLES && PAGES.length > 1) advance();
     } else if (e.data?.type === 'fits-screen') {
-      // Content fits without scrolling — arm/reset the 5-min rotation timer
+      // Content fits without scrolling — arm the fallback timer only if one
+      // isn't already running. Schedule updates fire fits-screen too, and we
+      // must not let them reset a countdown that's already in progress.
       if (currentSlide !== schedSlide || PAGES.length <= 1) return;
-      clearTimeout(advTimer);
-      advTimer = setTimeout(advance, SCHEDULE_MAX_MS);
+      if (advTimer === null) _armAdv(SCHEDULE_MAX_MS);
     }
   });
 
@@ -123,8 +132,7 @@
     PAGES = [{ url: SCHEDULE_URL }, ...extra];
     // On first load, arm the safety valve if extra pages are configured
     if (!configLoaded && PAGES.length > 1 && currentSlide === schedSlide) {
-      clearTimeout(advTimer);
-      advTimer = setTimeout(advance, SCHEDULE_MAX_MS);
+      _armAdv(SCHEDULE_MAX_MS);
     }
     configLoaded = true;
   }
