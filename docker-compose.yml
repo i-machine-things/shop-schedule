@@ -1,0 +1,33 @@
+services:
+  foreman-schedule:
+    image: foreman-schedule:latest
+    build: .
+    container_name: foreman-schedule
+    restart: unless-stopped
+    ports:
+      - "${PORT:-8080}:${PORT:-8080}"
+    volumes:
+      # Generated schedule, uploaded display PDFs — persisted outside the container
+      - ./public:/app/public
+      # PDF drop folder (drop a PDF here to trigger a schedule update)
+      - ./incoming:/app/incoming
+      # Archive of processed PDFs
+      - ./processed:/app/processed
+    environment:
+      # ── Gmail (required) ───────────────────────────────────────────────────
+      - GMAIL_USER=your@gmail.com
+      - GMAIL_PASS=xxxx-xxxx-xxxx-xxxx
+
+      # ── Shop details ───────────────────────────────────────────────────────
+      - SHOP_NAME=My Shop
+      # Company name exactly as it appears in the PDF header (used to skip that line)
+      - PDF_COMPANY_NAME=
+      # Filename for the saved Foreman Report PDF
+      - PDF_FILENAME=last_report.pdf
+
+      # ── Dashboard port (default 8080) ──────────────────────────────────────
+      - PORT=8080
+
+      # ── System timezone ────────────────────────────────────────────────────
+      # Full tz name: https://en.wikipedia.org/wiki/List_of_tz_database_time_zones
+      - TZ=America/New_York

@@ -1,0 +1,2 @@
+# Foreman schedule updater — polls Gmail and processes dropped PDFs every 15 minutes
+*/15 * * * * /app/run_update.sh >> /proc/1/fd/1 2>&1

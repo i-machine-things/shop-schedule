@@ -1,0 +1,15 @@
+.git
+.env
+*.pdf
+public/schedule.html
+public/version.json
+public/pages.json
+public/raw/
+incoming/
+processed/
+*.pyc
+__pycache__
+.gitignore
+install.sh
+install-client.sh
+venv/
