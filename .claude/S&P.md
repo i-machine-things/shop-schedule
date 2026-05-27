@@ -1,5 +1,56 @@
 # Standards & Practices — CodeRabbit Review Log
 
+## 2026-05-27 — `Dockerfile`, `docker-compose.yml`, `docker/entrypoint.sh`, `install.sh`, `README.md`, `requirements.txt`, `run_update.sh` (PR #170 — Docker release)
+
+**Review:** CodeRabbit review of feature/docker-release
+**Result:** 9 actionable findings + 2 nitpicks, all fixed.
+
+### Findings
+
+1. **`docker-compose.yml`: hardcoded GMAIL_USER/GMAIL_PASS in version control**
+   - Literal placeholder credentials in compose file; users would overwrite them with real values and risk committing secrets
+   - Fix: replace with `${VAR:-}` substitution; Docker Compose auto-loads a `.env` file in the same directory (already gitignored)
+
+2. **`docker/entrypoint.sh`: unquoted heredoc variable expansions**
+   - `SHOP_NAME=${SHOP_NAME:-My Shop}` without quotes breaks if value contains spaces when sourced by `run_update.sh`
+   - Fix: wrap all expansions in double quotes: `SHOP_NAME="${SHOP_NAME:-My Shop}"`; also add `chmod 600 /app/.env`
+
+3. **`Dockerfile`: container ran as root with system cron**
+   - Root runtime user unnecessarily expands attack surface; `cron` daemon requires root which blocked a simple `USER` directive
+   - Fix: replace system `cron` with `supercronic` (no-root scheduler) and `gosu` (privilege-drop); entrypoint still runs as root for volume init (`chown` bind-mounted paths), then `gosu appuser` drops to uid 1000 for both supercronic and the HTTP server
+
+4. **`install.sh` `_get_env`: `eval "printf '%s' $raw"` allows command injection**
+   - `.env` values are controlled input but `eval` is still a code-smell/risk; prior fix (PR #153) used eval to handle single-quoted format
+   - Fix: replace with pure shell parameter expansion — strip surrounding `'...'` or `"..."`, then replace `'"'"'` sequences back to `'` using variable substitution; no eval needed
+
+5. **`install.sh` `_read_masked`: only handled DEL (0x7f), not BS (0x08)**
+   - Terminals sending BS (e.g. some SSH clients) could not backspace during password entry
+   - Fix: `$'\x7f'|$'\x08'` in the case branch handles both codes
+
+6. **`install.sh` line 216: `echo` with UNC backslashes**
+   - `echo` backslash behaviour is shell-dependent; `\\\\` may render as `\\` or `\` depending on the implementation
+   - Fix: `printf '...\\\\%s\\schedule-drop  (user: %s)\n' "$(hostname -I ...)" "$USER"`
+
+7. **`README.md`: SMB drop described as "within seconds"**
+   - Files dropped into the Samba share are processed by the cron job that runs every 15 minutes, not immediately
+   - Fix: "picked up on the next cron run (~15 minutes)"
+
+8. **`requirements.txt`: unpinned `pdfplumber`**
+   - Could pull transitive versions with known CVEs (pdfminer.six, Pillow)
+   - Fix: `pdfplumber==0.11.9`
+
+9. **`run_update.sh`: `|| true` silenced process_drop errors**
+   - Failures were invisible in cron logs; also CR suggested letting errors propagate (we disagreed — update_schedule.py must still run even if process_drop fails)
+   - Fix: `if ! ... process_drop.py; then echo "WARNING..." >&2; fi` — errors appear in logs, Gmail check still runs
+
+10. **`Dockerfile` (nitpick): no HEALTHCHECK**
+    - Fix: `HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 CMD curl -fs http://localhost:8080/ || exit 1`
+
+11. **`docker/entrypoint.sh` (nitpick): no guard on cron daemon startup**
+    - System cron `cron` call had no exit-code check; now replaced by supercronic running as a background process via gosu
+
+---
+
 ## 2026-05-25 — `install.sh` (PR #153 — follow-up CR findings)
 
 **Review:** CodeRabbit rounds 2–4 on feat/installer-env-prompts
