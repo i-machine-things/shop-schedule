@@ -27,12 +27,18 @@ if [ ! -f "$INSTALL_DIR/.env" ]; then
     cp "$INSTALL_DIR/.env.example" "$INSTALL_DIR/.env"
 fi
 
-# Read a single key from .env; handles single-quoted values written by _set_env.
+# Read a single key from .env; handles single/double-quoted values written by _set_env.
 _get_env() {
-    local raw
-    raw=$(grep -m1 "^$1=" "$2" 2>/dev/null | cut -d= -f2-) || true
+    local key="$1" file="$2" raw sq=\' dq='"'
+    raw=$(grep -m1 "^${key}=" "$file" 2>/dev/null | cut -d= -f2-) || true
     [ -z "$raw" ] && return 0
-    eval "printf '%s' $raw" 2>/dev/null || true
+    if [[ "$raw" == \'*\' ]]; then
+        raw="${raw:1:${#raw}-2}"
+        raw="${raw//${sq}${dq}${sq}${dq}${sq}/${sq}}"
+    elif [[ "$raw" == \"*\" ]]; then
+        raw="${raw:1:${#raw}-2}"
+    fi
+    printf '%s' "$raw"
 }
 
 # Prompt for a password, echoing * per character; outputs the value on stdout
@@ -42,7 +48,7 @@ _read_masked() {
     while IFS= read -r -s -n1 char; do
         case "$char" in
             '') break ;;
-            $'\x7f') [[ -n "$pass" ]] && { pass="${pass%?}"; printf '\b \b' > /dev/tty; } ;;
+            $'\x7f'|$'\x08') [[ -n "$pass" ]] && { pass="${pass%?}"; printf '\b \b' > /dev/tty; } ;;
             *) pass+="$char"; printf '*' > /dev/tty ;;
         esac
     done
@@ -213,4 +219,4 @@ echo "2. Drop a PDF into $INSTALL_DIR/incoming/ to test, or email it directly"
 echo "3. View at:    http://$(hostname -I | awk '{print $1}'):8080/"
 echo "4. Upload at:  http://$(hostname -I | awk '{print $1}'):8080/upload.html"
 echo "5. Edit $INSTALL_DIR/public/pages.json to manually add URLs to the kiosk rotation"
-echo "6. Drop PDFs via SMB: \\\\$(hostname -I | awk '{print $1}')\\schedule-drop  (user: $USER)"
+printf '6. Drop PDFs via SMB: \\\\%s\\schedule-drop  (user: %s)\n' "$(hostname -I | awk '{print $1}')" "$USER"
