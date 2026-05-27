@@ -67,7 +67,7 @@ The installer sets up a password-protected Samba share pointing at `incoming/`. 
 - **Windows:** `\\<device-ip>\schedule-drop` — map as a network drive if desired
 - **Mac:** `smb://<device-ip>/schedule-drop` in Finder → Go → Connect to Server
 
-Log in with the device username and the SMB password set during `install.sh`. Drop a PDF and the schedule regenerates within seconds.
+Log in with the device username and the SMB password set during `install.sh`. Drop a PDF into the share and it will be picked up on the next cron run (~15 minutes).
 
 ## Work center filter
 
