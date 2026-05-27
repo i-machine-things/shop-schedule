@@ -20,14 +20,12 @@ done
 # Seed pages.json from example if not present
 [ -f /app/public/pages.json ] || cp /app/pages.json.example /app/public/pages.json
 
-# Ensure runtime directories exist on the host-mounted volumes
+# Ensure runtime directories exist and are owned by appuser
 mkdir -p /app/public/raw /app/incoming /app/processed
+chown -R appuser:appgroup /app/public /app/incoming /app/processed /app/.env
 
-# Start cron daemon (runs run_update.sh every 15 minutes)
-if ! cron; then
-    echo "ERROR: Failed to start cron daemon" >&2
-    exit 1
-fi
+# Start supercronic scheduler as appuser (runs run_update.sh every 15 minutes)
+gosu appuser supercronic /app/docker/crontab &
 
-# Run the HTTP server in the foreground
-exec python3 /app/server.py
+# Drop privileges and run HTTP server in the foreground
+exec gosu appuser python3 /app/server.py
