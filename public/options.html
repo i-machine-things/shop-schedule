@@ -239,12 +239,29 @@
     <h1>Options</h1>
   </header>
 
+  <!-- ── Schedule Display ──────────────────────────────────── -->
+  <section>
+    <h2>Schedule Display</h2>
+    <div id="display-status" class="status"></div>
+
+    <div class="global-settings" style="grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));">
+      <div class="field">
+        <label>Scroll resume delay (s)</label>
+        <input id="scroll-resume-s" type="number" min="1" max="300" value="10">
+      </div>
+    </div>
+
+    <div class="actions">
+      <button id="btn-save-display">Save</button>
+    </div>
+  </section>
+
   <!-- ── Page Rotation ─────────────────────────────────────── -->
   <section>
     <h2>Page Rotation</h2>
     <div id="rot-status" class="status"></div>
 
-    <div class="global-settings">
+    <div class="global-settings" style="grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));">
       <div class="field">
         <label>Schedule scroll cycles</label>
         <input id="scroll-cycles" type="number" min="1" max="20" value="2">
@@ -260,10 +277,6 @@
       <div class="field">
         <label>Schedule timeout (s)</label>
         <input id="schedule-max-s" type="number" min="10" max="3600" value="300">
-      </div>
-      <div class="field">
-        <label>Resume delay (s)</label>
-        <input id="scroll-resume-s" type="number" min="1" max="300" value="10">
       </div>
     </div>
 
@@ -317,6 +330,12 @@
   // ── Page Rotation ─────────────────────────────────────────────────────────
 
   let pagesCfg = { scroll_cycles: 2, page_duration: 60, transition_ms: 800, pages: [] };
+
+  function setDisplayStatus(msg, err) {
+    const el = document.getElementById('display-status');
+    el.textContent = msg;
+    el.className = 'status' + (err ? ' err' : '');
+  }
 
   function setRotStatus(msg, err) {
     const el = document.getElementById('rot-status');
@@ -404,7 +423,6 @@
       page_duration:  parseInt(document.getElementById('page-duration').value,  10) || 60,
       transition_ms:  parseInt(document.getElementById('transition-ms').value,  10) || 800,
       schedule_max_s:  (() => { const v = parseInt(document.getElementById('schedule-max-s').value,  10); return Number.isNaN(v) ? 300 : Math.max(10, Math.min(v, 3600)); })(),
-      scroll_resume_s: (() => { const v = parseInt(document.getElementById('scroll-resume-s').value, 10); return Number.isNaN(v) ?  10 : Math.max(1,  Math.min(v, 300));  })(),
       pages: collectPages(),
     };
     try {
@@ -414,9 +432,28 @@
         body: JSON.stringify(cfg),
       });
       const j = await r.json();
-      setRotStatus(j.ok ? 'Saved.' : 'Save failed.', !j.ok);
+      if (j.ok) { pagesCfg = cfg; setRotStatus('Saved.'); }
+      else setRotStatus('Save failed.', true);
     } catch (e) {
       setRotStatus('Save failed.', true);
+    }
+  });
+
+  document.getElementById('btn-save-display').addEventListener('click', async () => {
+    const v = parseInt(document.getElementById('scroll-resume-s').value, 10);
+    const scrollResumeS = Number.isNaN(v) ? 10 : Math.max(1, Math.min(v, 300));
+    const cfg = { ...pagesCfg, scroll_resume_s: scrollResumeS };
+    try {
+      const r = await fetch('/api/pages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(cfg),
+      });
+      const j = await r.json();
+      if (j.ok) { pagesCfg = cfg; setDisplayStatus('Saved.'); }
+      else setDisplayStatus('Save failed.', true);
+    } catch (e) {
+      setDisplayStatus('Save failed.', true);
     }
   });
 
