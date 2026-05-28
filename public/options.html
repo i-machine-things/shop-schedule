@@ -398,7 +398,7 @@
       scroll_cycles:  parseInt(document.getElementById('scroll-cycles').value,  10) || 2,
       page_duration:  parseInt(document.getElementById('page-duration').value,  10) || 60,
       transition_ms:  parseInt(document.getElementById('transition-ms').value,  10) || 800,
-      schedule_max_s: parseInt(document.getElementById('schedule-max-s').value, 10) || 300,
+      schedule_max_s: (() => { const v = parseInt(document.getElementById('schedule-max-s').value, 10); return Number.isNaN(v) ? 300 : Math.max(10, Math.min(v, 3600)); })(),
       pages: collectPages(),
     };
     try {

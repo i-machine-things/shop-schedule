@@ -131,7 +131,8 @@
     SCHEDULE_CYCLES     = cfg.scroll_cycles      ?? 2;
     PAGE_DURATION       = cfg.page_duration      ?? 60;
     FADE_MS             = cfg.transition_ms      ?? 1500;
-    SCHEDULE_MAX_MS     = (cfg.schedule_max_s    ?? 300) * 1000;
+    const _rawMaxS      = parseInt(cfg.schedule_max_s, 10);
+    SCHEDULE_MAX_MS     = (Number.isNaN(_rawMaxS) ? 300 : Math.max(1, Math.min(_rawMaxS, 3600))) * 1000;
     ALLOW_MANUAL_SCROLL = cfg.allow_manual_scroll ?? false;
     document.documentElement.style.setProperty('--fade-ms', FADE_MS + 'ms');
     const extra = (cfg.pages ?? []).map(p => typeof p === 'string' ? { url: p } : p);

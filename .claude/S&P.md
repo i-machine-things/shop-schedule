@@ -1,5 +1,26 @@
 # Standards & Practices — CodeRabbit Review Log
 
+## 2026-05-28 — `update_schedule.py`, `public/kiosk.html`, `public/options.html` (PR #171 — manual scroll flag and schedule timeout)
+
+**Review:** CodeRabbit review of feat/manual-scroll-pause-timeout
+**Result:** 3 findings, all fixed.
+
+### Findings
+
+1. **`update_schedule.py`: loose truthiness on `cfg.allow_manual_scroll` misinterprets string `"false"`**
+   - `if(!cfg.allow_manual_scroll)` treats the string `"false"` as truthy and would incorrectly disable auto-scroll
+   - Fix: `if(cfg.allow_manual_scroll !== true)` — only the actual boolean `true` disables the loop
+
+2. **`public/kiosk.html`: `cfg.schedule_max_s` not validated before conversion to ms**
+   - `(cfg.schedule_max_s ?? 300) * 1000` passes non-numeric or out-of-range values through, producing NaN or immediate timeouts
+   - Fix: `parseInt` → NaN check → `Math.max(1, Math.min(v, 3600))` before multiplying
+
+3. **`public/options.html`: `parseInt(...) || 300` fallback for `schedule_max_s` does not clamp range**
+   - Zero or negative values would fall through; `|| 300` hides `0` as if it were NaN
+   - Fix: explicit NaN guard then `Math.max(10, Math.min(v, 3600))` matching the input's min/max
+
+---
+
 ## 2026-05-25 — `server.py`, `update_schedule.py`, `options.html` (PR #168 — dynamic dept colors & options page)
 
 **Review:** CodeRabbit on feat/dynamic-dept-colors
