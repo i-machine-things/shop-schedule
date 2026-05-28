@@ -450,6 +450,7 @@ const wrap = document.getElementById('wrap');
 let pos = 0;
 let paused = false;
 let pauseTimer = null;
+let PAUSE_RESUME_MS = 10000; // overridden by scroll_resume_s from pages.json
 const SPEED = 0.6;
 let singleHeight = 0;
 let loopReady = false;
@@ -470,7 +471,7 @@ setupLoop();
 function pauseScroll(){{
   paused = true;
   clearTimeout(pauseTimer);
-  pauseTimer = setTimeout(()=>{{ paused = false; pos = wrap.scrollTop; }}, 10000);
+  pauseTimer = setTimeout(()=>{{ paused = false; pos = wrap.scrollTop; }}, PAUSE_RESUME_MS);
 }}
 
 wrap.addEventListener('wheel',      pauseScroll, {{passive:true}});
@@ -518,6 +519,8 @@ function step(){{
 // Start auto-scroll unless allow_manual_scroll is set in pages.json.
 // Fetching /api/pages here means the flag works on any machine, not just the kiosk.
 fetch('/api/pages').then(r => r.json()).then(cfg => {{
+  const rawResume = parseInt(cfg.scroll_resume_s, 10);
+  PAUSE_RESUME_MS = (Number.isNaN(rawResume) ? 10 : Math.max(1, Math.min(rawResume, 300))) * 1000;
   if(cfg.allow_manual_scroll !== true) requestAnimationFrame(step);
 }}).catch(() => requestAnimationFrame(step));
 

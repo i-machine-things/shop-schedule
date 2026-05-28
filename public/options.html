@@ -83,7 +83,7 @@
     /* ── Page rotation ── */
     .global-settings {
       display: grid;
-      grid-template-columns: repeat(4, 1fr);
+      grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
       gap: 12px;
       margin-bottom: 20px;
     }
@@ -261,6 +261,10 @@
         <label>Schedule timeout (s)</label>
         <input id="schedule-max-s" type="number" min="10" max="3600" value="300">
       </div>
+      <div class="field">
+        <label>Resume delay (s)</label>
+        <input id="scroll-resume-s" type="number" min="1" max="300" value="10">
+      </div>
     </div>
 
     <div id="page-list"></div>
@@ -376,7 +380,8 @@
       document.getElementById('scroll-cycles').value  = pagesCfg.scroll_cycles  ?? 2;
       document.getElementById('page-duration').value  = pagesCfg.page_duration  ?? 60;
       document.getElementById('transition-ms').value  = pagesCfg.transition_ms  ?? 800;
-      document.getElementById('schedule-max-s').value = pagesCfg.schedule_max_s ?? 300;
+      document.getElementById('schedule-max-s').value  = pagesCfg.schedule_max_s  ?? 300;
+      document.getElementById('scroll-resume-s').value = pagesCfg.scroll_resume_s ?? 10;
       const list = document.getElementById('page-list');
       list.innerHTML = '';
       (pagesCfg.pages || []).forEach(p => {
@@ -398,7 +403,8 @@
       scroll_cycles:  parseInt(document.getElementById('scroll-cycles').value,  10) || 2,
       page_duration:  parseInt(document.getElementById('page-duration').value,  10) || 60,
       transition_ms:  parseInt(document.getElementById('transition-ms').value,  10) || 800,
-      schedule_max_s: (() => { const v = parseInt(document.getElementById('schedule-max-s').value, 10); return Number.isNaN(v) ? 300 : Math.max(10, Math.min(v, 3600)); })(),
+      schedule_max_s:  (() => { const v = parseInt(document.getElementById('schedule-max-s').value,  10); return Number.isNaN(v) ? 300 : Math.max(10, Math.min(v, 3600)); })(),
+      scroll_resume_s: (() => { const v = parseInt(document.getElementById('scroll-resume-s').value, 10); return Number.isNaN(v) ?  10 : Math.max(1,  Math.min(v, 300));  })(),
       pages: collectPages(),
     };
     try {
