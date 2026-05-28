@@ -1,5 +1,22 @@
 # Standards & Practices — CodeRabbit Review Log
 
+## 2026-05-28 — `public/kiosk.html` (PR #171 — follow-up CR round 2)
+
+**Review:** CodeRabbit follow-up on feat/manual-scroll-pause-timeout
+**Result:** 2 findings, both fixed.
+
+### Findings
+
+1. **`public/kiosk.html`: `ALLOW_MANUAL_SCROLL` assigned with `?? false` accepts truthy non-boolean values**
+   - `cfg.allow_manual_scroll ?? false` passes truthy strings through; only the literal boolean `true` should enable manual mode
+   - Fix: `cfg.allow_manual_scroll === true`
+
+2. **`public/kiosk.html`: pending `advTimer` not cancelled when config reload flips `ALLOW_MANUAL_SCROLL` to true**
+   - If the 60s config poll switches to manual mode mid-cycle, the existing countdown would fire and advance the page unexpectedly
+   - Fix: `if (ALLOW_MANUAL_SCROLL) { clearTimeout(advTimer); advTimer = null; }` immediately after setting the flag
+
+---
+
 ## 2026-05-28 — `update_schedule.py`, `public/kiosk.html`, `public/options.html` (PR #171 — manual scroll flag and schedule timeout)
 
 **Review:** CodeRabbit review of feat/manual-scroll-pause-timeout

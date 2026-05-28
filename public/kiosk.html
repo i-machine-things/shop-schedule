@@ -133,7 +133,8 @@
     FADE_MS             = cfg.transition_ms      ?? 1500;
     const _rawMaxS      = parseInt(cfg.schedule_max_s, 10);
     SCHEDULE_MAX_MS     = (Number.isNaN(_rawMaxS) ? 300 : Math.max(1, Math.min(_rawMaxS, 3600))) * 1000;
-    ALLOW_MANUAL_SCROLL = cfg.allow_manual_scroll ?? false;
+    ALLOW_MANUAL_SCROLL = cfg.allow_manual_scroll === true;
+    if (ALLOW_MANUAL_SCROLL) { clearTimeout(advTimer); advTimer = null; }
     document.documentElement.style.setProperty('--fade-ms', FADE_MS + 'ms');
     const extra = (cfg.pages ?? []).map(p => typeof p === 'string' ? { url: p } : p);
     PAGES = [{ url: SCHEDULE_URL }, ...extra];
