@@ -271,7 +271,7 @@
         <input id="page-duration" type="number" min="5" max="3600" value="60">
       </div>
       <div class="field">
-        <label>Fade (ms)</label>
+        <label>Fade<br>(ms)</label>
         <input id="transition-ms" type="number" min="0" max="5000" value="800">
       </div>
       <div class="field">
@@ -400,7 +400,7 @@
       document.getElementById('page-duration').value  = pagesCfg.page_duration  ?? 60;
       document.getElementById('transition-ms').value  = pagesCfg.transition_ms  ?? 800;
       document.getElementById('schedule-max-s').value  = pagesCfg.schedule_max_s  ?? 300;
-      document.getElementById('scroll-resume-s').value = pagesCfg.scroll_resume_s ?? 10;
+      document.getElementById('scroll-resume-s').value = localStorage.getItem('scroll_resume_s') ?? 10;
       const list = document.getElementById('page-list');
       list.innerHTML = '';
       (pagesCfg.pages || []).forEach(p => {

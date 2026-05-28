@@ -605,11 +605,12 @@ function step(){{
   requestAnimationFrame(step);
 }}
 
-// Start auto-scroll unless allow_manual_scroll is set in pages.json.
-// Fetching /api/pages here means the flag works on any machine, not just the kiosk.
+// scroll_resume_s is a local (per-device) setting stored in localStorage
+(function(){{
+  const raw = parseInt(localStorage.getItem('scroll_resume_s'), 10);
+  PAUSE_RESUME_MS = (Number.isNaN(raw) ? 10 : Math.max(1, Math.min(raw, 300))) * 1000;
+}})();
 fetch('/api/pages').then(r => r.json()).then(cfg => {{
-  const rawResume = parseInt(cfg.scroll_resume_s, 10);
-  PAUSE_RESUME_MS = (Number.isNaN(rawResume) ? 10 : Math.max(1, Math.min(rawResume, 300))) * 1000;
   if(cfg.allow_manual_scroll !== true) requestAnimationFrame(step);
 }}).catch(() => requestAnimationFrame(step));
 
