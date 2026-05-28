@@ -11,10 +11,11 @@
       position: absolute;
       inset: 0;
       opacity: 0;
+      pointer-events: none;
       transition: opacity var(--fade-ms, 1500ms) ease;
       will-change: opacity;
     }
-    .slide.active { opacity: 1; }
+    .slide.active { opacity: 1; pointer-events: auto; }
     .slide iframe { width: 100%; height: 100%; border: none; display: block; }
   </style>
 </head>
@@ -26,6 +27,7 @@
   <script>
   const SCHEDULE_URL  = 'schedule.html';
   let SCHEDULE_MAX_MS = 5 * 60 * 1000; // overridden by schedule_max_s from pages.json
+  let ALLOW_MANUAL_SCROLL = false;      // set by allow_manual_scroll in pages.json
 
   const schedSlide = document.getElementById('sched-slide');
   const schedFrame = document.getElementById('sched-frame');
@@ -88,7 +90,8 @@
     if (page.url === SCHEDULE_URL) {
       crossfadeTo(schedSlide, () => {
         postToSched('resume');
-        if (PAGES.length > 1) _armAdv(SCHEDULE_MAX_MS);
+        // When allow_manual_scroll is on the user drives the page; don't auto-advance.
+        if (PAGES.length > 1 && !ALLOW_MANUAL_SCROLL) _armAdv(SCHEDULE_MAX_MS);
       });
     } else {
       postToSched('pause');
@@ -118,21 +121,23 @@
       // Content fits without scrolling — arm the fallback timer only if one
       // isn't already running. Schedule updates fire fits-screen too, and we
       // must not let them reset a countdown that's already in progress.
-      if (currentSlide !== schedSlide || PAGES.length <= 1) return;
+      // When allow_manual_scroll is on, skip auto-advance entirely.
+      if (currentSlide !== schedSlide || PAGES.length <= 1 || ALLOW_MANUAL_SCROLL) return;
       if (advTimer === null) _armAdv(SCHEDULE_MAX_MS);
     }
   });
 
   function applyConfig(cfg) {
-    SCHEDULE_CYCLES = cfg.scroll_cycles  ?? 2;
-    PAGE_DURATION   = cfg.page_duration  ?? 60;
-    FADE_MS         = cfg.transition_ms  ?? 1500;
-    SCHEDULE_MAX_MS = (cfg.schedule_max_s ?? 300) * 1000;
+    SCHEDULE_CYCLES     = cfg.scroll_cycles      ?? 2;
+    PAGE_DURATION       = cfg.page_duration      ?? 60;
+    FADE_MS             = cfg.transition_ms      ?? 1500;
+    SCHEDULE_MAX_MS     = (cfg.schedule_max_s    ?? 300) * 1000;
+    ALLOW_MANUAL_SCROLL = cfg.allow_manual_scroll ?? false;
     document.documentElement.style.setProperty('--fade-ms', FADE_MS + 'ms');
     const extra = (cfg.pages ?? []).map(p => typeof p === 'string' ? { url: p } : p);
     PAGES = [{ url: SCHEDULE_URL }, ...extra];
     // On first load, arm the safety valve if extra pages are configured
-    if (!configLoaded && PAGES.length > 1 && currentSlide === schedSlide) {
+    if (!configLoaded && PAGES.length > 1 && currentSlide === schedSlide && !ALLOW_MANUAL_SCROLL) {
       _armAdv(SCHEDULE_MAX_MS);
     }
     configLoaded = true;
