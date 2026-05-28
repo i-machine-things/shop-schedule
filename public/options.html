@@ -83,7 +83,7 @@
     /* ── Page rotation ── */
     .global-settings {
       display: grid;
-      grid-template-columns: repeat(3, 1fr);
+      grid-template-columns: repeat(4, 1fr);
       gap: 12px;
       margin-bottom: 20px;
     }
@@ -257,6 +257,10 @@
         <label>Fade (ms)</label>
         <input id="transition-ms" type="number" min="0" max="5000" value="800">
       </div>
+      <div class="field">
+        <label>Schedule timeout (s)</label>
+        <input id="schedule-max-s" type="number" min="10" max="3600" value="300">
+      </div>
     </div>
 
     <div id="page-list"></div>
@@ -369,9 +373,10 @@
     try {
       const r = await fetch('/api/pages');
       pagesCfg = await r.json();
-      document.getElementById('scroll-cycles').value = pagesCfg.scroll_cycles ?? 2;
-      document.getElementById('page-duration').value = pagesCfg.page_duration ?? 60;
-      document.getElementById('transition-ms').value = pagesCfg.transition_ms ?? 800;
+      document.getElementById('scroll-cycles').value  = pagesCfg.scroll_cycles  ?? 2;
+      document.getElementById('page-duration').value  = pagesCfg.page_duration  ?? 60;
+      document.getElementById('transition-ms').value  = pagesCfg.transition_ms  ?? 800;
+      document.getElementById('schedule-max-s').value = pagesCfg.schedule_max_s ?? 300;
       const list = document.getElementById('page-list');
       list.innerHTML = '';
       (pagesCfg.pages || []).forEach(p => {
@@ -389,9 +394,11 @@
 
   document.getElementById('btn-save-rot').addEventListener('click', async () => {
     const cfg = {
-      scroll_cycles: parseInt(document.getElementById('scroll-cycles').value, 10) || 2,
-      page_duration: parseInt(document.getElementById('page-duration').value, 10) || 60,
-      transition_ms: parseInt(document.getElementById('transition-ms').value, 10) || 800,
+      ...pagesCfg,
+      scroll_cycles:  parseInt(document.getElementById('scroll-cycles').value,  10) || 2,
+      page_duration:  parseInt(document.getElementById('page-duration').value,  10) || 60,
+      transition_ms:  parseInt(document.getElementById('transition-ms').value,  10) || 800,
+      schedule_max_s: parseInt(document.getElementById('schedule-max-s').value, 10) || 300,
       pages: collectPages(),
     };
     try {
