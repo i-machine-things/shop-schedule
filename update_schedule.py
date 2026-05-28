@@ -514,7 +514,12 @@ function step(){{
   if(pendingHTML !== null && pos < 2) applyPendingUpdate();
   requestAnimationFrame(step);
 }}
-requestAnimationFrame(step);
+
+// Start auto-scroll unless allow_manual_scroll is set in pages.json.
+// Fetching /api/pages here means the flag works on any machine, not just the kiosk.
+fetch('/api/pages').then(r => r.json()).then(cfg => {{
+  if(!cfg.allow_manual_scroll) requestAnimationFrame(step);
+}}).catch(() => requestAnimationFrame(step));
 
 // WC sidebar filter
 const activeWCs = new Set();
