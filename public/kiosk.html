@@ -150,6 +150,10 @@
   setInterval(() => {
     fetch('/api/pages').then(r => r.json()).then(applyConfig).catch(() => {});
   }, 60 * 1000);
+
+  // Block browser back/forward navigation so the kiosk page can't be left.
+  history.pushState(null, '', location.href);
+  window.addEventListener('popstate', () => history.pushState(null, '', location.href));
   </script>
 </body>
 </html>
