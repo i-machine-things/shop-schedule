@@ -533,6 +533,26 @@
     });
   }
 
+  async function _currentGen() {
+    try {
+      const v = await fetch('version.json?_=' + Date.now()).then(r => r.json());
+      return String(v.gen ?? '');
+    } catch (_) { return ''; }
+  }
+
+  async function _waitForRegen(prevGen, fname) {
+    const deadline = Date.now() + 60000;
+    while (Date.now() < deadline) {
+      await new Promise(r => setTimeout(r, 2000));
+      const gen = await _currentGen();
+      if (gen && gen !== prevGen) {
+        setUploadStatus('sched-status', 'ok', `${fname} — schedule updated.`);
+        return;
+      }
+    }
+    setUploadStatus('sched-status', 'err', `${fname} uploaded but schedule not updated — check server logs.`);
+  }
+
   async function uploadSchedule(file) {
     if (!file) return;
     if (!file.name.toLowerCase().endsWith('.pdf')) {
@@ -540,12 +560,14 @@
       return;
     }
     setUploadStatus('sched-status', 'busy', `Uploading ${file.name}…`);
+    const prevGen = await _currentGen();
     const fd = new FormData();
     fd.append('file', file);
     try {
       const res = await fetch('/api/upload/schedule', { method: 'POST', body: fd });
       if (res.ok) {
-        setUploadStatus('sched-status', 'ok', `${file.name} uploaded — schedule regenerating.`);
+        setUploadStatus('sched-status', 'busy', `${file.name} uploaded — regenerating…`);
+        _waitForRegen(prevGen, file.name);
       } else {
         setUploadStatus('sched-status', 'err', `Upload failed (${res.status}).`);
       }
