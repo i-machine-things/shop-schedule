@@ -294,7 +294,7 @@
     <div class="upload-grid">
       <div class="upload-col">
         <h3>Foreman&rsquo;s Report</h3>
-        <p>PDF from JobBoss. Schedule regenerates within seconds.</p>
+        <p>PDF report from JobBoss.</p>
         <div class="drop-zone" id="sched-zone">
           <input type="file" id="sched-input" accept=".pdf">
           <div class="drop-label"><strong>&#8659;</strong>Drop or click to browse</div>
@@ -583,22 +583,40 @@
     });
   }
 
+  async function _currentGen() {
+    try {
+      const v = await (await fetch('version.json?_=' + Date.now())).json();
+      return String(v.gen);
+    } catch (_) { return null; }
+  }
+
+  async function _waitForRegen(knownGen, timeoutMs = 60000) {
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      await new Promise(r => setTimeout(r, 2500));
+      const g = await _currentGen();
+      if (g !== null && g !== knownGen) return true;
+    }
+    return false;
+  }
+
   async function uploadSchedule(file) {
     if (!file) return;
     if (!file.name.toLowerCase().endsWith('.pdf')) {
       setUploadStatus('sched-status', 'err', 'Only PDF files are accepted.');
       return;
     }
+    const genBefore = await _currentGen();
     setUploadStatus('sched-status', 'busy', `Uploading ${file.name}…`);
     const fd = new FormData();
     fd.append('file', file);
     try {
       const res = await fetch('/api/upload/schedule', { method: 'POST', body: fd });
-      if (res.ok) {
-        setUploadStatus('sched-status', 'ok', `${file.name} uploaded — schedule regenerating.`);
-      } else {
-        setUploadStatus('sched-status', 'err', `Upload failed (${res.status}).`);
-      }
+      if (!res.ok) { setUploadStatus('sched-status', 'err', `Upload failed (${res.status}).`); return; }
+      setUploadStatus('sched-status', 'busy', 'Regenerating schedule…');
+      const changed = await _waitForRegen(genBefore);
+      setUploadStatus('sched-status', changed ? 'ok' : 'err',
+        changed ? 'Schedule updated.' : 'Upload OK but regeneration timed out.');
     } catch (e) {
       setUploadStatus('sched-status', 'err', `Upload failed: ${e.message}`);
     }
