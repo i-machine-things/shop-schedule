@@ -25,7 +25,8 @@ PDF_FILENAME = os.environ.get('PDF_FILENAME', '').strip() or 'last_report.pdf'
 PDF_COMPANY_NAME = os.environ.get('PDF_COMPANY_NAME', '').strip()
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 PDF_PATH = os.path.join(BASE_DIR, PDF_FILENAME)
-HTML_PATH = os.path.join(BASE_DIR, 'public', 'schedule.html')
+HTML_PATH  = os.path.join(BASE_DIR, 'public', 'schedule.html')
+KIOSK_PATH = os.path.join(BASE_DIR, 'public', 'kiosk.html')
 DEPT_COLORS_PATH = os.path.join(BASE_DIR, 'public', 'dept_colors.json')
 # ───────────────────────────────────────────────────────────────────────────────
 
@@ -270,7 +271,7 @@ def _default_color(dept_lower):
     return bg, accent
 
 
-def generate_html(data, out_path):
+def generate_html(data, out_path, *, kiosk=False):
     report_date = data['report_date']
     thru_date = data['thru_date']
     sections = data['sections']
@@ -279,7 +280,8 @@ def generate_html(data, out_path):
     gen_ts = int(now.timestamp())
     shop_name = _html.escape(SHOP_NAME)
     local_ip = _get_local_ip()
-    url_line = f'<div class="url-line">http://{local_ip}:8080/schedule.html</div>' if local_ip else ''
+    url_path = 'kiosk.html' if kiosk else 'schedule.html'
+    url_line = f'<div class="url-line">http://{local_ip}:8080/{url_path}</div>' if local_ip else ''
 
     colors = _load_dept_colors()
     colors_dirty = False
@@ -342,6 +344,94 @@ def generate_html(data, out_path):
 
     body = '\n'.join(rows)
 
+    home_btn = '' if kiosk else '<a href="index.html" id="home-btn" title="Home">&#8962;</a>\n    '
+
+    kiosk_css = '''
+#kiosk-overlay{position:fixed;inset:0;z-index:200;background:#000;
+  opacity:0;pointer-events:none;transition:opacity var(--fade-ms,1500ms) ease}
+#kiosk-overlay.visible{opacity:1;pointer-events:auto}
+#kiosk-overlay iframe{width:100%;height:100%;border:none}''' if kiosk else ''
+
+    overlay_div = '\n<div id="kiosk-overlay"><iframe id="kiosk-frame"></iframe></div>' if kiosk else ''
+
+    scroll_cycle_js = (
+        "if(typeof window._kioskOnScrollCycle==='function') window._kioskOnScrollCycle();"
+        if kiosk else
+        "if(window.parent !== window) window.parent.postMessage({type:'scroll-cycle'},'*');"
+    )
+    fits_screen_js = (
+        "if(!loopReady && typeof window._kioskOnFitsScreen==='function') window._kioskOnFitsScreen();"
+        if kiosk else
+        "if(!loopReady && window.parent !== window)\n    window.parent.postMessage({type:'fits-screen'},'*');"
+    )
+
+    kiosk_js = '''
+// ── Kiosk navigation lock ─────────────────────────────────────────────────────
+history.pushState(null, '', location.href);
+window.addEventListener('popstate', () => history.pushState(null, '', location.href));
+window.addEventListener('beforeunload', e => { e.preventDefault(); e.returnValue = ''; });
+
+// ── Kiosk page rotation ───────────────────────────────────────────────────────
+(function(){
+  let SCHEDULE_CYCLES = 2, PAGE_DURATION = 60, FADE_MS_K = 1500;
+  let SCHEDULE_MAX_MS = 300000, PAGES = [], cycleCount = 0;
+  let advTimer = null, overlayVisible = false, slotIdx = -1;
+  const overlay = document.getElementById('kiosk-overlay');
+  const frame   = document.getElementById('kiosk-frame');
+
+  function armScheduleTimer() {
+    clearTimeout(advTimer);
+    advTimer = setTimeout(() => { advTimer = null; showNextPage(); }, SCHEDULE_MAX_MS);
+  }
+
+  function showNextPage() {
+    if (!PAGES.length) return;
+    slotIdx = (slotIdx + 1) % PAGES.length;
+    const page = PAGES[slotIdx];
+    frame.src = page.url;
+    overlay.classList.add('visible');
+    overlayVisible = true;
+    clearTimeout(advTimer);
+    advTimer = setTimeout(snapBack, (page.seconds ?? PAGE_DURATION) * 1000);
+  }
+
+  function snapBack() {
+    clearTimeout(advTimer); advTimer = null;
+    overlay.classList.remove('visible');
+    overlayVisible = false;
+    cycleCount = 0;
+    setTimeout(() => { frame.src = ''; }, FADE_MS_K);
+    if (PAGES.length) armScheduleTimer();
+  }
+
+  ['mousemove', 'keydown', 'touchstart', 'click'].forEach(ev =>
+    document.addEventListener(ev, () => { if (overlayVisible) snapBack(); })
+  );
+
+  window._kioskOnScrollCycle = () => {
+    if (!PAGES.length || overlayVisible) return;
+    if (++cycleCount >= SCHEDULE_CYCLES) { cycleCount = 0; showNextPage(); }
+  };
+  window._kioskOnFitsScreen = () => {
+    if (!PAGES.length || overlayVisible || advTimer !== null) return;
+    armScheduleTimer();
+  };
+
+  function applyKioskConfig(cfg) {
+    SCHEDULE_CYCLES = cfg.scroll_cycles ?? 2;
+    PAGE_DURATION   = cfg.page_duration ?? 60;
+    FADE_MS_K       = cfg.transition_ms ?? 1500;
+    const rawMaxS   = parseInt(cfg.schedule_max_s, 10);
+    SCHEDULE_MAX_MS = (Number.isNaN(rawMaxS) ? 300 : Math.max(1, Math.min(rawMaxS, 3600))) * 1000;
+    if (cfg.allow_manual_scroll === true) { clearTimeout(advTimer); advTimer = null; }
+    document.documentElement.style.setProperty('--fade-ms', FADE_MS_K + 'ms');
+    PAGES = (cfg.pages ?? []).map(p => typeof p === 'string' ? { url: p } : p);
+  }
+
+  fetch('/api/pages').then(r => r.json()).then(applyKioskConfig).catch(() => {});
+  setInterval(() => fetch('/api/pages').then(r => r.json()).then(applyKioskConfig).catch(() => {}), 60000);
+})();''' if kiosk else ''
+
     html = f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -393,13 +483,13 @@ thead th{{position:sticky;top:0;z-index:20;background:#0d0d20;color:#7799ff;font
 .c{{text-align:center;white-space:nowrap}}
 .sub{{color:#666;font-size:12px}}
 .overdue{{color:#f55;font-weight:bold}}
+{kiosk_css}
 </style>
 </head>
 <body data-gen="{gen_ts}">
 <div id="hdr">
   <div id="hdr-left">
-    <a href="index.html" id="home-btn" title="Home">&#8962;</a>
-    <h1>{shop_name} &mdash; Shop Schedule</h1>
+    {home_btn}<h1>{shop_name} &mdash; Shop Schedule</h1>
   </div>
   <div class="meta">
     <div class="meta-info">
@@ -431,7 +521,7 @@ thead th{{position:sticky;top:0;z-index:20;background:#0d0d20;color:#7799ff;font
   </tbody>
 </table>
 </div>
-
+{overlay_div}
 <script>
 // Clock
 (function tick(){{
@@ -463,8 +553,7 @@ function setupLoop(){{
     loopReady = true;
   }}
   pinSectionHeaders();
-  if(!loopReady && window.parent !== window)
-    window.parent.postMessage({{type:'fits-screen'}},'*');
+  {fits_screen_js}
 }}
 setupLoop();
 
@@ -507,7 +596,7 @@ function step(){{
       if(singleHeight > 0 && pos >= singleHeight){{
         pos -= singleHeight;
         wrap.scrollTop = pos;
-        if(window.parent !== window) window.parent.postMessage({{type:'scroll-cycle'}},'*');
+        {scroll_cycle_js}
       }}
       wrap.scrollTop = pos;
     }}
@@ -604,6 +693,7 @@ setInterval(async () => {{
     if(m && m[1] !== currentGen) pendingHTML = txt;
   }} catch(e) {{ console.warn('Update check failed:', e); }}
 }}, 15000);
+{kiosk_js}
 </script>
 </body>
 </html>"""
@@ -625,6 +715,7 @@ def main():
     if os.path.exists(PDF_PATH):
         data = parse_pdf(PDF_PATH)
         generate_html(data, HTML_PATH)
+        generate_html(data, KIOSK_PATH, kiosk=True)
         if not fetched:
             print("No new email. Display refreshed.")
     else:
