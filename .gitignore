@@ -10,6 +10,7 @@
 
 # Generated output
 schedule.html
+kiosk.html
 public/version.json
 
 # User-edited kiosk page rotation config (created from pages.json.example by install.sh)

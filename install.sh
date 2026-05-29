@@ -108,16 +108,18 @@ if [ -z "$_v" ]; then
     [ -n "$_v" ] && _set_env SMB_PASS "$_v" "$INSTALL_DIR/.env"
 fi
 
-# Placeholder schedule
+# Placeholder pages (schedule + kiosk) shown before first PDF arrives
 mkdir -p "$INSTALL_DIR/public"
-if [ ! -f "$INSTALL_DIR/public/schedule.html" ]; then
-    cat > "$INSTALL_DIR/public/schedule.html" << 'EOF'
-<!DOCTYPE html>
+_waiting_html='<!DOCTYPE html>
 <html><head><meta charset="UTF-8"><meta http-equiv="refresh" content="60">
 <style>body{background:#07070f;color:#4af;font-family:monospace;
 display:flex;align-items:center;justify-content:center;height:100vh;font-size:24px}</style>
-</head><body>Waiting for Foreman's Report PDF...</body></html>
-EOF
+</head><body>Waiting for Foreman'"'"'s Report PDF...</body></html>'
+if [ ! -f "$INSTALL_DIR/public/schedule.html" ]; then
+    printf '%s\n' "$_waiting_html" > "$INSTALL_DIR/public/schedule.html"
+fi
+if [ ! -f "$INSTALL_DIR/public/kiosk.html" ]; then
+    printf '%s\n' "$_waiting_html" > "$INSTALL_DIR/public/kiosk.html"
 fi
 
 # Process any PDFs in incoming/ and regenerate schedule.html so the sidebar

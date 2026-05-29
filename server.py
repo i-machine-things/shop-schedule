@@ -130,7 +130,14 @@ class Handler(SimpleHTTPRequestHandler):
 
         def _run():
             try:
-                subprocess.run([sys.executable, str(script)], env=env, check=False)
+                r = subprocess.run(
+                    [sys.executable, str(script)], env=env,
+                    capture_output=True, text=True, check=False,
+                )
+                if r.stdout:
+                    print(r.stdout, end='', flush=True)
+                if r.returncode != 0:
+                    print(f'[process_drop] exit {r.returncode}: {r.stderr}', flush=True)
             finally:
                 _schedule_lock.release()
 

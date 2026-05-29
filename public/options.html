@@ -83,7 +83,7 @@
     /* ── Page rotation ── */
     .global-settings {
       display: grid;
-      grid-template-columns: repeat(3, 1fr);
+      grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
       gap: 12px;
       margin-bottom: 20px;
     }
@@ -239,12 +239,29 @@
     <h1>Options</h1>
   </header>
 
+  <!-- ── Schedule Display ──────────────────────────────────── -->
+  <section>
+    <h2>Schedule Display</h2>
+    <div id="display-status" class="status"></div>
+
+    <div class="global-settings" style="grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));">
+      <div class="field">
+        <label>Scroll resume delay (s)</label>
+        <input id="scroll-resume-s" type="number" min="1" max="300" value="10">
+      </div>
+    </div>
+
+    <div class="actions">
+      <button id="btn-save-display">Save</button>
+    </div>
+  </section>
+
   <!-- ── Page Rotation ─────────────────────────────────────── -->
   <section>
     <h2>Page Rotation</h2>
     <div id="rot-status" class="status"></div>
 
-    <div class="global-settings">
+    <div class="global-settings" style="grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));">
       <div class="field">
         <label>Schedule scroll cycles</label>
         <input id="scroll-cycles" type="number" min="1" max="20" value="2">
@@ -254,8 +271,12 @@
         <input id="page-duration" type="number" min="5" max="3600" value="60">
       </div>
       <div class="field">
-        <label>Fade (ms)</label>
+        <label>Fade<br>(ms)</label>
         <input id="transition-ms" type="number" min="0" max="5000" value="800">
+      </div>
+      <div class="field">
+        <label>Schedule timeout (s)</label>
+        <input id="schedule-max-s" type="number" min="10" max="3600" value="300">
       </div>
     </div>
 
@@ -273,7 +294,7 @@
     <div class="upload-grid">
       <div class="upload-col">
         <h3>Foreman&rsquo;s Report</h3>
-        <p>PDF from JobBoss. Schedule regenerates within seconds.</p>
+        <p>PDF report from JobBoss.</p>
         <div class="drop-zone" id="sched-zone">
           <input type="file" id="sched-input" accept=".pdf">
           <div class="drop-label"><strong>&#8659;</strong>Drop or click to browse</div>
@@ -309,6 +330,12 @@
   // ── Page Rotation ─────────────────────────────────────────────────────────
 
   let pagesCfg = { scroll_cycles: 2, page_duration: 60, transition_ms: 800, pages: [] };
+
+  function setDisplayStatus(msg, err) {
+    const el = document.getElementById('display-status');
+    el.textContent = msg;
+    el.className = 'status' + (err ? ' err' : '');
+  }
 
   function setRotStatus(msg, err) {
     const el = document.getElementById('rot-status');
@@ -369,9 +396,10 @@
     try {
       const r = await fetch('/api/pages');
       pagesCfg = await r.json();
-      document.getElementById('scroll-cycles').value = pagesCfg.scroll_cycles ?? 2;
-      document.getElementById('page-duration').value = pagesCfg.page_duration ?? 60;
-      document.getElementById('transition-ms').value = pagesCfg.transition_ms ?? 800;
+      document.getElementById('scroll-cycles').value  = pagesCfg.scroll_cycles  ?? 2;
+      document.getElementById('page-duration').value  = pagesCfg.page_duration  ?? 60;
+      document.getElementById('transition-ms').value  = pagesCfg.transition_ms  ?? 800;
+      document.getElementById('schedule-max-s').value  = pagesCfg.schedule_max_s  ?? 300;
       const list = document.getElementById('page-list');
       list.innerHTML = '';
       (pagesCfg.pages || []).forEach(p => {
@@ -389,9 +417,11 @@
 
   document.getElementById('btn-save-rot').addEventListener('click', async () => {
     const cfg = {
-      scroll_cycles: parseInt(document.getElementById('scroll-cycles').value, 10) || 2,
-      page_duration: parseInt(document.getElementById('page-duration').value, 10) || 60,
-      transition_ms: parseInt(document.getElementById('transition-ms').value, 10) || 800,
+      ...pagesCfg,
+      scroll_cycles:  parseInt(document.getElementById('scroll-cycles').value,  10) || 2,
+      page_duration:  parseInt(document.getElementById('page-duration').value,  10) || 60,
+      transition_ms:  parseInt(document.getElementById('transition-ms').value,  10) || 800,
+      schedule_max_s:  (() => { const v = parseInt(document.getElementById('schedule-max-s').value,  10); return Number.isNaN(v) ? 300 : Math.max(10, Math.min(v, 3600)); })(),
       pages: collectPages(),
     };
     try {
@@ -401,10 +431,18 @@
         body: JSON.stringify(cfg),
       });
       const j = await r.json();
-      setRotStatus(j.ok ? 'Saved.' : 'Save failed.', !j.ok);
+      if (j.ok) { pagesCfg = cfg; setRotStatus('Saved.'); }
+      else setRotStatus('Save failed.', true);
     } catch (e) {
       setRotStatus('Save failed.', true);
     }
+  });
+
+  document.getElementById('btn-save-display').addEventListener('click', () => {
+    const v = parseInt(document.getElementById('scroll-resume-s').value, 10);
+    const val = Number.isNaN(v) ? 10 : Math.max(1, Math.min(v, 300));
+    localStorage.setItem('scroll_resume_s', val);
+    setDisplayStatus('Saved.');
   });
 
   // ── Department Colors ─────────────────────────────────────────────────────
@@ -535,22 +573,19 @@
 
   async function _currentGen() {
     try {
-      const v = await fetch('version.json?_=' + Date.now()).then(r => r.json());
-      return String(v.gen ?? '');
-    } catch (_) { return ''; }
+      const v = await (await fetch('version.json?_=' + Date.now())).json();
+      return String(v.gen);
+    } catch (_) { return null; }
   }
 
-  async function _waitForRegen(prevGen, fname) {
-    const deadline = Date.now() + 60000;
+  async function _waitForRegen(knownGen, timeoutMs = 60000) {
+    const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
-      await new Promise(r => setTimeout(r, 2000));
-      const gen = await _currentGen();
-      if (gen && gen !== prevGen) {
-        setUploadStatus('sched-status', 'ok', `${fname} — schedule updated.`);
-        return;
-      }
+      await new Promise(r => setTimeout(r, 2500));
+      const g = await _currentGen();
+      if (g !== null && g !== knownGen) return true;
     }
-    setUploadStatus('sched-status', 'err', `${fname} uploaded but schedule not updated — check server logs.`);
+    return false;
   }
 
   async function uploadSchedule(file) {
@@ -559,18 +594,17 @@
       setUploadStatus('sched-status', 'err', 'Only PDF files are accepted.');
       return;
     }
+    const genBefore = await _currentGen();
     setUploadStatus('sched-status', 'busy', `Uploading ${file.name}…`);
-    const prevGen = await _currentGen();
     const fd = new FormData();
     fd.append('file', file);
     try {
       const res = await fetch('/api/upload/schedule', { method: 'POST', body: fd });
-      if (res.ok) {
-        setUploadStatus('sched-status', 'busy', `${file.name} uploaded — regenerating…`);
-        _waitForRegen(prevGen, file.name);
-      } else {
-        setUploadStatus('sched-status', 'err', `Upload failed (${res.status}).`);
-      }
+      if (!res.ok) { setUploadStatus('sched-status', 'err', `Upload failed (${res.status}).`); return; }
+      setUploadStatus('sched-status', 'busy', 'Regenerating schedule…');
+      const changed = await _waitForRegen(genBefore);
+      setUploadStatus('sched-status', changed ? 'ok' : 'err',
+        changed ? 'Schedule updated.' : 'Upload OK but regeneration timed out.');
     } catch (e) {
       setUploadStatus('sched-status', 'err', `Upload failed: ${e.message}`);
     }
@@ -645,6 +679,7 @@
   wireDropZone('raw-zone',   'raw-input',   files => uploadRaw(files));
 
   // ── Init ──────────────────────────────────────────────────────────────────
+  document.getElementById('scroll-resume-s').value = localStorage.getItem('scroll_resume_s') ?? 10;
   loadRotation();
   loadDepts();
   </script>

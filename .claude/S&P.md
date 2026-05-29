@@ -1,5 +1,60 @@
 # Standards & Practices — CodeRabbit Review Log
 
+## 2026-05-29 — `update_schedule.py` (PR #171 — CR round 3)
+
+**Review:** CodeRabbit follow-up on feat/manual-scroll-pause-timeout (commit 713db397)
+**Result:** 2 findings, both fixed.
+
+### Findings
+
+1. **`update_schedule.py`: two `generate_html` calls compute independent `datetime.now()` timestamps**
+   - Each call assigned its own `gen_ts = int(now.timestamp())`, so `schedule.html`, `kiosk.html`, and `version.json` could carry different values if the two calls straddle a second boundary
+   - Fix: compute `gen_ts = int(datetime.now().timestamp())` once in `main()` after `parse_pdf()`, pass to both calls via new `gen_ts` kwarg; function defaults `gen_ts=None` for standalone use
+
+2. **`update_schedule.py` (`kiosk_js`): `applyKioskConfig` never re-arms the fits-screen fallback timer**
+   - After the initial or periodic `/api/pages` fetch updates `PAGES` and `SCHEDULE_MAX_MS`, `_kioskOnFitsScreen` was never called, so a new advance timer was not armed until the next scroll cycle completed
+   - Fix: at the end of `applyKioskConfig`, when `PAGES.length > 0` and `allow_manual_scroll !== true`, call `window._kioskOnFitsScreen()` to arm the timer immediately
+
+---
+
+## 2026-05-28 — `public/kiosk.html` (PR #171 — follow-up CR round 2)
+
+**Review:** CodeRabbit follow-up on feat/manual-scroll-pause-timeout
+**Result:** 2 findings, both fixed.
+
+### Findings
+
+1. **`public/kiosk.html`: `ALLOW_MANUAL_SCROLL` assigned with `?? false` accepts truthy non-boolean values**
+   - `cfg.allow_manual_scroll ?? false` passes truthy strings through; only the literal boolean `true` should enable manual mode
+   - Fix: `cfg.allow_manual_scroll === true`
+
+2. **`public/kiosk.html`: pending `advTimer` not cancelled when config reload flips `ALLOW_MANUAL_SCROLL` to true**
+   - If the 60s config poll switches to manual mode mid-cycle, the existing countdown would fire and advance the page unexpectedly
+   - Fix: `if (ALLOW_MANUAL_SCROLL) { clearTimeout(advTimer); advTimer = null; }` immediately after setting the flag
+
+---
+
+## 2026-05-28 — `update_schedule.py`, `public/kiosk.html`, `public/options.html` (PR #171 — manual scroll flag and schedule timeout)
+
+**Review:** CodeRabbit review of feat/manual-scroll-pause-timeout
+**Result:** 3 findings, all fixed.
+
+### Findings
+
+1. **`update_schedule.py`: loose truthiness on `cfg.allow_manual_scroll` misinterprets string `"false"`**
+   - `if(!cfg.allow_manual_scroll)` treats the string `"false"` as truthy and would incorrectly disable auto-scroll
+   - Fix: `if(cfg.allow_manual_scroll !== true)` — only the actual boolean `true` disables the loop
+
+2. **`public/kiosk.html`: `cfg.schedule_max_s` not validated before conversion to ms**
+   - `(cfg.schedule_max_s ?? 300) * 1000` passes non-numeric or out-of-range values through, producing NaN or immediate timeouts
+   - Fix: `parseInt` → NaN check → `Math.max(1, Math.min(v, 3600))` before multiplying
+
+3. **`public/options.html`: `parseInt(...) || 300` fallback for `schedule_max_s` does not clamp range**
+   - Zero or negative values would fall through; `|| 300` hides `0` as if it were NaN
+   - Fix: explicit NaN guard then `Math.max(10, Math.min(v, 3600))` matching the input's min/max
+
+---
+
 ## 2026-05-25 — `server.py`, `update_schedule.py`, `options.html` (PR #168 — dynamic dept colors & options page)
 
 **Review:** CodeRabbit on feat/dynamic-dept-colors
