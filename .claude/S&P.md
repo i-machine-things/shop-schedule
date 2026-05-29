@@ -1,5 +1,22 @@
 # Standards & Practices — CodeRabbit Review Log
 
+## 2026-05-29 — `update_schedule.py` (PR #171 — CR round 3)
+
+**Review:** CodeRabbit follow-up on feat/manual-scroll-pause-timeout (commit 713db397)
+**Result:** 2 findings, both fixed.
+
+### Findings
+
+1. **`update_schedule.py`: two `generate_html` calls compute independent `datetime.now()` timestamps**
+   - Each call assigned its own `gen_ts = int(now.timestamp())`, so `schedule.html`, `kiosk.html`, and `version.json` could carry different values if the two calls straddle a second boundary
+   - Fix: compute `gen_ts = int(datetime.now().timestamp())` once in `main()` after `parse_pdf()`, pass to both calls via new `gen_ts` kwarg; function defaults `gen_ts=None` for standalone use
+
+2. **`update_schedule.py` (`kiosk_js`): `applyKioskConfig` never re-arms the fits-screen fallback timer**
+   - After the initial or periodic `/api/pages` fetch updates `PAGES` and `SCHEDULE_MAX_MS`, `_kioskOnFitsScreen` was never called, so a new advance timer was not armed until the next scroll cycle completed
+   - Fix: at the end of `applyKioskConfig`, when `PAGES.length > 0` and `allow_manual_scroll !== true`, call `window._kioskOnFitsScreen()` to arm the timer immediately
+
+---
+
 ## 2026-05-28 — `public/kiosk.html` (PR #171 — follow-up CR round 2)
 
 **Review:** CodeRabbit follow-up on feat/manual-scroll-pause-timeout
