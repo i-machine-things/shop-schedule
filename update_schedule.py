@@ -271,13 +271,14 @@ def _default_color(dept_lower):
     return bg, accent
 
 
-def generate_html(data, out_path, *, kiosk=False):
+def generate_html(data, out_path, *, kiosk=False, gen_ts=None):
     report_date = data['report_date']
     thru_date = data['thru_date']
     sections = data['sections']
     now = datetime.now()
     generated = now.strftime('%Y-%m-%d %H:%M')
-    gen_ts = int(now.timestamp())
+    if gen_ts is None:
+        gen_ts = int(now.timestamp())
     shop_name = _html.escape(SHOP_NAME)
     local_ip = _get_local_ip()
     url_path = 'kiosk.html' if kiosk else 'schedule.html'
@@ -426,6 +427,9 @@ window.addEventListener('beforeunload', e => { e.preventDefault(); e.returnValue
     if (cfg.allow_manual_scroll === true) { clearTimeout(advTimer); advTimer = null; }
     document.documentElement.style.setProperty('--fade-ms', FADE_MS_K + 'ms');
     PAGES = (cfg.pages ?? []).map(p => typeof p === 'string' ? { url: p } : p);
+    if (PAGES.length > 0 && cfg.allow_manual_scroll !== true && typeof window._kioskOnFitsScreen === 'function') {
+      window._kioskOnFitsScreen();
+    }
   }
 
   fetch('/api/pages').then(r => r.json()).then(applyKioskConfig).catch(() => {});
@@ -715,8 +719,9 @@ def main():
 
     if os.path.exists(PDF_PATH):
         data = parse_pdf(PDF_PATH)
-        generate_html(data, HTML_PATH)
-        generate_html(data, KIOSK_PATH, kiosk=True)
+        gen_ts = int(datetime.now().timestamp())
+        generate_html(data, HTML_PATH, gen_ts=gen_ts)
+        generate_html(data, KIOSK_PATH, kiosk=True, gen_ts=gen_ts)
         if not fetched:
             print("No new email. Display refreshed.")
     else:
