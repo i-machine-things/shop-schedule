@@ -400,7 +400,6 @@
       document.getElementById('page-duration').value  = pagesCfg.page_duration  ?? 60;
       document.getElementById('transition-ms').value  = pagesCfg.transition_ms  ?? 800;
       document.getElementById('schedule-max-s').value  = pagesCfg.schedule_max_s  ?? 300;
-      document.getElementById('scroll-resume-s').value = localStorage.getItem('scroll_resume_s') ?? 10;
       const list = document.getElementById('page-list');
       list.innerHTML = '';
       (pagesCfg.pages || []).forEach(p => {
@@ -439,22 +438,11 @@
     }
   });
 
-  document.getElementById('btn-save-display').addEventListener('click', async () => {
+  document.getElementById('btn-save-display').addEventListener('click', () => {
     const v = parseInt(document.getElementById('scroll-resume-s').value, 10);
-    const scrollResumeS = Number.isNaN(v) ? 10 : Math.max(1, Math.min(v, 300));
-    const cfg = { ...pagesCfg, scroll_resume_s: scrollResumeS };
-    try {
-      const r = await fetch('/api/pages', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(cfg),
-      });
-      const j = await r.json();
-      if (j.ok) { pagesCfg = cfg; setDisplayStatus('Saved.'); }
-      else setDisplayStatus('Save failed.', true);
-    } catch (e) {
-      setDisplayStatus('Save failed.', true);
-    }
+    const val = Number.isNaN(v) ? 10 : Math.max(1, Math.min(v, 300));
+    localStorage.setItem('scroll_resume_s', val);
+    setDisplayStatus('Saved.');
   });
 
   // ── Department Colors ─────────────────────────────────────────────────────
@@ -691,6 +679,7 @@
   wireDropZone('raw-zone',   'raw-input',   files => uploadRaw(files));
 
   // ── Init ──────────────────────────────────────────────────────────────────
+  document.getElementById('scroll-resume-s').value = localStorage.getItem('scroll_resume_s') ?? 10;
   loadRotation();
   loadDepts();
   </script>
