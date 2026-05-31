@@ -2,8 +2,8 @@
 
 ## 2026-05-27 — `Dockerfile`, `docker-compose.yml`, `docker/entrypoint.sh`, `install.sh`, `README.md`, `requirements.txt`, `run_update.sh` (PR #170 — Docker release)
 
-**Review:** CodeRabbit review of feature/docker-release
-**Result:** 9 actionable findings + 2 nitpicks, all fixed.
+**Review:** CodeRabbit rounds 1–2 on feature/docker-release
+**Result:** 11 findings (9 actionable + 2 nitpicks) + 2 round-2 findings, all fixed.
 
 ### Findings
 
@@ -48,6 +48,14 @@
 
 11. **`docker/entrypoint.sh` (nitpick): no guard on cron daemon startup**
     - System cron `cron` call had no exit-code check; now replaced by supercronic running as a background process via gosu
+
+12. **`Dockerfile`: supercronic downloaded without SHA256 integrity check (round 2)**
+    - `curl ... | chmod +x` with no verification; a compromised release or MITM could inject a malicious binary
+    - Fix: download `SHA256SUMS` from the same release tag, extract the hash for `${TARGETARCH}`, reformat path to `/usr/local/bin/supercronic`, verify with `sha256sum -c -` before `chmod +x`
+
+13. **`requirements.txt`: transitive deps (Pillow, pdfminer.six) underpinned (round 2)**
+    - Pinning only pdfplumber leaves Pillow free to resolve to any `>=9.1` version including future vulnerable releases
+    - Fix: add `constraints.txt` pinning `pdfminer.six==20251230` and `Pillow>=10.4.0,<12`; update Dockerfile to `pip install -c constraints.txt -r requirements.txt`
 
 ---
 
