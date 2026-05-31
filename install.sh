@@ -19,6 +19,7 @@ sudo apt-get install -y python3-venv samba
 # wsdd enables WSD discovery for Windows clients — package name varies by distro
 sudo apt-get install -y wsdd 2>/dev/null || sudo apt-get install -y wsdd2 2>/dev/null || true
 python3 -m venv "$INSTALL_DIR/venv"
+"$INSTALL_DIR/venv/bin/pip" install --quiet --upgrade pip
 "$INSTALL_DIR/venv/bin/pip" install --quiet pdfplumber reportlab
 chmod +x "$INSTALL_DIR/run_update.sh"
 
@@ -200,7 +201,7 @@ sudo systemctl enable smbd nmbd
 sudo systemctl restart smbd nmbd
 # Enable wsdd/wsdd2 if either was installed
 for svc in wsdd wsdd2; do
-    systemctl list-unit-files "${svc}.service" &>/dev/null \
+    systemctl list-unit-files "${svc}.service" 2>/dev/null | grep -q "${svc}.service" \
         && sudo systemctl enable "$svc" && sudo systemctl restart "$svc" || true
 done
 
