@@ -1,5 +1,19 @@
 # Standards & Practices — CodeRabbit Review Log
 
+## 2026-06-02 — `process_drop.py`, `update_schedule.py` (PR #253 — PDF_FILENAME path traversal)
+
+**Review:** CodeRabbit flagged that `PDF_FILENAME` from the environment was joined directly with `BASE_DIR` without stripping path components, allowing values like `../../etc/passwd` to escape the install directory.
+**Result:** Fixed in both files.
+
+### Findings
+
+1. **`PDF_FILENAME` env var used without basename sanitisation**
+   - `os.path.join(BASE_DIR, PDF_FILENAME)` where `PDF_FILENAME` could be an absolute path or contain `..` traversal
+   - Fix: wrap the env read with `os.path.basename(...)` in both `process_drop.py` and `update_schedule.py` before joining with `BASE_DIR`
+   - Pattern: apply `os.path.basename()` to any env var that is used as a filename component in a path join
+
+---
+
 ## 2026-05-29 — `update_schedule.py` (PR #171 — CR round 3)
 
 **Review:** CodeRabbit follow-up on feat/manual-scroll-pause-timeout (commit 713db397)
