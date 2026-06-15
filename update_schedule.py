@@ -488,8 +488,41 @@ thead th{{position:sticky;top:0;z-index:20;background:#0d0d20;color:#7799ff;font
 .c{{text-align:center;white-space:nowrap}}
 .sub{{color:#666;font-size:12px}}
 .overdue{{color:#f55;font-weight:bold}}
+#theme-btn{{background:transparent;border:1px solid #4af;color:#4af;
+           cursor:pointer;font-size:14px;padding:0;width:32px;height:32px;
+           font-family:inherit;flex-shrink:0;opacity:0.7;transition:opacity 0.2s}}
+#theme-btn:hover{{opacity:1;background:#1a2a44}}
+[data-theme="light"] body{{background:#f5f5f0;color:#111}}
+[data-theme="light"] #hdr{{background:#e8e8f0;border-bottom-color:#ccc}}
+[data-theme="light"] #hdr h1{{color:#111}}
+[data-theme="light"] #home-btn{{color:#0066cc;border-color:#0066cc}}
+[data-theme="light"] #home-btn:hover{{background:#c0d8f0}}
+[data-theme="light"] .meta-info{{color:#555}}
+[data-theme="light"] .url-line{{color:#0066cc}}
+[data-theme="light"] #clock{{color:#0066cc}}
+[data-theme="light"] #theme-btn{{border-color:#0066cc;color:#0066cc}}
+[data-theme="light"] #theme-btn:hover{{background:#c0d8f0}}
+[data-theme="light"] #sidebar{{background:#e8e8f0;border-right-color:#ccc}}
+[data-theme="light"] #sidebar-hdr{{color:#888}}
+[data-theme="light"] #wc-all{{border-color:#0066cc;color:#0066cc}}
+[data-theme="light"] #wc-all:hover{{background:#c0d8f0}}
+[data-theme="light"] .wc-btn{{background:#dde4f0;border-color:#ccc;color:#555}}
+[data-theme="light"] .wc-btn.active{{background:#d0f0d8;border-color:#3a7a3a;color:#1a6020}}
+[data-theme="light"] .wc-btn:hover{{background:#c8d8f0;color:#111;border-color:#0066cc}}
+[data-theme="light"] thead th{{background:#d8dcf0;color:#224499;border-bottom-color:#ccc}}
+[data-theme="light"] .section-hdr td{{background:#eaecf8!important;border-bottom-color:#ccc}}
+[data-theme="light"] .wc-name{{color:#111}}
+[data-theme="light"] .dept-name{{color:#555}}
+[data-theme="light"] .job td{{border-bottom-color:#ddd}}
+[data-theme="light"] .job:nth-child(even){{background:rgba(0,0,0,0.03)}}
+[data-theme="light"] .jnum{{color:#0066cc}}
+[data-theme="light"] .pnum{{color:#222}}
+[data-theme="light"] .desc{{color:#555}}
+[data-theme="light"] .sub{{color:#666}}
+[data-theme="light"] .overdue{{color:#cc0000}}
 {kiosk_css}
 </style>
+<script>if(localStorage.getItem('theme')==='light')document.documentElement.setAttribute('data-theme','light');</script>
 </head>
 <body data-gen="{gen_ts}">
 <div id="hdr">
@@ -503,6 +536,7 @@ thead th{{position:sticky;top:0;z-index:20;background:#0d0d20;color:#7799ff;font
       {url_line}
     </div>
     <div id="clock" aria-live="polite" aria-label="Current time" aria-atomic="true"></div>
+    <button id="theme-btn" aria-label="Toggle theme">&#9728;</button>
   </div>
 </div>
 
@@ -528,6 +562,20 @@ thead th{{position:sticky;top:0;z-index:20;background:#0d0d20;color:#7799ff;font
 </div>
 {overlay_div}
 <script>
+// Theme
+(function(){{
+  const t=localStorage.getItem('theme');
+  const btn=document.getElementById('theme-btn');
+  btn.textContent=t==='light'?'☾':'☀';
+  btn.addEventListener('click',function(){{
+    const next=document.documentElement.getAttribute('data-theme')==='light'?'dark':'light';
+    if(next==='light') document.documentElement.setAttribute('data-theme','light');
+    else document.documentElement.removeAttribute('data-theme');
+    localStorage.setItem('theme',next);
+    btn.textContent=next==='light'?'☾':'☀';
+  }});
+}})();
+
 // Clock
 (function tick(){{
   document.getElementById('clock').textContent =
