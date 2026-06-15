@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PDF Viewer</title>
+<script>if(localStorage.getItem('theme')==='light')document.documentElement.setAttribute('data-theme','light');</script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{width:100%;height:100%;overflow:hidden;background:#111}
+[data-theme="light"] html,[data-theme="light"] body{background:#e8e8e8}
+#viewer{position:relative;width:100%;height:100%;overflow:hidden}
+#pages{position:absolute;top:0;left:0;width:100%;will-change:transform}
+canvas{display:block;width:100%;margin-bottom:6px;background:#fff}
+canvas:last-child{margin-bottom:0}
+#msg{
+  position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+  color:#555;font-family:'Courier New',monospace;font-size:13px;letter-spacing:1px;
+}
+[data-theme="light"] #msg{color:#778}
+</style>
+</head>
+<body>
+<div id="viewer">
+  <div id="pages"></div>
+  <div id="msg">Loading&hellip;</div>
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"
+  crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<script>
+pdfjsLib.GlobalWorkerOptions.workerSrc =
+  'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+const params  = new URLSearchParams(location.search);
+const pdfUrl  = params.get('url');
+const seconds = parseFloat(params.get('t')) || 30;
+const viewer  = document.getElementById('viewer');
+const pages   = document.getElementById('pages');
+const msg     = document.getElementById('msg');
+
+if (!pdfUrl) {
+  msg.textContent = 'No URL specified.';
+} else {
+  (async () => {
+    try {
+      const pdf  = await pdfjsLib.getDocument(decodeURIComponent(pdfUrl)).promise;
+      const dpr  = window.devicePixelRatio || 1;
+      const vw   = viewer.clientWidth;
+      msg.style.display = 'none';
+
+      for (let i = 1; i <= pdf.numPages; i++) {
+        const page = await pdf.getPage(i);
+        const vp   = page.getViewport({ scale: 1 });
+        const svp  = page.getViewport({ scale: vw / vp.width });
+
+        const canvas        = document.createElement('canvas');
+        canvas.width        = svp.width  * dpr;
+        canvas.height       = svp.height * dpr;
+        canvas.style.width  = svp.width  + 'px';
+        canvas.style.height = svp.height + 'px';
+        pages.appendChild(canvas);
+
+        const ctx = canvas.getContext('2d');
+        ctx.scale(dpr, dpr);
+        await page.render({ canvasContext: ctx, viewport: svp }).promise;
+      }
+
+      const contentH = pages.offsetHeight;
+      const maxScroll = contentH - viewer.clientHeight;
+      if (maxScroll <= 0) return;  // all pages fit on screen, no scroll needed
+
+      const HOLD_MS   = 1500;
+      const scrollMs  = Math.max(seconds * 1000 - HOLD_MS * 2, 1000);
+      const startTime = performance.now() + HOLD_MS;
+
+      function step(now) {
+        const elapsed = Math.max(now - startTime, 0);
+        if (elapsed >= scrollMs) {
+          pages.style.transform = `translateY(${-maxScroll}px)`;
+          return;
+        }
+        pages.style.transform = `translateY(${-(elapsed / scrollMs * maxScroll)}px)`;
+        requestAnimationFrame(step);
+      }
+      requestAnimationFrame(step);
+
+    } catch (e) {
+      msg.textContent = 'PDF load failed.';
+      console.error(e);
+    }
+  })();
+}
+</script>
+</body>
+</html>

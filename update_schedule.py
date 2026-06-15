@@ -390,11 +390,15 @@ window.addEventListener('beforeunload', e => { e.preventDefault(); e.returnValue
     if (!PAGES.length) return;
     slotIdx = (slotIdx + 1) % PAGES.length;
     const page = PAGES[slotIdx];
-    frame.src = page.url;
+    const secs = page.seconds ?? PAGE_DURATION;
+    const raw  = page.url ?? '';
+    frame.src  = raw.toLowerCase().endsWith('.pdf')
+      ? 'pdf-viewer.html?url=' + encodeURIComponent(raw) + '&t=' + secs
+      : raw;
     overlay.classList.add('visible');
     overlayVisible = true;
     clearTimeout(advTimer);
-    advTimer = setTimeout(snapBack, (page.seconds ?? PAGE_DURATION) * 1000);
+    advTimer = setTimeout(snapBack, secs * 1000);
   }
 
   function snapBack() {
