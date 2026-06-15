@@ -67,7 +67,34 @@
       background: #1a2a44;
       color: #8cf;
     }
+
+    #theme-btn {
+      position: fixed;
+      top: 16px;
+      right: 16px;
+      background: transparent;
+      border: 1px solid #4af;
+      color: #4af;
+      cursor: pointer;
+      font-size: 14px;
+      width: 32px;
+      height: 32px;
+      font-family: inherit;
+      opacity: 0.7;
+      transition: opacity 0.2s;
+    }
+    #theme-btn:hover { opacity: 1; background: #1a2a44; }
+
+    [data-theme="light"] body { background: #f5f5f0; color: #111; }
+    [data-theme="light"] #clock { color: #0066cc; }
+    [data-theme="light"] .brand h1 { color: #111; }
+    [data-theme="light"] .brand p { color: #555; }
+    [data-theme="light"] nav a { background: #e8e8f0; color: #0066cc; border-color: #0066cc; }
+    [data-theme="light"] nav a:hover { background: #c0d8f0; color: #004499; }
+    [data-theme="light"] #theme-btn { border-color: #0066cc; color: #0066cc; }
+    [data-theme="light"] #theme-btn:hover { background: #c0d8f0; }
   </style>
+  <script>if(localStorage.getItem('theme')==='light')document.documentElement.setAttribute('data-theme','light');</script>
 </head>
 <body>
   <div id="clock" aria-live="polite" aria-label="Current time" aria-atomic="true"></div>
@@ -84,7 +111,22 @@
     <a href="install.html">Install</a>
   </nav>
 
+  <button id="theme-btn" aria-label="Toggle theme">☀</button>
+
   <script>
+    (function() {
+      const t = localStorage.getItem('theme');
+      const btn = document.getElementById('theme-btn');
+      btn.textContent = t === 'light' ? '☾' : '☀';
+      btn.addEventListener('click', function() {
+        const next = document.documentElement.getAttribute('data-theme') === 'light' ? 'dark' : 'light';
+        if (next === 'light') document.documentElement.setAttribute('data-theme', 'light');
+        else document.documentElement.removeAttribute('data-theme');
+        localStorage.setItem('theme', next);
+        btn.textContent = next === 'light' ? '☾' : '☀';
+      });
+    })();
+
     (function tick() {
       document.getElementById('clock').textContent =
         new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' });

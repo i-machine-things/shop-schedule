@@ -154,4 +154,6 @@ python3 process_drop.py
 
 ## Display
 
-The generated `schedule.html` is a full-screen dark-theme table grouped by work centre. It auto-scrolls continuously and polls for new content every 60 seconds, swapping in updates without a page reload. Overdue promised dates are highlighted in red.
+The generated `schedule.html` is a full-screen table grouped by work centre. It auto-scrolls continuously and polls for new content every 15 seconds, swapping in updates without a page reload. Overdue promised dates are highlighted in red.
+
+A **light/dark mode toggle** (☀/☾) appears in the header of the schedule, kiosk, index, and options pages. The preference is stored in `localStorage` and shared across all pages on the same origin, so flipping it once applies everywhere.
