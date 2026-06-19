@@ -16,7 +16,8 @@ from datetime import datetime
 BASE_DIR    = os.path.dirname(os.path.abspath(__file__))
 DROP_DIR    = os.path.join(BASE_DIR, 'incoming')
 PROCESSED   = os.path.join(BASE_DIR, 'processed')   # outside incoming/ — not visible in SMB share
-PDF_PATH    = os.path.join(BASE_DIR, 'last_report.pdf')
+_PDF_FILENAME = os.path.basename(os.environ.get('PDF_FILENAME', '').strip()) or 'last_report.pdf'
+PDF_PATH    = os.path.join(BASE_DIR, _PDF_FILENAME)
 MAIN_SCRIPT = os.path.join(BASE_DIR, 'update_schedule.py')
 
 

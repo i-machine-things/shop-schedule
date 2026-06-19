@@ -232,12 +232,71 @@
     }
 
     .raw-item button:hover { border-color: #f55; color: #f55; }
+
+    #theme-btn {
+      background: transparent;
+      border: 1px solid #4af;
+      color: #4af;
+      cursor: pointer;
+      font-size: 14px;
+      width: 32px;
+      height: 32px;
+      font-family: inherit;
+      opacity: 0.7;
+      transition: opacity 0.2s;
+      flex-shrink: 0;
+      margin-left: auto;
+    }
+    #theme-btn:hover { opacity: 1; background: #1a2a44; }
+
+    [data-theme="light"] body { background: #f5f5f0; color: #111; }
+    [data-theme="light"] header a { color: #0066cc; }
+    [data-theme="light"] h1 { color: #111; }
+    [data-theme="light"] h2 { color: #666; border-bottom-color: #ddd; }
+    [data-theme="light"] .status { color: #0066cc; }
+    [data-theme="light"] .status.err { color: #cc0000; }
+    [data-theme="light"] .status.ok { color: #1a6020; }
+    [data-theme="light"] .dept-row { background: #e8e8f0; border-color: #ccc; }
+    [data-theme="light"] .dept-name { color: #111; }
+    [data-theme="light"] .color-group label { color: #888; }
+    [data-theme="light"] .color-group input[type="color"] { background: #f0f0f0; border-color: #bbb; }
+    [data-theme="light"] .empty { color: #888; }
+    [data-theme="light"] .field label { color: #666; }
+    [data-theme="light"] .field input[type="number"],
+    [data-theme="light"] .field input[type="text"] { background: #e8e8f0; border-color: #bbb; color: #111; }
+    [data-theme="light"] .field input:focus { border-color: #0066cc; }
+    [data-theme="light"] .page-row { background: #e8e8f0; border-color: #ccc; }
+    [data-theme="light"] .page-row input[type="text"] { color: #111; }
+    [data-theme="light"] .page-row input[type="number"] { color: #555; }
+    [data-theme="light"] .remove-btn { border-color: #bbb; color: #cc0000; }
+    [data-theme="light"] .remove-btn:hover { background: #fde8e8; border-color: #cc0000; }
+    [data-theme="light"] button { border-color: #0066cc; color: #0066cc; }
+    [data-theme="light"] button:hover { background: #c0d8f0; }
+    [data-theme="light"] .btn-danger { border-color: #cc0000; color: #cc0000; }
+    [data-theme="light"] .btn-danger:hover { background: #fde8e8; }
+    [data-theme="light"] .btn-add { border-color: #1a6020; color: #1a6020; }
+    [data-theme="light"] .btn-add:hover { background: #d0f0d8; }
+    [data-theme="light"] .drop-zone { border-color: #999; }
+    [data-theme="light"] .drop-zone:hover,
+    [data-theme="light"] .drop-zone.drag-over { border-color: #0066cc; background: rgba(0,100,200,0.05); }
+    [data-theme="light"] .drop-label { color: #555; }
+    [data-theme="light"] .drop-label strong { color: #0066cc; }
+    [data-theme="light"] .upload-col h3 { color: #555; }
+    [data-theme="light"] .upload-col p { color: #777; }
+    [data-theme="light"] .raw-item { background: #e8e8f0; border-color: #ccc; }
+    [data-theme="light"] .raw-item .fname { color: #0066cc; }
+    [data-theme="light"] .raw-item button { border-color: #bbb; color: #555; }
+    [data-theme="light"] .raw-item button:hover { border-color: #cc0000; color: #cc0000; }
+    [data-theme="light"] #theme-btn { border-color: #0066cc; color: #0066cc; }
+    [data-theme="light"] #theme-btn:hover { background: #c0d8f0; }
   </style>
+  <script>if(localStorage.getItem('theme')==='light')document.documentElement.setAttribute('data-theme','light');</script>
 </head>
 <body>
   <header>
     <a href="index.html" title="Home">&#8962;</a>
     <h1>Options</h1>
+    <button id="theme-btn" aria-label="Toggle theme">☀</button>
   </header>
 
   <!-- ── Schedule Display ──────────────────────────────────── -->
@@ -328,6 +387,20 @@
   </section>
 
   <script>
+  // ── Theme toggle ──────────────────────────────────────────────────────────
+  (function() {
+    const t = localStorage.getItem('theme');
+    const btn = document.getElementById('theme-btn');
+    btn.textContent = t === 'light' ? '☾' : '☀';
+    btn.addEventListener('click', function() {
+      const next = document.documentElement.getAttribute('data-theme') === 'light' ? 'dark' : 'light';
+      if (next === 'light') document.documentElement.setAttribute('data-theme', 'light');
+      else document.documentElement.removeAttribute('data-theme');
+      localStorage.setItem('theme', next);
+      btn.textContent = next === 'light' ? '☾' : '☀';
+    });
+  })();
+
   // ── Page Rotation ─────────────────────────────────────────────────────────
 
   let pagesCfg = { scroll_cycles: 2, page_duration: 60, transition_ms: 800, pages: [] };
