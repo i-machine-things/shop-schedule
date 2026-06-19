@@ -43,7 +43,7 @@ if (!pdfUrl) {
 } else {
   (async () => {
     try {
-      const pdf  = await pdfjsLib.getDocument(decodeURIComponent(pdfUrl)).promise;
+      const pdf  = await pdfjsLib.getDocument(pdfUrl).promise;
       const dpr  = window.devicePixelRatio || 1;
       const vw   = viewer.clientWidth;
       msg.style.display = 'none';

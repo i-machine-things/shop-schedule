@@ -392,7 +392,8 @@ window.addEventListener('beforeunload', e => { e.preventDefault(); e.returnValue
     const page = PAGES[slotIdx];
     const secs = page.seconds ?? PAGE_DURATION;
     const raw  = page.url ?? '';
-    frame.src  = raw.toLowerCase().endsWith('.pdf')
+    const path = raw.split('?')[0].split('#')[0];
+    frame.src  = path.toLowerCase().endsWith('.pdf')
       ? 'pdf-viewer.html?url=' + encodeURIComponent(raw) + '&t=' + secs
       : raw;
     overlay.classList.add('visible');
