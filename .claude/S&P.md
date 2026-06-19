@@ -1,5 +1,28 @@
 # Standards & Practices — CodeRabbit Review Log
 
+## 2026-06-19 — `public/pdf-viewer.html`, `update_schedule.py` (PR #258 — PDF viewer auto-scroll)
+
+**Review:** CodeRabbit flagged a double-decode bug and a URL matching bug in the PDF kiosk viewer.
+**Result:** 2 findings fixed, 1 false positive skipped.
+
+### Findings
+
+1. **Redundant `decodeURIComponent()` in pdf-viewer.html**
+   - `URLSearchParams.get('url')` already percent-decodes the value; wrapping it in `decodeURIComponent()` caused double decoding and broke signed URLs containing `%25`-encoded characters
+   - Fix: pass `pdfUrl` directly to `pdfjsLib.getDocument()` without wrapping
+   - Pattern: never call `decodeURIComponent()` on values from `URLSearchParams.get()` — they are already decoded
+
+2. **`endsWith('.pdf')` fails for URLs with query params or hash fragments**
+   - `raw.toLowerCase().endsWith('.pdf')` misses URLs like `file.pdf?token=...` or `file.pdf#page=2`
+   - Fix: strip query string and hash before checking — `raw.split('?')[0].split('#')[0].toLowerCase().endsWith('.pdf')`
+   - Pattern: always strip `?` and `#` from a URL before doing a file-extension check
+
+3. **`page.seconds` vs `page.duration` — false positive (skipped)**
+   - CR claimed the config key should be `duration`; the actual config in `options.html` and `schedule.html` uses `seconds` consistently throughout
+   - No change made
+
+---
+
 ## 2026-06-02 — `process_drop.py`, `update_schedule.py` (PR #253 — PDF_FILENAME path traversal)
 
 **Review:** CodeRabbit flagged that `PDF_FILENAME` from the environment was joined directly with `BASE_DIR` without stripping path components, allowing values like `../../etc/passwd` to escape the install directory.
