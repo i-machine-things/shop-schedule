@@ -25,7 +25,7 @@ PDF_FILENAME = os.path.basename(os.environ.get('PDF_FILENAME', '').strip()) or '
 PDF_COMPANY_NAME = os.environ.get('PDF_COMPANY_NAME', '').strip()
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 PDF_PATH = os.path.join(BASE_DIR, PDF_FILENAME)
-HTML_PATH  = os.path.join(BASE_DIR, 'public', 'schedule.html')
+HTML_PATH = os.path.join(BASE_DIR, 'public', 'schedule.html')
 KIOSK_PATH = os.path.join(BASE_DIR, 'public', 'kiosk.html')
 DEPT_COLORS_PATH = os.path.join(BASE_DIR, 'public', 'dept_colors.json')
 # ───────────────────────────────────────────────────────────────────────────────
@@ -133,9 +133,9 @@ def parse_pdf(path):
             state = 0
             cur_section = {
                 'department': sm.group(1).strip(),
-                'wc_group':   sm.group(2).strip(),
-                'wc':         sm.group(3).strip(),
-                'jobs':       [],
+                'wc_group': sm.group(2).strip(),
+                'wc': sm.group(3).strip(),
+                'jobs': [],
             }
             sections.append(cur_section)
             continue
@@ -147,17 +147,17 @@ def parse_pdf(path):
             m = _JOB_LINE_RE.match(line)
             if m:
                 job_data = {
-                    'job':      m.group(1),
-                    'rev':      m.group(2) or '',
+                    'job': m.group(1),
+                    'rev': m.group(2) or '',
                     'make_qty': m.group(3),
-                    'pri':      m.group(4),
+                    'pri': m.group(4),
                     'sch_start': m.group(5),
-                    'curr_wc':  m.group(6).strip(),
+                    'curr_wc': m.group(6).strip(),
                     'ship_qty': m.group(7),
                     'promised': m.group(8),
                     'customer': '', 'oper': '', 'sch_end': '',
-                    'num_ops':  '', 'rem_hrs': '', 'qty_run': '',
-                    'part':     '', 'description': '',
+                    'num_ops': '', 'rem_hrs': '', 'qty_run': '',
+                    'part': '', 'description': '',
                 }
                 state = 1
 
@@ -176,17 +176,17 @@ def parse_pdf(path):
                 m2 = _JOB_LINE_RE.match(line)
                 if m2:
                     job_data = {
-                        'job':      m2.group(1),
-                        'rev':      m2.group(2) or '',
+                        'job': m2.group(1),
+                        'rev': m2.group(2) or '',
                         'make_qty': m2.group(3),
-                        'pri':      m2.group(4),
+                        'pri': m2.group(4),
                         'sch_start': m2.group(5),
-                        'curr_wc':  m2.group(6).strip(),
+                        'curr_wc': m2.group(6).strip(),
                         'ship_qty': m2.group(7),
                         'promised': m2.group(8),
                         'customer': '', 'oper': '', 'sch_end': '',
-                        'num_ops':  '', 'rem_hrs': '', 'qty_run': '',
-                        'part':     '', 'description': '',
+                        'num_ops': '', 'rem_hrs': '', 'qty_run': '',
+                        'part': '', 'description': '',
                     }
                 else:
                     state = 0
@@ -220,14 +220,14 @@ _HEX_COLOR_RE = re.compile(r'^#[0-9a-fA-F]{6}$')
 
 # Keyword defaults — matched against lowercase dept name when a new dept is first seen.
 _DEPT_DEFAULTS = {
-    'assembly':  ('#0d2b1a', '#1a6640'),
-    'cnc':       ('#0d1a2b', '#1a4466'),
+    'assembly': ('#0d2b1a', '#1a6640'),
+    'cnc': ('#0d1a2b', '#1a4466'),
     'inspection': ('#1e0d2b', '#4d2080'),
-    'shipping':  ('#2b1a0d', '#664020'),
-    'welding':   ('#2b0d0d', '#661a1a'),
-    'manual':    ('#0d2b2b', '#1a6666'),
-    'machine':   ('#1a1a0d', '#404020'),
-    'engineer':  ('#1a0d1a', '#401a40'),
+    'shipping': ('#2b1a0d', '#664020'),
+    'welding': ('#2b0d0d', '#661a1a'),
+    'manual': ('#0d2b2b', '#1a6666'),
+    'machine': ('#1a1a0d', '#404020'),
+    'engineer': ('#1a0d1a', '#401a40'),
 }
 
 
@@ -263,7 +263,7 @@ def _default_color(dept_lower):
     for keyword, (bg, accent) in _DEPT_DEFAULTS.items():
         if keyword in dept_lower:
             return bg, accent
-    h = int(hashlib.sha1(dept_lower.encode()).hexdigest()[:6], 16)
+    h = int(hashlib.sha1(dept_lower.encode(), usedforsecurity=False).hexdigest()[:6], 16)  # nosec B324
     r, g, b = (h >> 16) & 0xFF, (h >> 8) & 0xFF, h & 0xFF
     bg = '#{:02x}{:02x}{:02x}'.format(max(r // 8, 5), max(g // 8, 5), max(b // 8, 5))
     accent = '#{:02x}{:02x}{:02x}'.format(

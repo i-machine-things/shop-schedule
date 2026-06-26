@@ -13,11 +13,11 @@ import subprocess
 import sys
 from datetime import datetime
 
-BASE_DIR    = os.path.dirname(os.path.abspath(__file__))
-DROP_DIR    = os.path.join(BASE_DIR, 'incoming')
-PROCESSED   = os.path.join(BASE_DIR, 'processed')   # outside incoming/ — not visible in SMB share
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DROP_DIR = os.path.join(BASE_DIR, 'incoming')
+PROCESSED = os.path.join(BASE_DIR, 'processed')   # outside incoming/ — not visible in SMB share
 _PDF_FILENAME = os.path.basename(os.environ.get('PDF_FILENAME', '').strip()) or 'last_report.pdf'
-PDF_PATH    = os.path.join(BASE_DIR, _PDF_FILENAME)
+PDF_PATH = os.path.join(BASE_DIR, _PDF_FILENAME)
 MAIN_SCRIPT = os.path.join(BASE_DIR, 'update_schedule.py')
 
 
@@ -57,10 +57,10 @@ def main(regen=True):
     os.makedirs(PROCESSED, exist_ok=True)
     for pdf in pdfs:
         fname = os.path.basename(pdf)
-        dest  = os.path.join(PROCESSED, fname)
+        dest = os.path.join(PROCESSED, fname)
         if os.path.exists(dest):
             base, ext = os.path.splitext(fname)
-            ts   = datetime.now().strftime('%Y%m%d_%H%M%S')
+            ts = datetime.now().strftime('%Y%m%d_%H%M%S')
             dest = os.path.join(PROCESSED, f"{base}_{ts}{ext}")
         shutil.move(pdf, dest)
 
