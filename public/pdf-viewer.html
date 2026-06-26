@@ -44,7 +44,8 @@ if (!pdfUrl) {
   (async () => {
     try {
       const pdf  = await pdfjsLib.getDocument(pdfUrl).promise;
-      const dpr  = window.devicePixelRatio || 1;
+      // Cap DPR at 1.5 — higher values quadruple canvas memory on SBC hardware
+      const dpr  = Math.min(window.devicePixelRatio || 1, 1.5);
       const vw   = viewer.clientWidth;
       msg.style.display = 'none';
 
@@ -63,7 +64,9 @@ if (!pdfUrl) {
         const ctx = canvas.getContext('2d');
         ctx.scale(dpr, dpr);
         await page.render({ canvasContext: ctx, viewport: svp }).promise;
+        page.cleanup();  // free PDF.js internal render buffers for this page
       }
+      await pdf.destroy();  // release document buffers and terminate the worker
 
       const contentH = pages.offsetHeight;
       const maxScroll = contentH - viewer.clientHeight;

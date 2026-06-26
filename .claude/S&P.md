@@ -1,5 +1,20 @@
 # Standards & Practices — CodeRabbit Review Log
 
+## 2026-06-22 — `public/pdf-viewer.html` (PR #259 — PDF viewer OOM fix)
+
+**Review:** CodeRabbit flagged one finding: claimed `pdf.destroy()` was removed from the PDF.js 3.x API and should be replaced with `pdf.cleanup()`.
+**Result:** False positive — not applied.
+
+### Findings
+
+1. **`pdf.destroy()` vs `pdf.cleanup()` — false positive (skipped)**
+   - CR claimed `PDFDocumentProxy.destroy()` was removed; `cleanup()` is the correct method
+   - Verified against the actual PDF.js 3.11.174 bundle: `destroy()` exists and delegates to `loadingTask.destroy()`, which terminates the worker and clears all resources
+   - `cleanup()` only clears internal caches and does NOT terminate the worker — using it instead would leak the worker on every rotation cycle
+   - Pattern: verify CR API-change claims against the actual library version in use before accepting
+
+---
+
 ## 2026-06-19 — `public/options.html` (PR #252 — drop zone keyboard accessibility)
 
 **Review:** CodeRabbit flagged that drop zones implemented as `<div>` elements with `pointer-events: none` on the hidden file input are unreachable via keyboard — no `tabindex`, no `role`, no `keydown` handler, no focus indicator.
