@@ -145,12 +145,14 @@ sudo systemctl enable foreman-server
 sudo systemctl restart foreman-server
 
 # Allow guest connections for the drop share; patch any legacy 'map to guest = never'
-sudo sed -i 's/^\s*map to guest\s*=.*/   map to guest = bad user/' /etc/samba/smb.conf
-if ! grep -q 'map to guest' /etc/samba/smb.conf 2>/dev/null; then
+if sudo grep -qiE '^[[:space:]]*map[[:space:]]+to[[:space:]]+guest[[:space:]]*=' /etc/samba/smb.conf 2>/dev/null; then
+    sudo sed -i -E 's/^[[:space:]]*map[[:space:]]+to[[:space:]]+guest[[:space:]]*=.*/   map to guest = bad user/I' /etc/samba/smb.conf
+else
     tmp=$(mktemp)
     awk '/^\[global\]/{print; print "   map to guest = bad user"; next}1' \
         /etc/samba/smb.conf > "$tmp"
-    sudo mv "$tmp" /etc/samba/smb.conf
+    sudo install -o root -g root -m 0644 "$tmp" /etc/samba/smb.conf
+    rm -f "$tmp"
 fi
 
 # Remove [homes] share so the user home directory is not exposed via SMB
@@ -191,13 +193,9 @@ if grep -q '\[schedule-drop\]' /etc/samba/smb.conf 2>/dev/null; then
     if ! grep -A10 '\[schedule-drop\]' /etc/samba/smb.conf | grep -q 'veto files'; then
         sudo sed -i '/\[schedule-drop\]/a\   veto files = \/processed\/' /etc/samba/smb.conf
     fi
-    sudo sed -i '/^\[schedule-drop\]/,/^\[/{/valid users/d}' /etc/samba/smb.conf
-    if ! grep -A10 '\[schedule-drop\]' /etc/samba/smb.conf | grep -q 'guest ok'; then
-        sudo sed -i '/\[schedule-drop\]/a\   guest ok = yes' /etc/samba/smb.conf
-    fi
-    if ! grep -A10 '\[schedule-drop\]' /etc/samba/smb.conf | grep -q 'force user'; then
-        sudo sed -i "/\[schedule-drop\]/a\\   force user = $USER" /etc/samba/smb.conf
-    fi
+    sudo sed -i '/^\[schedule-drop\]/,/^\[/{/^[[:space:]]*valid users[[:space:]]*=/d; /^[[:space:]]*guest ok[[:space:]]*=/d; /^[[:space:]]*force user[[:space:]]*=/d}' /etc/samba/smb.conf
+    sudo sed -i '/^\[schedule-drop\]/a\   guest ok = yes' /etc/samba/smb.conf
+    sudo sed -i "/^\[schedule-drop\]/a\\   force user = $USER" /etc/samba/smb.conf
 fi
 sudo systemctl enable smbd nmbd
 sudo systemctl restart smbd nmbd
@@ -218,4 +216,4 @@ echo "2. Drop a PDF into $INSTALL_DIR/incoming/ to test, or email it directly"
 echo "3. View at:    http://$(hostname -I | awk '{print $1}'):8080/"
 echo "4. Upload at:  http://$(hostname -I | awk '{print $1}'):8080/upload.html"
 echo "5. Edit $INSTALL_DIR/public/pages.json to manually add URLs to the kiosk rotation"
-echo "6. Drop PDFs via SMB: \\\\$(hostname -I | awk '{print $1}')\\schedule-drop  (no password needed)"
+printf '6. Drop PDFs via SMB: \\\\%s\\schedule-drop  (no password needed)\n' "$(hostname -I | awk '{print $1}')"
