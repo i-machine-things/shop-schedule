@@ -1,5 +1,34 @@
 # Standards & Practices — CodeRabbit Review Log
 
+## 2026-06-26 — `install.sh` (PR #260 — guest SMB installer)
+
+**Review:** CodeRabbit flagged 4 findings: grep matching commented `map to guest` lines, root ownership lost on smb.conf temp-file swap, stale `guest ok`/`force user` values not replaced, and `echo` used for UNC backslash path.
+**Result:** All 4 fixed.
+
+### Findings
+
+1. **`grep 'map to guest'` matched commented-out lines, skipping the `awk` insertion**
+   - The original `if ! grep -q 'map to guest'` check matched comment lines like `# map to guest = ...`, so the awk-insertion branch was silently skipped on a default smb.conf, leaving guest access broken
+   - Fix: `sudo grep -qiE '^[[:space:]]*map[[:space:]]+to[[:space:]]+guest[[:space:]]*='` — only matches active (uncommented) directives
+   - Pattern: when grepping smb.conf for a directive, always anchor with `^[[:space:]]*` to exclude comment lines
+
+2. **`sudo mv $tmp /etc/samba/smb.conf` preserved user ownership**
+   - `mktemp` creates files owned by the running user; `sudo mv` preserves that ownership, making the system config user-writable after the swap
+   - Fix: `sudo install -o root -g root -m 0644 "$tmp" /etc/samba/smb.conf && rm -f "$tmp"` — installs with explicit root ownership and mode
+   - Pattern: whenever replacing a root-owned system file from a temp file, use `sudo install -o root -g root -m 0644` instead of `sudo mv`
+
+3. **Presence-check for `guest ok` / `force user` skips normalization of stale values**
+   - `grep -q 'guest ok'` passes if the key exists even as `guest ok = no`; the old value is left unchanged
+   - Fix: delete all three keys (`valid users`, `guest ok`, `force user`) from the `[schedule-drop]` block first, then unconditionally append the correct values
+   - Pattern: when migrating share config, always delete-then-reinsert rather than checking for key presence
+
+4. **`echo` used for UNC path with backslashes (SC2028)**
+   - `echo "\\\\hostname\\share"` — `echo` expansion of backslash escape sequences is implementation-defined; ShellCheck flags SC2028
+   - Fix: `printf '\\\\%s\\share\n' "$(hostname -I | awk '{print $1}')"` — unambiguous escaping
+   - Pattern: use `printf` instead of `echo` whenever the output contains backslashes
+
+---
+
 ## 2026-06-22 — `public/pdf-viewer.html` (PR #259 — PDF viewer OOM fix)
 
 **Review:** CodeRabbit flagged one finding: claimed `pdf.destroy()` was removed from the PDF.js 3.x API and should be replaced with `pdf.cleanup()`.
