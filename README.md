@@ -80,12 +80,12 @@ Uploaded display PDFs are stored in `public/raw/` and their entries are managed 
 
 ## SMB file drop (Windows / Mac)
 
-The installer sets up a password-protected Samba share pointing at `incoming/`. From any machine on the same network:
+The installer sets up a guest-accessible Samba share pointing at `incoming/`. From any machine on the same network:
 
 - **Windows:** `\\<device-ip>\schedule-drop` — map as a network drive if desired
 - **Mac:** `smb://<device-ip>/schedule-drop` in Finder → Go → Connect to Server
 
-Log in with the device username and the SMB password set during `install.sh`. Drop a PDF and the schedule regenerates within seconds.
+No password is needed — connect as guest. Drop a PDF and the schedule regenerates within seconds.
 
 ## Work center filter
 
