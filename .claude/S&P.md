@@ -15,6 +15,19 @@
 
 ---
 
+## 2026-06-19 — `public/options.html` (PR #252 — drop zone keyboard accessibility)
+
+**Review:** CodeRabbit flagged that drop zones implemented as `<div>` elements with `pointer-events: none` on the hidden file input are unreachable via keyboard — no `tabindex`, no `role`, no `keydown` handler, no focus indicator.
+**Result:** Fixed.
+
+### Findings
+
+1. **Drop zone `<div>` not keyboard-operable**
+   - Pattern: whenever a `<div>` replaces a native interactive element as the primary control, it must have `role="button"`, `tabindex="0"`, a `keydown` handler for Enter/Space, and a `:focus-visible` style
+   - Fix: added `role="button" tabindex="0" aria-label="..."` to both `.drop-zone` divs, added `keydown` handler in `wireDropZone`, added `.drop-zone:focus-visible` CSS rule
+
+---
+
 ## 2026-06-19 — `public/pdf-viewer.html`, `update_schedule.py` (PR #258 — PDF viewer auto-scroll)
 
 **Review:** CodeRabbit flagged a double-decode bug and a URL matching bug in the PDF kiosk viewer.

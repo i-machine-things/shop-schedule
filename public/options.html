@@ -177,12 +177,13 @@
     }
 
     .drop-zone:hover, .drop-zone.drag-over { border-color: #4af; background: rgba(68,170,255,0.05); }
+    .drop-zone:focus-visible { outline: 2px solid #4af; outline-offset: 2px; }
 
     .drop-zone input[type="file"] {
       position: absolute;
       inset: 0;
       opacity: 0;
-      cursor: pointer;
+      pointer-events: none;
       width: 100%;
       height: 100%;
     }
@@ -354,7 +355,7 @@
       <div class="upload-col">
         <h3>Foreman&rsquo;s Report</h3>
         <p>PDF report from JobBoss.</p>
-        <div class="drop-zone" id="sched-zone">
+        <div class="drop-zone" id="sched-zone" role="button" tabindex="0" aria-label="Upload Foreman's Report PDF">
           <input type="file" id="sched-input" accept=".pdf">
           <div class="drop-label"><strong>&#8659;</strong>Drop or click to browse</div>
         </div>
@@ -364,7 +365,7 @@
       <div class="upload-col">
         <h3>Display PDFs</h3>
         <p>Added directly to the kiosk rotation.</p>
-        <div class="drop-zone" id="raw-zone">
+        <div class="drop-zone" id="raw-zone" role="button" tabindex="0" aria-label="Upload display PDFs">
           <input type="file" id="raw-input" accept=".pdf" multiple>
           <div class="drop-label"><strong>&#8659;</strong>Drop or click to browse</div>
         </div>
@@ -630,8 +631,16 @@
   function wireDropZone(zoneId, inputId, onFiles) {
     const zone  = document.getElementById(zoneId);
     const input = document.getElementById(inputId);
+    // pointer-events:none on the input lets drag and click events reach the zone directly.
+    // Click or keyboard-activate the zone → open file dialog; drop on zone → read from dataTransfer.
+    zone.addEventListener('click', () => input.click());
+    zone.addEventListener('keydown', e => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); input.click(); }
+    });
     zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('drag-over'); });
-    zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
+    zone.addEventListener('dragleave', e => {
+      if (!zone.contains(e.relatedTarget)) zone.classList.remove('drag-over');
+    });
     zone.addEventListener('drop', e => {
       e.preventDefault();
       zone.classList.remove('drag-over');
