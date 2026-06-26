@@ -41,7 +41,7 @@ def _fetch_existing_titles() -> set:
 def _ensure_label() -> None:
     """Create all labels used by this script idempotently."""
     labels = [
-        (LABEL, 'e4e669', 'Opened automatically by the weekly code audit'),
+        (LABEL, 'e4e669', 'Opened automatically by the automated code audit'),
         ('bug', 'd73a4a', 'Something is not working'),
         ('security', 'e11d48', 'Security vulnerability or concern'),
     ]
@@ -110,7 +110,7 @@ def _parse_flake8(path: str) -> list:
                 f'**Code:** `{code}`  \n'
                 f'**Message:** {msg}\n\n'
                 f'---\n'
-                f'*Opened automatically by the weekly code audit. '
+                f'*Opened automatically by the automated code audit. '
                 f'Close this issue once the finding is resolved or accepted.*'
             )
             findings.append((title, body, 'bug'))
@@ -147,7 +147,7 @@ def _parse_bandit(path: str) -> list:
             f'**Severity:** {severity} | **Confidence:** {confidence}  \n'
             f'**Message:** {msg}\n\n'
             f'---\n'
-            f'*Opened automatically by the weekly code audit. '
+            f'*Opened automatically by the automated code audit. '
             f'Close this issue once the finding is resolved or accepted.*'
         )
         findings.append((title, body, 'security'))

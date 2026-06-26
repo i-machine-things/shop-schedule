@@ -1,0 +1,41 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [master]
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Lint — flake8 (errors + undefined names) and bandit (medium/high severity)
+  # ---------------------------------------------------------------------------
+  lint:
+    name: Lint & Security
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install tools
+        run: pip install flake8 bandit
+
+      - name: flake8
+        run: |
+          flake8 \
+            --max-line-length=120 \
+            --select=E,F \
+            --exclude=.git,__pycache__,incoming \
+            .
+
+      - name: bandit
+        run: |
+          bandit -r . \
+            --exclude ./.git,./__pycache__,./incoming \
+            --severity-level medium \
+            -q

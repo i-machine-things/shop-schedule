@@ -1,15 +1,19 @@
 name: Automated Code Audit
 
 on:
-  schedule:
-    - cron: '0 6 * * 1'   # Every Monday at 06:00 UTC
+  pull_request:
+    branches: [master]
   workflow_dispatch:
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
 
 jobs:
+  # ---------------------------------------------------------------------------
+  # Audit — files GitHub issues for new flake8 / bandit findings
+  # ---------------------------------------------------------------------------
   audit:
+    name: Code Audit (file issues)
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -46,3 +50,4 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: python tools/post_audit_issues.py
+
