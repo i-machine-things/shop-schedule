@@ -102,13 +102,6 @@ if [ -z "$_v" ] || [ "$_v" = "Your Company Name" ]; then
     [ -n "$_v" ] && _set_env PDF_COMPANY_NAME "$_v" "$INSTALL_DIR/.env"
 fi
 
-_v=$(_get_env SMB_PASS "$INSTALL_DIR/.env")
-if [ -z "$_v" ]; then
-    echo "  (Password for the SMB share — used to drop PDFs from Windows/Mac)"
-    _v=$(_read_masked "  SMB password for $USER: ") || true
-    [ -n "$_v" ] && _set_env SMB_PASS "$_v" "$INSTALL_DIR/.env"
-fi
-
 # Placeholder pages (schedule + kiosk) shown before first PDF arrives
 mkdir -p "$INSTALL_DIR/public"
 _waiting_html='<!DOCTYPE html>
@@ -151,10 +144,19 @@ sudo systemctl daemon-reload
 sudo systemctl enable foreman-server
 sudo systemctl restart foreman-server
 
-# Disable guest access in Samba
-if ! grep -q 'map to guest = never' /etc/samba/smb.conf 2>/dev/null; then
+# Allow guest connections for the drop share; patch any legacy 'map to guest = never'
+sudo sed -i 's/^\s*map to guest\s*=.*/   map to guest = bad user/' /etc/samba/smb.conf
+if ! grep -q 'map to guest' /etc/samba/smb.conf 2>/dev/null; then
     tmp=$(mktemp)
-    awk '/^\[global\]/{print; print "   map to guest = never"; print "   usershare allow guests = no"; next}1' \
+    awk '/^\[global\]/{print; print "   map to guest = bad user"; next}1' \
+        /etc/samba/smb.conf > "$tmp"
+    sudo mv "$tmp" /etc/samba/smb.conf
+fi
+
+# Remove [homes] share so the user home directory is not exposed via SMB
+if grep -q '^\[homes\]' /etc/samba/smb.conf 2>/dev/null; then
+    tmp=$(mktemp)
+    awk '/^\[homes\]/{skip=1;next} /^\[/{skip=0} !skip{print}' \
         /etc/samba/smb.conf > "$tmp"
     sudo mv "$tmp" /etc/samba/smb.conf
 fi
@@ -174,7 +176,8 @@ if ! grep -q '\[schedule-drop\]' /etc/samba/smb.conf 2>/dev/null; then
 [schedule-drop]
    comment = Shop Schedule PDF Drop
    path = $INSTALL_DIR/incoming
-   valid users = $USER
+   guest ok = yes
+   force user = $USER
    writable = yes
    browseable = yes
    create mask = 0664
@@ -183,18 +186,17 @@ if ! grep -q '\[schedule-drop\]' /etc/samba/smb.conf 2>/dev/null; then
 EOF
 fi
 
-# Patch existing installs: add veto files if not already set
+# Patch existing installs: add veto files and migrate to guest access
 if grep -q '\[schedule-drop\]' /etc/samba/smb.conf 2>/dev/null; then
     if ! grep -A10 '\[schedule-drop\]' /etc/samba/smb.conf | grep -q 'veto files'; then
         sudo sed -i '/\[schedule-drop\]/a\   veto files = \/processed\/' /etc/samba/smb.conf
     fi
-fi
-_smb_pass=$(_get_env SMB_PASS "$INSTALL_DIR/.env")
-if [ -n "$_smb_pass" ]; then
-    if ! sudo pdbedit -L -u "$USER" &>/dev/null; then
-        printf '%s\n%s\n' "$_smb_pass" "$_smb_pass" | sudo smbpasswd -a -s "$USER"
-    else
-        printf '%s\n%s\n' "$_smb_pass" "$_smb_pass" | sudo smbpasswd -s "$USER"
+    sudo sed -i '/^\[schedule-drop\]/,/^\[/{/valid users/d}' /etc/samba/smb.conf
+    if ! grep -A10 '\[schedule-drop\]' /etc/samba/smb.conf | grep -q 'guest ok'; then
+        sudo sed -i '/\[schedule-drop\]/a\   guest ok = yes' /etc/samba/smb.conf
+    fi
+    if ! grep -A10 '\[schedule-drop\]' /etc/samba/smb.conf | grep -q 'force user'; then
+        sudo sed -i "/\[schedule-drop\]/a\\   force user = $USER" /etc/samba/smb.conf
     fi
 fi
 sudo systemctl enable smbd nmbd
@@ -216,4 +218,4 @@ echo "2. Drop a PDF into $INSTALL_DIR/incoming/ to test, or email it directly"
 echo "3. View at:    http://$(hostname -I | awk '{print $1}'):8080/"
 echo "4. Upload at:  http://$(hostname -I | awk '{print $1}'):8080/upload.html"
 echo "5. Edit $INSTALL_DIR/public/pages.json to manually add URLs to the kiosk rotation"
-echo "6. Drop PDFs via SMB: \\\\$(hostname -I | awk '{print $1}')\\schedule-drop  (user: $USER)"
+echo "6. Drop PDFs via SMB: \\\\$(hostname -I | awk '{print $1}')\\schedule-drop  (no password needed)"
