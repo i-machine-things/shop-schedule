@@ -116,22 +116,26 @@ SECTIONS_P2 = [
 
 
 def _job_line(j):
+    """Format the first PDF line for a job tuple: job/rev, qty, priority, dates, WC."""
     job, rev, qty, unit, pri, sch_start, wc, ship_pri, ship_qty, promised = j[:10]
     rev_part = f' {rev}' if rev else ''
     return f'{job}{rev_part} {qty}/{unit} {pri} {sch_start} {wc} {ship_pri} {ship_qty} {promised}'
 
 
 def _cust_line(j):
+    """Format the second PDF line: customer, operation, schedule end, ops, hours, qty run."""
     customer, oper, sch_end, num_ops, rem_hrs, qty_run = j[10:16]
     return f'{customer} {oper} {sch_end} {num_ops} {rem_hrs} {qty_run}'
 
 
 def _part_line(j):
+    """Format the third PDF line: part number and description."""
     part, description = j[16], j[17]
     return f'{part} {description}'
 
 
 def write_sections(c, sections, start_y, x=40):
+    """Draw department/job rows onto canvas c starting at start_y; returns final y position."""
     y = start_y
 
     def line(text=''):

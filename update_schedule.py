@@ -32,6 +32,7 @@ DEPT_COLORS_PATH = os.path.join(BASE_DIR, 'public', 'dept_colors.json')
 
 
 def _get_local_ip():
+    """Return the machine's outbound IP address, or None if unreachable."""
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         s.connect(('8.8.8.8', 80))
@@ -103,6 +104,7 @@ _SKIP_RE = re.compile(
 
 
 def parse_pdf(path):
+    """Parse a Foreman's Report PDF and return {report_date, thru_date, sections}."""
     report_date = thru_date = ''
     all_lines = []
 
@@ -273,6 +275,7 @@ def _default_color(dept_lower):
 
 
 def generate_html(data, out_path, *, kiosk=False, gen_ts=None):
+    """Render parsed schedule data to an HTML file; kiosk=True emits the auto-scroll variant."""
     report_date = data['report_date']
     thru_date = data['thru_date']
     sections = data['sections']
@@ -769,6 +772,7 @@ setInterval(async () => {{
 # ── Main ────────────────────────────────────────────────────────────────────────
 
 def main():
+    """Fetch email, parse PDF, and regenerate schedule.html and kiosk.html."""
     fetched = fetch_pdf() if GMAIL_USER else False
 
     if os.path.exists(PDF_PATH):

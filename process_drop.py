@@ -35,6 +35,7 @@ def _cleanup_junk():
 
 
 def main(regen=True):
+    """Move the newest PDF from incoming/ to PDF_PATH and optionally regenerate the schedule."""
     if not os.path.isdir(DROP_DIR):
         print("No incoming/ directory found.", file=sys.stderr)
         sys.exit(1)
@@ -60,7 +61,7 @@ def main(regen=True):
         dest = os.path.join(PROCESSED, fname)
         if os.path.exists(dest):
             base, ext = os.path.splitext(fname)
-            ts = datetime.now().strftime('%Y%m%d_%H%M%S')
+            ts = datetime.now().strftime('%Y%m%d_%H%M%S_%f')
             dest = os.path.join(PROCESSED, f"{base}_{ts}{ext}")
         shutil.move(pdf, dest)
 
