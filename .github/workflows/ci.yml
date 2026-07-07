@@ -14,9 +14,14 @@ jobs:
   lint:
     name: Lint & Security
     runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - uses: actions/setup-python@v5
         with:
@@ -26,12 +31,7 @@ jobs:
         run: pip install flake8 bandit
 
       - name: flake8
-        run: |
-          flake8 \
-            --max-line-length=120 \
-            --select=E,F \
-            --exclude=.git,__pycache__,incoming \
-            .
+        run: flake8 .
 
       - name: bandit
         run: |
