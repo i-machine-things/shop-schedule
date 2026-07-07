@@ -1,5 +1,37 @@
 # Standards & Practices — CodeRabbit Review Log
 
+## 2026-07-07 — `.github/workflows/ci.yml`, `code-audit.yml` (PR #261 — audit on PR + blocking CI)
+
+**Review:** CodeRabbit flagged 1 actionable + 4 nitpicks on the new `ci.yml` and `code-audit.yml` trigger change.
+**Result:** 4 of 5 applied. Fork token concern acknowledged as non-issue (finding 5 not applied).
+
+### Findings
+
+1. **Duplicated flake8 flags across `ci.yml` and `code-audit.yml`**
+   - `--max-line-length`, `--select`, `--exclude` were hardcoded identically in both workflows — silent drift risk if one is updated without the other
+   - Fix: extracted to `.flake8` config file; both workflows now run `flake8 .` with no flags
+   - Pattern: put shared linter config in a project-level config file, not in workflow YAML
+
+2. **`ci.yml` lint job missing `permissions:` block**
+   - Inherited repo-default `GITHUB_TOKEN` permissions; job only needs read access
+   - Fix: added `permissions: contents: read` to the lint job
+   - Pattern: every job that doesn't write back should declare `permissions: contents: read` explicitly
+
+3. **`persist-credentials: false` missing on `actions/checkout@v4`**
+   - Jobs that don't push back should not retain the token in the git config
+   - Fix: added `persist-credentials: false` to checkout in both `ci.yml` and `code-audit.yml`
+
+4. **No `timeout-minutes` on the blocking lint job**
+   - A hung `flake8`/`bandit` invocation would occupy a runner indefinitely
+   - Fix: `timeout-minutes: 10` added to the lint job in `ci.yml`
+
+5. **Fork `GITHUB_TOKEN` restriction on `code-audit.yml` — acknowledged non-issue**
+   - On `pull_request` events from forks, `issues: write` permission is restricted by GitHub
+   - Not applied: this repo is a private shop-floor project with no external contributors; no fork PRs will arrive
+   - Pattern: if the repo ever opens to external contributors, gate `gh issue create` on `${{ github.event.pull_request.head.repo.full_name == github.repository }}`
+
+---
+
 ## 2026-07-02 — `process_drop.py`, `update_schedule.py`, `make_test_pdf.py` (PR #262 — audit lint fixes)
 
 **Review:** CodeRabbit flagged 1 actionable finding: archive filename collision in `process_drop.py` when two same-named PDFs arrive within the same second. Pre-merge warnings: docstring coverage 33.33% (threshold 80%); out-of-scope warning (false positive — all changed files are covered by audit findings).
