@@ -32,6 +32,26 @@
 
 ---
 
+## 2026-07-02 — `process_drop.py`, `update_schedule.py`, `make_test_pdf.py` (PR #262 — audit lint fixes)
+
+**Review:** CodeRabbit flagged 1 actionable finding: archive filename collision in `process_drop.py` when two same-named PDFs arrive within the same second. Pre-merge warnings: docstring coverage 33.33% (threshold 80%); out-of-scope warning (false positive — all changed files are covered by audit findings).
+**Result:** Collision fix applied; docstrings added to all undocumented functions.
+
+### Findings
+
+1. **Archive dest path collides when two same-named PDFs land within one second**
+   - `datetime.now().strftime('%Y%m%d_%H%M%S')` produces identical suffixes for files processed in the same second, causing `shutil.move` to silently overwrite the first archived file
+   - Fix: changed format string to `'%Y%m%d_%H%M%S_%f'` — microsecond precision makes same-second collisions impossible in practice
+   - Pattern: whenever generating a timestamp-based filename for an archive, always include `%f` (microseconds) to prevent sub-second collisions
+
+2. **Docstring coverage below 80% threshold (pre-merge check)**
+   - `update_schedule.py`: `_get_local_ip`, `parse_pdf`, `generate_html`, `main` were undocumented
+   - `make_test_pdf.py`: `_job_line`, `_cust_line`, `_part_line`, `write_sections` were undocumented
+   - Fix: added concise one-line docstrings to all undocumented functions
+   - Pattern: all public and private functions in files touched by a PR must have docstrings to satisfy the 80% coverage pre-merge check
+
+---
+
 ## 2026-06-26 — `install.sh` (PR #260 — guest SMB installer)
 
 **Review:** CodeRabbit flagged 4 findings: grep matching commented `map to guest` lines, root ownership lost on smb.conf temp-file swap, stale `guest ok`/`force user` values not replaced, and `echo` used for UNC backslash path.
