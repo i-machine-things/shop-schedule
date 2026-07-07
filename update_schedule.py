@@ -263,7 +263,7 @@ def _default_color(dept_lower):
     for keyword, (bg, accent) in _DEPT_DEFAULTS.items():
         if keyword in dept_lower:
             return bg, accent
-    h = int(hashlib.sha1(dept_lower.encode()).hexdigest()[:6], 16)
+    h = int(hashlib.sha1(dept_lower.encode(), usedforsecurity=False).hexdigest()[:6], 16)
     r, g, b = (h >> 16) & 0xFF, (h >> 8) & 0xFF, h & 0xFF
     bg = '#{:02x}{:02x}{:02x}'.format(max(r // 8, 5), max(g // 8, 5), max(b // 8, 5))
     accent = '#{:02x}{:02x}{:02x}'.format(
