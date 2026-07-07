@@ -3,7 +3,7 @@
 ## 2026-07-07 — `.github/workflows/ci.yml`, `code-audit.yml` (PR #261 — audit on PR + blocking CI)
 
 **Review:** CodeRabbit flagged 1 actionable + 4 nitpicks on the new `ci.yml` and `code-audit.yml` trigger change.
-**Result:** All 5 applied. Fork token concern acknowledged as non-issue for this repo.
+**Result:** 4 of 5 applied. Fork token concern acknowledged as non-issue (finding 5 not applied).
 
 ### Findings
 

@@ -28,7 +28,7 @@ jobs:
           python-version: '3.12'
 
       - name: Install tools
-        run: pip install flake8 bandit
+        run: pip install flake8==7.3.0 bandit==1.9.4
 
       - name: flake8
         run: flake8 .
