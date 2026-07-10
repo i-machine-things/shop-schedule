@@ -650,10 +650,12 @@ function applyPendingUpdate() {{
   pos = 0;
 }}
 
+const _fpsLimit = parseInt(new URLSearchParams(location.search).get('fps'), 10);
+const _frameMs  = (_fpsLimit > 0 && _fpsLimit < 60) ? 1000 / _fpsLimit : 0;
 let _stepTs = 0;
 function step(ts){{
-  if(ts - _stepTs < 50){{ requestAnimationFrame(step); return; }}
-  const dt = Math.min(ts - _stepTs, 200);
+  if(_frameMs && ts - _stepTs < _frameMs){{ requestAnimationFrame(step); return; }}
+  const dt = _frameMs ? Math.min(ts - _stepTs, 200) : 16.67;
   _stepTs = ts;
   if(!paused){{
     if(wrap.scrollHeight - wrap.clientHeight > 0){{

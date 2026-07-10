@@ -58,7 +58,7 @@ exec /usr/bin/chromium \\
   --disable-gpu-shader-disk-cache \\
   --disable-dev-shm-usage \\
   --disable-gpu-rasterization \\
-  "$SERVER_URL/kiosk.html"
+  "$SERVER_URL/kiosk.html?fps=20"
 XINITRC
 chmod +x "$USER_HOME/.xinitrc"
 
