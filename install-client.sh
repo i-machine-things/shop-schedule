@@ -53,8 +53,8 @@ exec /usr/bin/chromium \\
   --no-first-run \\
   --disable-session-crashed-bubble \\
   --disable-restore-session-state \\
-  --disk-cache-size=0 \\
-  --media-cache-size=0 \\
+  --disk-cache-size=1 \\
+  --media-cache-size=1 \\
   --disable-gpu-shader-disk-cache \\
   --disable-dev-shm-usage \\
   --disable-gpu-rasterization \\
