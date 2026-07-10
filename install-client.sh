@@ -52,6 +52,9 @@ exec /usr/bin/chromium \\
   --no-first-run \\
   --disable-session-crashed-bubble \\
   --disable-restore-session-state \\
+  --disk-cache-size=0 \\
+  --media-cache-size=0 \\
+  --disable-gpu-shader-disk-cache \\
   "$SERVER_URL/kiosk.html"
 XINITRC
 chmod +x "$USER_HOME/.xinitrc"
