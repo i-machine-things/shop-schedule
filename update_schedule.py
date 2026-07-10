@@ -650,10 +650,14 @@ function applyPendingUpdate() {{
   pos = 0;
 }}
 
-function step(){{
+let _stepTs = 0;
+function step(ts){{
+  if(ts - _stepTs < 50){{ requestAnimationFrame(step); return; }}
+  const dt = Math.min(ts - _stepTs, 200);
+  _stepTs = ts;
   if(!paused){{
     if(wrap.scrollHeight - wrap.clientHeight > 0){{
-      pos += SPEED;
+      pos += SPEED * dt / 16.67;
       if(singleHeight > 0 && pos >= singleHeight){{
         pos -= singleHeight;
         wrap.scrollTop = pos;
