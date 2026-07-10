@@ -1,5 +1,19 @@
 # Standards & Practices — CodeRabbit Review Log
 
+## 2026-07-10 — `install-client.sh` (PR #264 — client kiosk OOM fixes)
+
+**Review:** CodeRabbit flagged that `--disk-cache-size=0` and `--media-cache-size=0` are ineffective — Chromium treats `0` as "use default size", not zero bytes.
+**Result:** Fixed — changed to `=1` (1 byte), which forces a cache too small to store anything.
+
+### Findings
+
+1. **`--disk-cache-size=0` does not disable the cache**
+   - Chromium interprets `0` as the default cache size, not zero bytes; the cache is left enabled
+   - Fix: use `--disk-cache-size=1` and `--media-cache-size=1` — 1 byte is too small for any cache entry, effectively disabling it
+   - Pattern: never use `=0` for Chromium cache size flags; use `=1` to force an empty cache
+
+---
+
 ## 2026-07-07 — `.github/workflows/ci.yml`, `code-audit.yml` (PR #261 — audit on PR + blocking CI)
 
 **Review:** CodeRabbit flagged 1 actionable + 4 nitpicks on the new `ci.yml` and `code-audit.yml` trigger change.

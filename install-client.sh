@@ -45,6 +45,7 @@ sleep 0.5
 until curl -sf "$SERVER_URL" > /dev/null 2>&1; do
     sleep 5
 done
+pkill -9 chromium 2>/dev/null; sleep 1
 exec /usr/bin/chromium \\
   --kiosk \\
   --noerrdialogs \\
@@ -52,7 +53,12 @@ exec /usr/bin/chromium \\
   --no-first-run \\
   --disable-session-crashed-bubble \\
   --disable-restore-session-state \\
-  "$SERVER_URL/kiosk.html"
+  --disk-cache-size=1 \\
+  --media-cache-size=1 \\
+  --disable-gpu-shader-disk-cache \\
+  --disable-dev-shm-usage \\
+  --disable-gpu-rasterization \\
+  "$SERVER_URL/kiosk.html?fps=20"
 XINITRC
 chmod +x "$USER_HOME/.xinitrc"
 
