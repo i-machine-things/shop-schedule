@@ -141,20 +141,25 @@ Do not rehearse by tagging a throwaway version: a pushed tag is public and hard 
 After every merge to `master`, count commits since the last `v*` tag:
 
 ```bash
-git log $(git describe --tags --abbrev=0)..master --oneline
+last_tag="$(git describe --tags --match 'v*' --abbrev=0 2>/dev/null || git rev-list --max-parents=0 master)"
+git log "$last_tag"..master --format='%s'
 ```
 
-Count by type:
+Count by type (`--format='%s'` prints subjects only; `--oneline` would put the hash first and nothing
+would match):
 - Lines starting with `feat:` → feature count
 - Lines starting with `fix:` → fix count
 
 **Thresholds:**
-- **5 or more `feat:` commits** → bump MINOR, reset PATCH to 0, tag and push
-- **5 or more `fix:` commits** → bump PATCH, tag and push
+- **5 or more `feat:` commits** → recommend a MINOR bump
+- **5 or more `fix:` commits** → recommend a PATCH bump
 
-If both thresholds are met simultaneously, bump MINOR (takes precedence).
+If both thresholds are met simultaneously, recommend MINOR (takes precedence). This is a
+*recommendation*, not an action — an explicit human go/no-go is required before any tag is
+created, and this threshold does not bypass that. Do not tag or push automatically here.
 
-Check this threshold after every merge to master. Do not wait for the user to ask.
+Check this threshold after every merge to master and report the recommendation. Do not wait for the
+user to ask before reporting it — but do wait for their sign-off before acting on it.
 
 ## Rule 5: Pull Request Reviews
 
