@@ -130,10 +130,11 @@ After every merge to `master`, count commits since the last `v*` tag:
 
 ```bash
 last_tag="$(git describe --tags --match 'v*' --abbrev=0 2>/dev/null || git rev-list --max-parents=0 master)"
-git log "$last_tag"..master --oneline
+git log "$last_tag"..master --format='%s'
 ```
 
-Count by type:
+Count by type (`--format='%s'` prints subjects only; `--oneline` would put the hash first and nothing
+would match):
 - Lines starting with `feat:` → feature count
 - Lines starting with `fix:` → fix count
 
@@ -142,7 +143,7 @@ Count by type:
 - **5 or more `fix:` commits** → recommend a PATCH bump
 
 If both thresholds are met simultaneously, recommend MINOR (takes precedence). This is a
-*recommendation*, not an action — Rule 6 requires an explicit human go/no-go before any tag is
+*recommendation*, not an action — an explicit human go/no-go is required before any tag is
 created, and this threshold does not bypass that. Do not tag or push automatically here.
 
 Check this threshold after every merge to master and report the recommendation. Do not wait for the
