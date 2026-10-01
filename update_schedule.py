@@ -790,6 +790,9 @@ def main():
             # stale PDF parse that could silently disagree with the DB going forward.
             print("DB fetch failed; keeping last displayed schedule.", file=sys.stderr)
             return
+        total_jobs = sum(len(s['jobs']) for s in data['sections'])
+        print(f"[{datetime.now():%Y-%m-%d %H:%M}] DB fetch OK: "
+              f"{len(data['sections'])} sections, {total_jobs} job rows. Display refreshed.")
     else:
         fetched = fetch_pdf() if GMAIL_USER else False
         if not os.path.exists(PDF_PATH):
