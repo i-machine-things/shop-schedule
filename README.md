@@ -35,15 +35,17 @@ GRANT SELECT ON dbo.Work_Center TO shop_schedule_ro;
 Then set in `.env`:
 
 ```dotenv
-JOBBOSS_DB_HOST=<sql-server-hostname-or-ip>
-JOBBOSS_DB_PORT=1433
+JOBBOSS_DB_HOST=SMI-APP02\JBSQL
+JOBBOSS_DB_PORT=
 JOBBOSS_DB_NAME=<your_jobboss_database>
 JOBBOSS_DB_USER=shop_schedule_ro
 JOBBOSS_DB_PASS=<the-password-from-above>
 JOBBOSS_DAYS_AHEAD=14
 ```
 
-The device needs network access to the SQL Server on port 1433 (same LAN as the shop floor is normally sufficient). Uses [`python-tds`](https://pypi.org/project/python-tds/) — pure Python, no native ODBC driver to install, which matters on ARM boards where Microsoft's ODBC driver support is inconsistent.
+Use the exact `Server` value from your SQL Server ODBC DSN (Windows: ODBC Data Sources → System DSN → your DSN → Configure) for `JOBBOSS_DB_HOST` — for a named instance like `SMI-APP02\JBSQL`, leave `JOBBOSS_DB_PORT` blank and it resolves the real port automatically via the SQL Browser service, the same way the ODBC driver does it for Excel/Power Query. Only set `JOBBOSS_DB_PORT` if that resolution isn't available (e.g. the browser service/UDP 1434 is firewalled) and a DBA has given you a static port instead.
+
+The device needs network access to the SQL Server (same LAN as the shop floor is normally sufficient — both the resolved TCP port and UDP 1434 if using instance-name resolution). Uses [`python-tds`](https://pypi.org/project/python-tds/) — pure Python, no native ODBC driver to install, which matters on ARM boards where Microsoft's ODBC driver support is inconsistent.
 
 > **Known gap:** `Promised` and `Ship Qty` aren't sourced from the DB yet (not yet located in the schema) and display blank in this mode — overdue-date highlighting is inactive until that's resolved. Everything else (job, customer, part, work center, schedule dates, remaining hours) matches the real Foreman's Report, verified against production data.
 

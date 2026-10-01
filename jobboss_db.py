@@ -18,7 +18,13 @@ from datetime import datetime, timedelta
 import pytds
 
 DB_HOST = os.environ.get('JOBBOSS_DB_HOST', '').strip()
-DB_PORT = int(os.environ.get('JOBBOSS_DB_PORT', '').strip() or 1433)
+# Blank unless explicitly set -- a named instance (e.g. "SMI-APP02\JBSQL" in
+# JOBBOSS_DB_HOST) is resolved to its real port via the SQL Browser service
+# at connect time. Only set JOBBOSS_DB_PORT if that resolution isn't an
+# option (e.g. the browser service/UDP 1434 is firewalled) and a DBA has
+# given you the instance's static port instead.
+_DB_PORT_RAW = os.environ.get('JOBBOSS_DB_PORT', '').strip()
+DB_PORT = int(_DB_PORT_RAW) if _DB_PORT_RAW else None
 DB_NAME = os.environ.get('JOBBOSS_DB_NAME', '').strip()
 DB_USER = os.environ.get('JOBBOSS_DB_USER', '').strip()
 DB_PASS = os.environ.get('JOBBOSS_DB_PASS', '')
@@ -77,10 +83,15 @@ def _fmt_date(dt):
 def fetch_from_db():
     """Query JobBoss directly; return {report_date, thru_date, sections}, or None on failure."""
     cutoff = datetime.now() + timedelta(days=DAYS_AHEAD)
+    # Only pass port= when explicitly configured -- otherwise let pytds resolve
+    # a named instance (e.g. "SMI-APP02\JBSQL") via the SQL Browser service,
+    # same as the ODBC driver does for Excel/Power Query against this server.
+    connect_kwargs = {'database': DB_NAME, 'user': DB_USER, 'password': DB_PASS,
+                       'timeout': 15, 'as_dict': True}
+    if DB_PORT is not None:
+        connect_kwargs['port'] = DB_PORT
     try:
-        with pytds.connect(DB_HOST, port=DB_PORT, database=DB_NAME,
-                            user=DB_USER, password=DB_PASS,
-                            timeout=15, as_dict=True) as conn:
+        with pytds.connect(DB_HOST, **connect_kwargs) as conn:
             with conn.cursor() as cur:
                 cur.execute(_QUERY, (cutoff,))
                 rows = cur.fetchall()
