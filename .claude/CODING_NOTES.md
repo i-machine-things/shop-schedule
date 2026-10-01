@@ -112,6 +112,8 @@ This note was created based on issues encountered with PyInstaller executables r
 
 **Quote any `.env` value containing a backslash.** `run_update.sh` does `source .env`; an unquoted backslash (e.g. a SQL Server named-instance host like `SRV\INSTANCE`) gets silently stripped by bash during sourcing. Wrap in single quotes: `JOBBOSS_DB_HOST='SRV\INSTANCE'`.
 
+**Pin `python-tds` to `1.13.0`.** 1.14.0+ imports `typing.Protocol`/`TypedDict` directly, which don't exist in Python 3.7 -- this board's Debian Buster stock `python3`. 1.13.0's `connect()` API is otherwise identical (verified against the real DB).
+
 **Don't `systemctl restart getty@tty1` from inside an installer running on that TTY.** It kills the current session mid-install; `daemon-reload` alone is enough — autologin applies at next boot.
 
 **Guard env vars with `.strip() or default`, not just `.get(key, default)`.** An empty or whitespace-only value (e.g. `FILENAME=` ) is non-empty to `.get()` and slips through, producing a broken path.

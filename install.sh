@@ -20,7 +20,9 @@ sudo apt-get install -y python3-venv samba
 sudo apt-get install -y wsdd 2>/dev/null || sudo apt-get install -y wsdd2 2>/dev/null || true
 python3 -m venv "$INSTALL_DIR/venv"
 "$INSTALL_DIR/venv/bin/pip" install --quiet --upgrade pip
-"$INSTALL_DIR/venv/bin/pip" install --quiet pdfplumber reportlab python-tds
+# python-tds pinned to 1.13.0 -- 1.14.0+ imports typing.Protocol/TypedDict,
+# which don't exist in Python 3.7 (this board's Debian Buster stock python3).
+"$INSTALL_DIR/venv/bin/pip" install --quiet pdfplumber reportlab "python-tds==1.13.0"
 chmod +x "$INSTALL_DIR/run_update.sh"
 
 # Create .env from example if not present
