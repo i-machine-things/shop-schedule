@@ -1,8 +1,8 @@
 # Shop Schedule
 
-Single Board Computer kiosk display for a machine shop floor. Polls a Gmail inbox every 15 minutes for the Foreman's Report PDF, parses it, and serves an auto-scrolling HTML schedule on a wall-mounted screen.
+Single Board Computer kiosk display for a machine shop floor. Every 15 minutes (via cron), pulls the current Foreman's Report data and serves an auto-scrolling HTML schedule on a wall-mounted screen.
 
-> Works off the **Foreman's Report** exported from JobBoss. The report is emailed as a PDF attachment and picked up automatically — or you can drop a PDF directly into the `incoming/` folder.
+> Two ways to get data in: **query JobBoss directly** over the network (preferred — see [JobBoss DB source](#jobboss-db-source)), or poll a Gmail inbox for the Foreman's Report PDF export (fallback — the report is emailed as a PDF attachment and picked up automatically, or you can drop a PDF directly into the `incoming/` folder). If `JOBBOSS_DB_HOST` is set in `.env`, the DB path is used and the Gmail/PDF settings are ignored.
 
 ## Screenshots
 
@@ -14,16 +14,45 @@ Single Board Computer kiosk display for a machine shop floor. Polls a Gmail inbo
 
 1. `run_update.sh` is called by cron every 15 minutes
 2. It loads credentials from `.env` and runs `update_schedule.py`
-3. The script checks Gmail for an unread email with a PDF attachment
-4. If found, the PDF is saved as `last_report.pdf` and parsed
-5. `schedule.html` is regenerated and picked up live by Chromium in kiosk mode
+3. If `JOBBOSS_DB_HOST` is set, it queries JobBoss directly for open operations scheduled within `JOBBOSS_DAYS_AHEAD` days; otherwise it checks Gmail for an unread email with a PDF attachment and parses it
+4. `schedule.html` is regenerated and picked up live by Chromium in kiosk mode
+
+## JobBoss DB source
+
+Queries `Job`, `Job_Operation`, and `Work_Center` directly — no export/email step needed. Only the columns needed for display are selected (no pricing, cost, or margin fields).
+
+**Use a dedicated read-only login**, not an existing admin/user account — if this device or its `.env` is ever compromised, a read-only login scoped to three tables is a much smaller exposure than whatever broader access an existing login has. Run as a JobBoss DB admin:
+
+```sql
+CREATE LOGIN shop_schedule_ro WITH PASSWORD = 'choose-a-strong-password';
+USE <your_jobboss_database>;
+CREATE USER shop_schedule_ro FOR LOGIN shop_schedule_ro;
+GRANT SELECT ON dbo.Job TO shop_schedule_ro;
+GRANT SELECT ON dbo.Job_Operation TO shop_schedule_ro;
+GRANT SELECT ON dbo.Work_Center TO shop_schedule_ro;
+```
+
+Then set in `.env`:
+
+```dotenv
+JOBBOSS_DB_HOST=<sql-server-hostname-or-ip>
+JOBBOSS_DB_PORT=1433
+JOBBOSS_DB_NAME=<your_jobboss_database>
+JOBBOSS_DB_USER=shop_schedule_ro
+JOBBOSS_DB_PASS=<the-password-from-above>
+JOBBOSS_DAYS_AHEAD=14
+```
+
+The device needs network access to the SQL Server on port 1433 (same LAN as the shop floor is normally sufficient). Uses [`python-tds`](https://pypi.org/project/python-tds/) — pure Python, no native ODBC driver to install, which matters on ARM boards where Microsoft's ODBC driver support is inconsistent.
+
+> **Known gap:** `Promised` and `Ship Qty` aren't sourced from the DB yet (not yet located in the schema) and display blank in this mode — overdue-date highlighting is inactive until that's resolved. Everything else (job, customer, part, work center, schedule dates, remaining hours) matches the real Foreman's Report, verified against production data.
 
 ## Requirements
 
 - Single Board Computer (tested on BananaPi M4 zero) running Armbian v26.2.1
-- Python 3 with `pdfplumber` (`pip3 install pdfplumber`)
+- Python 3 with `pdfplumber` and `python-tds` (`pip3 install pdfplumber python-tds`)
 - Chromium browser
-- A Gmail account with IMAP enabled and an [App Password](https://myaccount.google.com/apppasswords)
+- Either: network access to the JobBoss SQL Server (see above), or a Gmail account with IMAP enabled and an [App Password](https://myaccount.google.com/apppasswords) for the PDF fallback
 
 ## Setup
 
@@ -136,7 +165,8 @@ python3 process_drop.py
 
 | File | Purpose |
 |------|---------|
-| `update_schedule.py` | Email fetch, PDF parse, HTML generation |
+| `update_schedule.py` | Picks DB vs email/PDF source, HTML generation |
+| `jobboss_db.py` | JobBoss DB source — connects, queries, shapes data for `generate_html()` |
 | `process_drop.py` | Drop-dir handler — picks up PDFs from `incoming/` and regenerates the schedule |
 | `server.py` | HTTP server — serves `public/` and handles file-upload API (`/api/upload/*`, `/api/raw/*`) |
 | `run_update.sh` | Cron wrapper — loads `.env` and calls the script |

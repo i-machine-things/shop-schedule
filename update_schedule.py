@@ -17,6 +17,8 @@ import sys
 import pdfplumber
 from datetime import datetime
 
+import jobboss_db
+
 # ── Config (loaded from .env by run_update.sh) ─────────────────────────────────
 GMAIL_USER = os.environ.get('GMAIL_USER', '')
 GMAIL_PASS = os.environ.get('GMAIL_PASS', '')   # Gmail App Password
@@ -778,18 +780,28 @@ setInterval(async () => {{
 # ── Main ────────────────────────────────────────────────────────────────────────
 
 def main():
-    """Fetch email, parse PDF, and regenerate schedule.html and kiosk.html."""
-    fetched = fetch_pdf() if GMAIL_USER else False
-
-    if os.path.exists(PDF_PATH):
+    """Regenerate schedule.html/kiosk.html from the JobBoss DB if configured,
+    otherwise fall back to the Gmail/PDF pipeline."""
+    if jobboss_db.is_configured():
+        data = jobboss_db.fetch_from_db()
+        if data is None:
+            # Leave the existing schedule.html in place rather than guessing --
+            # a transient DB outage shouldn't blank the kiosk or fall back to a
+            # stale PDF parse that could silently disagree with the DB going forward.
+            print("DB fetch failed; keeping last displayed schedule.", file=sys.stderr)
+            return
+    else:
+        fetched = fetch_pdf() if GMAIL_USER else False
+        if not os.path.exists(PDF_PATH):
+            print("No PDF yet. Send the Shop Schedule PDF to the Gmail inbox.", file=sys.stderr)
+            return
         data = parse_pdf(PDF_PATH)
-        gen_ts = int(datetime.now().timestamp())
-        generate_html(data, HTML_PATH, gen_ts=gen_ts)
-        generate_html(data, KIOSK_PATH, kiosk=True, gen_ts=gen_ts)
         if not fetched:
             print("No new email. Display refreshed.")
-    else:
-        print("No PDF yet. Send the Shop Schedule PDF to the Gmail inbox.", file=sys.stderr)
+
+    gen_ts = int(datetime.now().timestamp())
+    generate_html(data, HTML_PATH, gen_ts=gen_ts)
+    generate_html(data, KIOSK_PATH, kiosk=True, gen_ts=gen_ts)
 
 
 if __name__ == '__main__':
