@@ -86,12 +86,19 @@ def fetch_from_db():
     # Only pass port= when explicitly configured -- otherwise let pytds resolve
     # a named instance (e.g. "SMI-APP02\JBSQL") via the SQL Browser service,
     # same as the ODBC driver does for Excel/Power Query against this server.
-    connect_kwargs = {'database': DB_NAME, 'user': DB_USER, 'password': DB_PASS,
-                       'timeout': 15, 'as_dict': True}
+    # pytds raises ValueError if both an instance suffix and an explicit port
+    # are given ("Both instance and port shouldn't be specified"), so a static
+    # port means connecting to the bare host instead.
+    dsn = DB_HOST
+    connect_kwargs = {
+        'database': DB_NAME, 'user': DB_USER, 'password': DB_PASS,
+        'timeout': 15, 'as_dict': True,
+    }
     if DB_PORT is not None:
+        dsn = DB_HOST.split('\\', 1)[0]
         connect_kwargs['port'] = DB_PORT
     try:
-        with pytds.connect(DB_HOST, **connect_kwargs) as conn:
+        with pytds.connect(dsn, **connect_kwargs) as conn:
             with conn.cursor() as cur:
                 cur.execute(_QUERY, (cutoff,))
                 rows = cur.fetchall()

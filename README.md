@@ -51,6 +51,8 @@ The device needs network access to the SQL Server (same LAN as the shop floor is
 
 > **Known gap:** `Promised` and `Ship Qty` aren't sourced from the DB yet (not yet located in the schema) and display blank in this mode — overdue-date highlighting is inactive until that's resolved. Everything else (job, customer, part, work center, schedule dates, remaining hours) matches the real Foreman's Report, verified against production data.
 
+> **Known limitation — unencrypted transport:** `pytds` doesn't encrypt the connection unless given a CA certificate file (`cafile`), which this project doesn't currently configure. Credentials and job/customer data travel in plaintext between the device and the SQL Server. This matches the existing trust model for this server — the reference ODBC DSN itself is configured with `Data Encryption: No` — so this doesn't introduce a new exposure beyond what Excel/Power Query access already has, but it's not a step forward either. Properly fixing this needs the SQL Server's certificate (SQL Server auto-generates a self-signed one by default even when unused) exported to the device and passed as `cafile`, which requires server access this project doesn't assume. Worth revisiting if/when someone with DBA access on `SMI-APP02\JBSQL` is available.
+
 ## Requirements
 
 - Single Board Computer (tested on BananaPi M4 zero) running Armbian v26.2.1
