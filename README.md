@@ -35,7 +35,7 @@ GRANT SELECT ON dbo.Work_Center TO shop_schedule_ro;
 Then set in `.env`:
 
 ```dotenv
-JOBBOSS_DB_HOST=SMI-APP02\JBSQL
+JOBBOSS_DB_HOST='SMI-APP02\JBSQL'
 JOBBOSS_DB_PORT=
 JOBBOSS_DB_NAME=<your_jobboss_database>
 JOBBOSS_DB_USER=shop_schedule_ro
@@ -44,6 +44,8 @@ JOBBOSS_DAYS_AHEAD=14
 ```
 
 Use the exact `Server` value from your SQL Server ODBC DSN (Windows: ODBC Data Sources → System DSN → your DSN → Configure) for `JOBBOSS_DB_HOST` — for a named instance like `SMI-APP02\JBSQL`, leave `JOBBOSS_DB_PORT` blank and it resolves the real port automatically via the SQL Browser service, the same way the ODBC driver does it for Excel/Power Query. Only set `JOBBOSS_DB_PORT` if that resolution isn't available (e.g. the browser service/UDP 1434 is firewalled) and a DBA has given you a static port instead.
+
+**Quote the host value if it contains a backslash** — `run_update.sh` sources `.env` with bash, which silently strips an unquoted backslash. `JOBBOSS_DB_HOST='SMI-APP02\JBSQL'`, not `JOBBOSS_DB_HOST=SMI-APP02\JBSQL`.
 
 The device needs network access to the SQL Server (same LAN as the shop floor is normally sufficient — both the resolved TCP port and UDP 1434 if using instance-name resolution). Uses [`python-tds`](https://pypi.org/project/python-tds/) — pure Python, no native ODBC driver to install, which matters on ARM boards where Microsoft's ODBC driver support is inconsistent.
 

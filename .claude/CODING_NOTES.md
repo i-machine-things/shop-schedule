@@ -110,6 +110,8 @@ This note was created based on issues encountered with PyInstaller executables r
 
 **Source `.env` before invoking scripts that depend on it during install.** Calling a script directly right after writing `.env` skips its vars; wrap the call in a subshell that sources `.env` first.
 
+**Quote any `.env` value containing a backslash.** `run_update.sh` does `source .env`; an unquoted backslash (e.g. a SQL Server named-instance host like `SRV\INSTANCE`) gets silently stripped by bash during sourcing. Wrap in single quotes: `JOBBOSS_DB_HOST='SRV\INSTANCE'`.
+
 **Don't `systemctl restart getty@tty1` from inside an installer running on that TTY.** It kills the current session mid-install; `daemon-reload` alone is enough — autologin applies at next boot.
 
 **Guard env vars with `.strip() or default`, not just `.get(key, default)`.** An empty or whitespace-only value (e.g. `FILENAME=` ) is non-empty to `.get()` and slips through, producing a broken path.
