@@ -29,6 +29,7 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 PDF_PATH = os.path.join(BASE_DIR, PDF_FILENAME)
 HTML_PATH = os.path.join(BASE_DIR, 'public', 'schedule.html')
 KIOSK_PATH = os.path.join(BASE_DIR, 'public', 'kiosk.html')
+JSON_PATH = os.path.join(BASE_DIR, 'public', 'schedule.json')
 DEPT_COLORS_PATH = os.path.join(BASE_DIR, 'public', 'dept_colors.json')
 # ───────────────────────────────────────────────────────────────────────────────
 
@@ -260,6 +261,16 @@ def _save_dept_colors(colors):
     with open(tmp, 'w') as f:
         json.dump(on_disk, f, indent=2, sort_keys=True)
     os.replace(tmp, DEPT_COLORS_PATH)
+
+
+def generate_json(data, out_path):
+    """Write the parsed schedule data as JSON for non-HTML consumers (e.g. a Roku
+    kiosk client) -- same {report_date, thru_date, sections} shape used internally,
+    served statically alongside schedule.html by server.py with no extra endpoint."""
+    tmp = out_path + '.tmp'
+    with open(tmp, 'w', encoding='utf-8') as f:
+        json.dump(data, f)
+    os.replace(tmp, out_path)
 
 
 def _default_color(dept_lower):
@@ -805,6 +816,7 @@ def main():
     gen_ts = int(datetime.now().timestamp())
     generate_html(data, HTML_PATH, gen_ts=gen_ts)
     generate_html(data, KIOSK_PATH, kiosk=True, gen_ts=gen_ts)
+    generate_json(data, JSON_PATH)
 
 
 if __name__ == '__main__':

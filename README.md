@@ -88,9 +88,14 @@ http://<pi-ip>:8080/              ← landing page
 http://<pi-ip>:8080/kiosk.html    ← kiosk display with page rotation
 http://<pi-ip>:8080/schedule.html ← raw schedule table (no rotation)
 http://<pi-ip>:8080/options.html  ← rotation config, uploads, and department colors
+http://<pi-ip>:8080/schedule.json ← same data as JSON, for non-browser clients
 ```
 
 The schedule polls for updates every 60 seconds and swaps in new content without reloading.
+
+## Non-browser clients
+
+`schedule.json` carries the same `{report_date, thru_date, sections}` data used internally to render the HTML pages — regenerated on every `update_schedule.py` run, served as a static file (no extra endpoint). Useful for any display that can't run a browser, e.g. [**shop-schedule-roku**](https://github.com/i-machine-things/shop-schedule-roku), a native Roku kiosk channel that polls this and renders the table natively (Roku's public SDK has no web-view component to show `kiosk.html` directly).
 
 ## Client kiosks
 
@@ -171,8 +176,9 @@ python3 process_drop.py
 
 | File | Purpose |
 |------|---------|
-| `update_schedule.py` | Picks DB vs email/PDF source, HTML generation |
-| `jobboss_db.py` | JobBoss DB source — connects, queries, shapes data for `generate_html()` |
+| `update_schedule.py` | Picks DB vs email/PDF source, HTML and JSON generation |
+| `jobboss_db.py` | JobBoss DB source — connects, queries, shapes data for `generate_html()`/`generate_json()` |
+| `public/schedule.json` | Same schedule data as JSON, for non-browser clients (gitignored, regenerated every run) |
 | `process_drop.py` | Drop-dir handler — picks up PDFs from `incoming/` and regenerates the schedule |
 | `server.py` | HTTP server — serves `public/` and handles file-upload API (`/api/upload/*`, `/api/raw/*`) |
 | `run_update.sh` | Cron wrapper — loads `.env` and calls the script |
