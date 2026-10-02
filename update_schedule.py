@@ -274,9 +274,16 @@ def generate_json(data, out_path):
     kiosk client) -- same {report_date, thru_date, sections} shape used internally,
     served statically alongside schedule.html by server.py with no extra endpoint."""
     tmp = out_path + '.tmp'
-    with open(tmp, 'w', encoding='utf-8') as f:
-        json.dump(data, f)
-    os.replace(tmp, out_path)
+    try:
+        with open(tmp, 'w', encoding='utf-8') as f:
+            json.dump(data, f)
+        os.replace(tmp, out_path)
+    except OSError:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
 
 
 def _default_color(dept_lower):
