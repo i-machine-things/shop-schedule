@@ -22,7 +22,9 @@ python3 -m venv "$INSTALL_DIR/venv"
 "$INSTALL_DIR/venv/bin/pip" install --quiet --upgrade pip
 # python-tds pinned to 1.13.0 -- 1.14.0+ imports typing.Protocol/TypedDict,
 # which don't exist in Python 3.7 (this board's Debian Buster stock python3).
-"$INSTALL_DIR/venv/bin/pip" install --quiet pdfplumber reportlab "python-tds==1.13.0"
+# pyOpenSSL is only needed if JOBBOSS_DB_CAFILE is set (TLS to the JobBoss DB);
+# installed unconditionally since it's harmless idle weight otherwise.
+"$INSTALL_DIR/venv/bin/pip" install --quiet pdfplumber reportlab "python-tds==1.13.0" pyOpenSSL
 chmod +x "$INSTALL_DIR/run_update.sh"
 
 # Create .env from example if not present

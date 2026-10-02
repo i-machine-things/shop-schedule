@@ -148,6 +148,8 @@ This note was created based on issues encountered with PyInstaller executables r
 
 **Write JSON config atomically: temp file + fsync + `os.replace()`.** Writing directly to the target path leaves a truncated/corrupt file if the process is interrupted mid-write.
 
+**Delete the `.tmp` file on write failure, then re-raise.** An atomic temp-file-then-`os.replace()` write that hits `OSError` mid-write leaves an orphaned `.tmp` file behind; wrap in `try`/`except OSError: os.unlink(tmp); raise` so the error still propagates but doesn't litter the disk. CodeRabbit catch on `generate_json()`.
+
 **Use `ThreadingHTTPServer`, not `HTTPServer`, for anything handling uploads or slow requests.** Same import/API, but a slow request won't stall every other client.
 
 ## Kiosk / Scroll Timer Logic

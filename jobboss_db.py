@@ -28,6 +28,12 @@ DB_PORT = int(_DB_PORT_RAW) if _DB_PORT_RAW else None
 DB_NAME = os.environ.get('JOBBOSS_DB_NAME', '').strip()
 DB_USER = os.environ.get('JOBBOSS_DB_USER', '').strip()
 DB_PASS = os.environ.get('JOBBOSS_DB_PASS', '')
+# Optional -- path to the SQL Server's certificate (PEM/Base-64 .cer), exported
+# by a DBA from SQL Server Configuration Manager. Without this, pytds leaves
+# the connection unencrypted (matches the existing ODBC DSN's "Data Encryption:
+# No" setting, so no new exposure vs. today's Excel/Power Query access -- but
+# set this whenever a DBA can provide the cert). See README.md.
+DB_CAFILE = os.environ.get('JOBBOSS_DB_CAFILE', '').strip()
 DAYS_AHEAD = int(os.environ.get('JOBBOSS_DAYS_AHEAD', '').strip() or 14)
 
 # Current operation per job = earliest non-complete Sequence. Rem_Hrs/NumOps_Ahead
@@ -97,6 +103,8 @@ def fetch_from_db():
     if DB_PORT is not None:
         dsn = DB_HOST.split('\\', 1)[0]
         connect_kwargs['port'] = DB_PORT
+    if DB_CAFILE:
+        connect_kwargs['cafile'] = DB_CAFILE
     try:
         with pytds.connect(dsn, **connect_kwargs) as conn:
             with conn.cursor() as cur:
