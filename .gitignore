@@ -12,6 +12,7 @@
 schedule.html
 kiosk.html
 public/version.json
+public/schedule.json
 
 # User-edited kiosk page rotation config (created from pages.json.example by install.sh)
 public/pages.json

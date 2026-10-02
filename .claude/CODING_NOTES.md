@@ -110,6 +110,12 @@ This note was created based on issues encountered with PyInstaller executables r
 
 **Source `.env` before invoking scripts that depend on it during install.** Calling a script directly right after writing `.env` skips its vars; wrap the call in a subshell that sources `.env` first.
 
+**Quote any `.env` value containing a backslash.** `run_update.sh` does `source .env`; an unquoted backslash (e.g. a SQL Server named-instance host like `SRV\INSTANCE`) gets silently stripped by bash during sourcing. Wrap in single quotes: `JOBBOSS_DB_HOST='SRV\INSTANCE'`.
+
+**Pin `python-tds` to `1.13.0`.** 1.14.0+ imports `typing.Protocol`/`TypedDict` directly, which don't exist in Python 3.7 -- this board's Debian Buster stock `python3`. 1.13.0's `connect()` API is otherwise identical (verified against the real DB).
+
+**`pytds.connect()` raises `ValueError` if a named-instance `dsn` (e.g. `SRV\INSTANCE`) and an explicit `port=` are both given.** Strip the instance suffix from the host when a static port is configured instead -- you can't resolve-by-instance-name and connect-to-a-fixed-port at the same time. CodeRabbit catch, confirmed in pytds source (`tds_base.py`).
+
 **Don't `systemctl restart getty@tty1` from inside an installer running on that TTY.** It kills the current session mid-install; `daemon-reload` alone is enough — autologin applies at next boot.
 
 **Guard env vars with `.strip() or default`, not just `.get(key, default)`.** An empty or whitespace-only value (e.g. `FILENAME=` ) is non-empty to `.get()` and slips through, producing a broken path.
@@ -132,6 +138,8 @@ This note was created based on issues encountered with PyInstaller executables r
 
 **Verify `event.source` in `postMessage` handlers.** Without `if (e.source !== expectedWindow) return;`, any frame — including injected content in an iframe — can trigger the handler's action.
 
+**`pytds.connect()` is plaintext unless `cafile` is passed — confirmed in source (`tds.py`'s prelogin handling).** Without `cafile`, `login.enc_flag` is `ENCRYPT_NOT_SUP` and the whole session (not just login) is cleartext if the server doesn't force encryption. `cafile` set + `enc_login_only=False` (default) requests full-session TLS; requires `pyOpenSSL`. CodeRabbit Major finding on `jobboss_db.py`; added as opt-in `JOBBOSS_DB_CAFILE` rather than forced, since forcing it would break the already-deployed Pi until a DBA exports the cert.
+
 ## Concurrency & File I/O
 
 **Include microseconds in timestamp-based filenames.** `strftime('%Y%m%d_%H%M%S')` collides when two files are processed within the same second, silently overwriting the earlier one; add `%f`.
@@ -139,6 +147,8 @@ This note was created based on issues encountered with PyInstaller executables r
 **Guard background subprocess triggers with a non-blocking lock.** Two rapid uploads can race on the same working directory; acquire the lock and return 409 if already running, release in `finally`.
 
 **Write JSON config atomically: temp file + fsync + `os.replace()`.** Writing directly to the target path leaves a truncated/corrupt file if the process is interrupted mid-write.
+
+**Delete the `.tmp` file on write failure, then re-raise.** An atomic temp-file-then-`os.replace()` write that hits `OSError` mid-write leaves an orphaned `.tmp` file behind; wrap in `try`/`except OSError: os.unlink(tmp); raise` so the error still propagates but doesn't litter the disk. CodeRabbit catch on `generate_json()`.
 
 **Use `ThreadingHTTPServer`, not `HTTPServer`, for anything handling uploads or slow requests.** Same import/API, but a slow request won't stall every other client.
 
