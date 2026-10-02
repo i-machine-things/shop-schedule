@@ -85,16 +85,17 @@ if [ -z "$_v" ] || [ "$_v" = "Your Shop Name" ]; then
     [ -n "$_v" ] && _set_env SHOP_NAME "$_v" "$INSTALL_DIR/.env"
 fi
 
+echo "  Gmail/PDF email polling is DEPRECATED — prefer the JobBoss DB source (see README)."
 _v=$(_get_env GMAIL_USER "$INSTALL_DIR/.env")
 if [ -z "$_v" ] || [ "$_v" = "your@gmail.com" ]; then
-    read -rp "  Gmail address: " _v || true
+    read -rp "  Gmail address (optional, deprecated — Enter to skip): " _v || true
     [ -n "$_v" ] && _set_env GMAIL_USER "$_v" "$INSTALL_DIR/.env"
 fi
 
 _v=$(_get_env GMAIL_PASS "$INSTALL_DIR/.env")
 if [ -z "$_v" ] || [ "$_v" = "xxxx-xxxx-xxxx-xxxx" ]; then
     echo "  (App Password — generate at https://myaccount.google.com/apppasswords)"
-    _v=$(_read_masked "  Gmail App Password: ") || true
+    _v=$(_read_masked "  Gmail App Password (optional, deprecated — Enter to skip): ") || true
     [ -n "$_v" ] && _set_env GMAIL_PASS "$_v" "$INSTALL_DIR/.env"
 fi
 

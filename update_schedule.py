@@ -46,10 +46,16 @@ def _get_local_ip():
         return None
 
 
-# ── Email ───────────────────────────────────────────────────────────────────────
+# ── Email (deprecated) ──────────────────────────────────────────────────────────
 
 def fetch_pdf():
-    """Check Gmail inbox for unread email with PDF attachment. Returns True if new PDF saved."""
+    """Check Gmail inbox for unread email with PDF attachment. Returns True if new PDF saved.
+
+    DEPRECATED: prefer the JobBoss DB source (see jobboss_db.py / README). Email
+    polling stays functional for now but will be removed in a future version.
+    """
+    print("DEPRECATED: Gmail/email polling is deprecated in favor of the JobBoss "
+          "DB source -- see README's 'JobBoss DB source' section.", file=sys.stderr)
     try:
         socket.setdefaulttimeout(30)
         conn = imaplib.IMAP4_SSL('imap.gmail.com')
