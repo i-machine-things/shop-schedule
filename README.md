@@ -162,4 +162,4 @@ PDFs uploaded via the Options → Upload section are displayed in the kiosk page
 
 ## Related projects
 
-- [`shop-schedule-roku`](https://github.com/i-machine-roku/shop-schedule-roku) — planned native Roku (BrightScript/SceneGraph) port of this kiosk. It maps each part of this project to its Roku counterpart and links back here.
+- [`shop-schedule-roku`](https://github.com/i-machine-roku/shop-schedule-roku) — planned native Roku (BrightScript/SceneGraph) port of this kiosk. The port is planned, not started; it will map each part of this project to its Roku counterpart and links back here.
