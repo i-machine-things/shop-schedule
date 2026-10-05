@@ -159,3 +159,7 @@ The generated `schedule.html` is a full-screen table grouped by work centre. It 
 A **light/dark mode toggle** (☀/☾) appears in the header of the schedule, kiosk, index, and options pages. The preference is stored in `localStorage` and shared across all pages on the same origin, so flipping it once applies everywhere.
 
 PDFs uploaded via the Options → Upload section are displayed in the kiosk page-rotation overlay using a built-in PDF viewer (`pdf-viewer.html`) that renders pages as canvases and auto-scrolls from top to bottom over the configured display duration. Requires internet access to load PDF.js from cdnjs.
+
+## Related projects
+
+- [`shop-schedule-roku`](https://github.com/i-machine-roku/shop-schedule-roku) — planned native Roku (BrightScript/SceneGraph) port of this kiosk. It maps each part of this project to its Roku counterpart and links back here.
