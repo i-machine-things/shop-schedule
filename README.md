@@ -1,6 +1,6 @@
 # Shop Schedule
 
-Single Board Computer kiosk display for a machine shop floor. Every 15 minutes (via cron), pulls the current Foreman's Report data and serves an auto-scrolling HTML schedule on a wall-mounted screen.
+Kiosk display for a machine shop floor — runs on a Linux Single Board Computer or a Windows PC (see [Setup](#setup)). Every 15 minutes (cron on Linux, Task Scheduler on Windows), pulls the current Foreman's Report data and serves an auto-scrolling HTML schedule on a wall-mounted screen.
 
 > Two ways to get data in: **query JobBoss directly** over the network (preferred — see [JobBoss DB source](#jobboss-db-source)), or poll a Gmail inbox for the Foreman's Report PDF export (**deprecated**, see [Gmail/PDF source (deprecated)](#gmailpdf-source-deprecated) — the report is emailed as a PDF attachment and picked up automatically, or you can drop a PDF directly into the `incoming/` folder, which is unaffected by the deprecation). If `JOBBOSS_DB_HOST` is set in `.env`, the DB path is used and the Gmail/PDF settings are ignored.
 
@@ -12,7 +12,7 @@ Single Board Computer kiosk display for a machine shop floor. Every 15 minutes (
 
 ## How it works
 
-1. `run_update.sh` is called by cron every 15 minutes
+1. `run_update.sh` (Linux, via cron) or `run_update.ps1` (Windows, via Task Scheduler) runs every 15 minutes
 2. It loads credentials from `.env` and runs `update_schedule.py`
 3. If `JOBBOSS_DB_HOST` is set, it queries JobBoss directly for open operations scheduled within `JOBBOSS_DAYS_AHEAD` days; otherwise it checks Gmail for an unread email with a PDF attachment and parses it (**deprecated** — see [Gmail/PDF source (deprecated)](#gmailpdf-source-deprecated))
 4. `schedule.html` is regenerated and picked up live by Chromium in kiosk mode
@@ -45,7 +45,7 @@ JOBBOSS_DAYS_AHEAD=14
 
 Use the exact `Server` value from your SQL Server ODBC DSN (Windows: ODBC Data Sources → System DSN → your DSN → Configure) for `JOBBOSS_DB_HOST` — for a named instance like `SMI-APP02\JBSQL`, leave `JOBBOSS_DB_PORT` blank and it resolves the real port automatically via the SQL Browser service, the same way the ODBC driver does it for Excel/Power Query. Only set `JOBBOSS_DB_PORT` if that resolution isn't available (e.g. the browser service/UDP 1434 is firewalled) and a DBA has given you a static port instead.
 
-**Quote the host value if it contains a backslash** — `run_update.sh` sources `.env` with bash, which silently strips an unquoted backslash. `JOBBOSS_DB_HOST='SMI-APP02\JBSQL'`, not `JOBBOSS_DB_HOST=SMI-APP02\JBSQL`.
+**Quote the host value if it contains a backslash** — `run_update.sh` sources `.env` with bash, which silently strips an unquoted backslash. `JOBBOSS_DB_HOST='SMI-APP02\JBSQL'`, not `JOBBOSS_DB_HOST=SMI-APP02\JBSQL`. The same quoting works unchanged in `run_update.ps1` on Windows — its `.env` parser matches bash's single-quote handling for exactly this reason, so one `.env` file is portable between both installers.
 
 The device needs network access to the SQL Server (same LAN as the shop floor is normally sufficient — both the resolved TCP port and UDP 1434 if using instance-name resolution). Uses [`python-tds`](https://pypi.org/project/python-tds/) — pure Python, no native ODBC driver to install, which matters on ARM boards where Microsoft's ODBC driver support is inconsistent.
 
@@ -68,12 +68,22 @@ Leave `JOBBOSS_DB_HOST` unset to use this path: `update_schedule.py` checks Gmai
 
 ## Requirements
 
+**Linux:**
 - Single Board Computer (tested on BananaPi M4 zero) running Armbian v26.2.1
 - Python 3 with `pdfplumber` and `python-tds` (`pip3 install pdfplumber python-tds`)
 - Chromium browser
 - Either: network access to the JobBoss SQL Server (see above), or a Gmail account with IMAP enabled and an [App Password](https://myaccount.google.com/apppasswords) for the PDF fallback
 
+**Windows:**
+- Windows 10/11, Python 3 ([python.org](https://www.python.org/downloads/) — check "Add python.exe to PATH" during install)
+- Chrome or Edge (Edge is already present on any current Windows install)
+- Network access to the JobBoss SQL Server (see above) — the Windows installer only sets up the DB source; Gmail/PDF polling is deprecated and isn't offered there (still usable by hand-editing `.env` on an existing install, see below)
+
 ## Setup
+
+Released for both Linux and Windows — pick whichever matches your hardware. Both read the same `.env` format and serve the same pages on port 8080.
+
+### Linux
 
 ```bash
 # Clone on the Pi
@@ -91,6 +101,22 @@ SHOP_NAME="Your Shop Name"   # Shown in the page header and browser title
 ```
 
 Then either fill in the `JOBBOSS_DB_*` block (preferred — see [JobBoss DB source](#jobboss-db-source) below) or, only if DB access isn't available yet, `GMAIL_USER`/`GMAIL_PASS` (**deprecated**, see [Gmail/PDF source (deprecated)](#gmailpdf-source-deprecated)).
+
+### Windows
+
+```powershell
+# Clone it somewhere permanent -- the installer wires absolute paths from here
+git clone https://github.com/i-machine-things/shop-schedule.git C:\shop-schedule
+cd C:\shop-schedule
+
+# Run as Administrator (right-click PowerShell -> Run as Administrator) --
+# scheduled tasks and the SMB share both need it
+.\install.ps1
+```
+
+Sets up the same `.env`, a venv, a Task Scheduler job every 15 minutes (`ShopScheduleUpdate`), the HTTP server at boot (`ShopScheduleServer`), a local kiosk display at logon (`ShopScheduleKiosk`, Chrome if present else Edge), and an SMB share for `incoming/`. The installer only prompts for `SHOP_NAME` — fill in `JOBBOSS_DB_HOST`/`NAME`/`USER`/`PASS` in `.env` yourself afterward (see [JobBoss DB source](#jobboss-db-source) below).
+
+**Known difference from the Linux installer:** modern Windows has no equivalent to Samba's guest access — the `schedule-drop` SMB share still requires a real Windows account on that PC to connect, where the Linux share needs no password at all. See [SMB file drop](#smb-file-drop-windows--mac) below.
 
 ## Remote access
 
@@ -133,12 +159,15 @@ Uploaded display PDFs are stored in `public/raw/` and their entries are managed 
 
 ## SMB file drop (Windows / Mac)
 
-The installer sets up a guest-accessible Samba share pointing at `incoming/`. From any machine on the same network:
+The installer sets up a share pointing at `incoming/`. From any machine on the same network:
 
 - **Windows:** `\\<device-ip>\schedule-drop` — map as a network drive if desired
 - **Mac:** `smb://<device-ip>/schedule-drop` in Finder → Go → Connect to Server
 
-No password is needed — connect as guest. Drop a PDF and the schedule regenerates within seconds.
+Drop a PDF and the schedule regenerates within seconds. Whether a password is needed depends on what the *server* (not the client) is running:
+
+- **Linux server:** guest-accessible — no password needed, connect as guest.
+- **Windows server:** modern Windows has no equivalent to Samba's guest access (removed in the 1709 update), so connecting requires a real Windows account on that PC — there's no way around entering credentials here.
 
 ## Work center filter
 
@@ -194,11 +223,15 @@ python3 process_drop.py
 | `public/schedule.json` | Same schedule data as JSON, for non-browser clients (gitignored, regenerated every run) |
 | `process_drop.py` | Drop-dir handler — picks up PDFs from `incoming/` and regenerates the schedule |
 | `server.py` | HTTP server — serves `public/` and handles file-upload API (`/api/upload/*`, `/api/raw/*`) |
-| `run_update.sh` | Cron wrapper — loads `.env` and calls the script |
-| `install.sh` | One-time server setup: deps, cron job, kiosk and HTTP server services |
+| `run_update.sh` | Cron wrapper (Linux) — loads `.env` and calls the script |
+| `install.sh` | One-time server setup (Linux): deps, cron job, kiosk and HTTP server services |
 | `install-client.sh` | Client kiosk installer — served pre-filled via `GET /install`; creates `shop-kiosk.service` on the client |
 | `foreman-kiosk.service` | systemd service (server) — opens Chromium in kiosk mode pointing at `kiosk.html` |
 | `foreman-server.service` | systemd service — runs `server.py` on port 8080 |
+| `run_update.ps1` | Scheduled-task wrapper (Windows) — loads `.env` and calls the script |
+| `install.ps1` | One-time server setup (Windows): deps, Task Scheduler jobs, SMB share |
+| `kiosk-launch.ps1` | Waits for the HTTP server to answer, then opens the browser in kiosk mode (Windows `ShopScheduleKiosk` task) |
+| `dotenv.ps1` | `.env` parser shared by `install.ps1`/`run_update.ps1` |
 | `public/install.html` | Web UI showing the copyable client install one-liner |
 | `public/options.html` | Admin UI — page rotation config, uploads, and department color pickers |
 | `public/kiosk.html` | Rotation shell — wraps the schedule and fades to configured pages |

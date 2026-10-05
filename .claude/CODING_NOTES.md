@@ -194,6 +194,22 @@ This note was created based on issues encountered with PyInstaller executables r
 
 **Verify CodeRabbit API-change claims against the actual library version in use.** CR claimed `PDFDocumentProxy.destroy()` was removed in PDF.js 3.x; it wasn't — `cleanup()` doesn't terminate the worker and would have leaked it.
 
+## Windows Port
+
+**Modern Windows has no equivalent to Samba's guest access.** The SMB1 guest-fallback removal in the 1709 update means `New-SmbShare` can't offer a true no-password share the way `install.sh`'s Samba config does — `install.ps1`'s `schedule-drop` share always requires a real Windows account on that PC. Documented as a real limitation, not something to fake with registry hacks.
+
+**A native .exe's non-zero exit code does NOT raise a PowerShell terminating error on its own**, even with `$ErrorActionPreference = 'Stop'` — that setting only affects cmdlets/script errors. This is why `run_update.ps1` doesn't need bash's `|| true` equivalent around `process_drop.py` — a failure there already can't halt the script.
+
+**`-RepetitionDuration ([TimeSpan]::MaxValue)` on a scheduled task trigger risks failing to serialize into Task Scheduler's XML.** Use a large-but-concrete span instead, e.g. `(New-TimeSpan -Days 3650)`, for "repeat indefinitely."
+
+**`install.ps1` requires Administrator; `install.sh` refuses to run as root.** Not a contradiction — Windows's privilege model is the opposite of sudo-per-command, and scheduled tasks + SMB shares both need an elevated session to register at all.
+
+**`dotenv.ps1`'s parser matches bash's single-quote semantics (strip one layer of matching quotes, no escape interpretation inside) on purpose.** Keeps one `.env` file portable between `run_update.sh` and `run_update.ps1`, including backslash-containing values like a named SQL Server instance (`JOBBOSS_DB_HOST='SRV\INSTANCE'`).
+
+**Use `pythonw.exe`, not `python.exe`, for the Windows HTTP server's scheduled task.** `pythonw.exe` (ships alongside `python.exe` in every stock venv) runs with no console window, the Windows equivalent of a systemd service with no attached TTY.
+
+**A Task Scheduler `AtLogOn` trigger has no ordering guarantee against a separate `AtStartup` task**, unlike systemd's `After=` unit dependency. `kiosk-launch.ps1` retries until the HTTP server actually answers instead of a fixed sleep, mirroring `install-client.sh`'s existing retry loop rather than `foreman-kiosk.service`'s flat 5s sleep (which only works because of the `After=` ordering this setup doesn't have).
+
 ## Documentation & Config Hygiene
 
 **Quote `.env.example` values that contain spaces.** `KEY=Value With Spaces` may parse incorrectly in some dotenv loaders; use `KEY="Value With Spaces"`.
