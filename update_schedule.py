@@ -17,6 +17,8 @@ import sys
 import pdfplumber
 from datetime import datetime
 
+import jobboss_db
+
 # ── Config (loaded from .env by run_update.sh) ─────────────────────────────────
 GMAIL_USER = os.environ.get('GMAIL_USER', '')
 GMAIL_PASS = os.environ.get('GMAIL_PASS', '')   # Gmail App Password
@@ -27,6 +29,7 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 PDF_PATH = os.path.join(BASE_DIR, PDF_FILENAME)
 HTML_PATH = os.path.join(BASE_DIR, 'public', 'schedule.html')
 KIOSK_PATH = os.path.join(BASE_DIR, 'public', 'kiosk.html')
+JSON_PATH = os.path.join(BASE_DIR, 'public', 'schedule.json')
 DEPT_COLORS_PATH = os.path.join(BASE_DIR, 'public', 'dept_colors.json')
 # ───────────────────────────────────────────────────────────────────────────────
 
@@ -43,10 +46,16 @@ def _get_local_ip():
         return None
 
 
-# ── Email ───────────────────────────────────────────────────────────────────────
+# ── Email (deprecated) ──────────────────────────────────────────────────────────
 
 def fetch_pdf():
-    """Check Gmail inbox for unread email with PDF attachment. Returns True if new PDF saved."""
+    """Check Gmail inbox for unread email with PDF attachment. Returns True if new PDF saved.
+
+    DEPRECATED: prefer the JobBoss DB source (see jobboss_db.py / README). Email
+    polling stays functional for now but will be removed in a future version.
+    """
+    print("DEPRECATED: Gmail/email polling is deprecated in favor of the JobBoss "
+          "DB source -- see README's 'JobBoss DB source' section.", file=sys.stderr)
     try:
         socket.setdefaulttimeout(30)
         conn = imaplib.IMAP4_SSL('imap.gmail.com')
@@ -258,6 +267,23 @@ def _save_dept_colors(colors):
     with open(tmp, 'w') as f:
         json.dump(on_disk, f, indent=2, sort_keys=True)
     os.replace(tmp, DEPT_COLORS_PATH)
+
+
+def generate_json(data, out_path):
+    """Write the parsed schedule data as JSON for non-HTML consumers (e.g. a Roku
+    kiosk client) -- same {report_date, thru_date, sections} shape used internally,
+    served statically alongside schedule.html by server.py with no extra endpoint."""
+    tmp = out_path + '.tmp'
+    try:
+        with open(tmp, 'w', encoding='utf-8') as f:
+            json.dump(data, f)
+        os.replace(tmp, out_path)
+    except OSError:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
 
 
 def _default_color(dept_lower):
@@ -778,18 +804,32 @@ setInterval(async () => {{
 # ── Main ────────────────────────────────────────────────────────────────────────
 
 def main():
-    """Fetch email, parse PDF, and regenerate schedule.html and kiosk.html."""
-    fetched = fetch_pdf() if GMAIL_USER else False
-
-    if os.path.exists(PDF_PATH):
+    """Regenerate schedule.html/kiosk.html from the JobBoss DB if configured,
+    otherwise fall back to the Gmail/PDF pipeline."""
+    if jobboss_db.is_configured():
+        data = jobboss_db.fetch_from_db()
+        if data is None:
+            # Leave the existing schedule.html in place rather than guessing --
+            # a transient DB outage shouldn't blank the kiosk or fall back to a
+            # stale PDF parse that could silently disagree with the DB going forward.
+            print("DB fetch failed; keeping last displayed schedule.", file=sys.stderr)
+            return
+        total_jobs = sum(len(s['jobs']) for s in data['sections'])
+        print(f"[{datetime.now():%Y-%m-%d %H:%M}] DB fetch OK: "
+              f"{len(data['sections'])} sections, {total_jobs} job rows. Display refreshed.")
+    else:
+        fetched = fetch_pdf() if GMAIL_USER else False
+        if not os.path.exists(PDF_PATH):
+            print("No PDF yet. Send the Shop Schedule PDF to the Gmail inbox.", file=sys.stderr)
+            return
         data = parse_pdf(PDF_PATH)
-        gen_ts = int(datetime.now().timestamp())
-        generate_html(data, HTML_PATH, gen_ts=gen_ts)
-        generate_html(data, KIOSK_PATH, kiosk=True, gen_ts=gen_ts)
         if not fetched:
             print("No new email. Display refreshed.")
-    else:
-        print("No PDF yet. Send the Shop Schedule PDF to the Gmail inbox.", file=sys.stderr)
+
+    gen_ts = int(datetime.now().timestamp())
+    generate_html(data, HTML_PATH, gen_ts=gen_ts)
+    generate_html(data, KIOSK_PATH, kiosk=True, gen_ts=gen_ts)
+    generate_json(data, JSON_PATH)
 
 
 if __name__ == '__main__':

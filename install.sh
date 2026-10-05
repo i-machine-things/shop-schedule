@@ -20,7 +20,11 @@ sudo apt-get install -y python3-venv samba
 sudo apt-get install -y wsdd 2>/dev/null || sudo apt-get install -y wsdd2 2>/dev/null || true
 python3 -m venv "$INSTALL_DIR/venv"
 "$INSTALL_DIR/venv/bin/pip" install --quiet --upgrade pip
-"$INSTALL_DIR/venv/bin/pip" install --quiet pdfplumber reportlab
+# python-tds pinned to 1.13.0 -- 1.14.0+ imports typing.Protocol/TypedDict,
+# which don't exist in Python 3.7 (this board's Debian Buster stock python3).
+# pyOpenSSL is only needed if JOBBOSS_DB_CAFILE is set (TLS to the JobBoss DB);
+# installed unconditionally since it's harmless idle weight otherwise.
+"$INSTALL_DIR/venv/bin/pip" install --quiet pdfplumber reportlab "python-tds==1.13.0" pyOpenSSL
 chmod +x "$INSTALL_DIR/run_update.sh"
 
 # Create .env from example if not present
@@ -83,16 +87,17 @@ if [ -z "$_v" ] || [ "$_v" = "Your Shop Name" ]; then
     [ -n "$_v" ] && _set_env SHOP_NAME "$_v" "$INSTALL_DIR/.env"
 fi
 
+echo "  Gmail/PDF email polling is DEPRECATED — prefer the JobBoss DB source (see README)."
 _v=$(_get_env GMAIL_USER "$INSTALL_DIR/.env")
 if [ -z "$_v" ] || [ "$_v" = "your@gmail.com" ]; then
-    read -rp "  Gmail address: " _v || true
+    read -rp "  Gmail address (optional, deprecated — Enter to skip): " _v || true
     [ -n "$_v" ] && _set_env GMAIL_USER "$_v" "$INSTALL_DIR/.env"
 fi
 
 _v=$(_get_env GMAIL_PASS "$INSTALL_DIR/.env")
 if [ -z "$_v" ] || [ "$_v" = "xxxx-xxxx-xxxx-xxxx" ]; then
     echo "  (App Password — generate at https://myaccount.google.com/apppasswords)"
-    _v=$(_read_masked "  Gmail App Password: ") || true
+    _v=$(_read_masked "  Gmail App Password (optional, deprecated — Enter to skip): ") || true
     [ -n "$_v" ] && _set_env GMAIL_PASS "$_v" "$INSTALL_DIR/.env"
 fi
 
