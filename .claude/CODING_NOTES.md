@@ -196,6 +196,8 @@ This note was created based on issues encountered with PyInstaller executables r
 
 ## Windows Port
 
+**Gating Gmail auto-fetch on Windows must not also block manual PDF drop/upload.** First pass returned early from `main()`'s whole non-DB branch on Windows, which also silently broke `options.html`/SMB manual uploads -- those go through the same `else` branch via `parse_pdf()`, with no dependency on Gmail at all. Fix: only skip the `fetch_pdf()` IMAP call itself on Windows; still fall through to parsing an already-present PDF either way.
+
 **Modern Windows has no equivalent to Samba's guest access.** The SMB1 guest-fallback removal in the 1709 update means `New-SmbShare` can't offer a true no-password share the way `install.sh`'s Samba config does — `install.ps1`'s `schedule-drop` share always requires a real Windows account on that PC. Documented as a real limitation, not something to fake with registry hacks.
 
 **A native .exe's non-zero exit code does NOT raise a PowerShell terminating error on its own**, even with `$ErrorActionPreference = 'Stop'` — that setting only affects cmdlets/script errors. This is why `run_update.ps1` doesn't need bash's `|| true` equivalent around `process_drop.py` — a failure there already can't halt the script.

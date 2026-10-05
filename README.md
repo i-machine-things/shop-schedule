@@ -77,7 +77,7 @@ Leave `JOBBOSS_DB_HOST` unset to use this path: `update_schedule.py` checks Gmai
 **Windows:**
 - Windows 10/11, Python 3 ([python.org](https://www.python.org/downloads/) — check "Add python.exe to PATH" during install)
 - Chrome or Edge (Edge is already present on any current Windows install)
-- Network access to the JobBoss SQL Server (see above) — the Windows installer only sets up the DB source; Gmail/PDF polling is deprecated and isn't offered there (still usable by hand-editing `.env` on an existing install, see below)
+- Network access to the JobBoss SQL Server (see above) — Windows installs are **DB-only** for *automatic* polling: `update_schedule.py` skips the Gmail IMAP auto-fetch on Windows even if `GMAIL_USER`/`GMAIL_PASS` are set (Linux installs can still use it). Manually dropping a PDF into `incoming/` or uploading via `options.html`/SMB still works on Windows the same as Linux — only the automatic Gmail checking is unavailable there.
 
 ## Setup
 
