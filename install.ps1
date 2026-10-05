@@ -49,7 +49,7 @@ $VenvPython = Join-Path $InstallDir 'venv\Scripts\python.exe'
 # unavailable on the Pi's old Python 3.7) -- kept identical here too so a
 # shared .env/venv story stays simple, even though a Windows install is
 # unlikely to hit that specific constraint itself.
-& $VenvPython -m pip install --quiet pdfplumber reportlab "python-tds==1.13.0" pyOpenSSL
+& $VenvPython -m pip install --quiet pdfplumber reportlab "python-tds==1.13.0" pyOpenSSL pywin32
 
 # --- .env --------------------------------------------------------------
 
@@ -61,27 +61,16 @@ if (-not (Test-Path $EnvPath)) {
 . (Join-Path $InstallDir 'dotenv.ps1')
 Import-DotEnv $EnvPath
 
-function Set-EnvFileValue {
-    param([string]$Key, [string]$Value, [string]$Path)
-    $line = "$Key='$Value'"
-    $content = @(if (Test-Path $Path) { Get-Content $Path } else { @() })
-    if ($content -match "^$Key=") {
-        $content = $content | ForEach-Object { if ($_ -match "^$Key=") { $line } else { $_ } }
-    } else {
-        $content += $line
-    }
-    Set-Content -Path $Path -Value $content -Encoding utf8
-}
-
 Write-Host ""
 Write-Host "=== Configure .env ==="
 
 if (-not $env:SHOP_NAME -or $env:SHOP_NAME -eq 'Your Shop Name') {
     $shopName = Read-Host '  Shop name (shown in schedule header)'
-    if ($shopName) { Set-EnvFileValue -Key 'SHOP_NAME' -Value $shopName -Path $EnvPath }
+    if ($shopName) { Set-DotEnvValue -Key 'SHOP_NAME' -Value $shopName -Path $EnvPath }
 }
 
 Write-Host "  Fill in JOBBOSS_DB_HOST/NAME/USER/PASS in .env before the first scheduled run -- see README.md."
+Write-Host "  Once JOBBOSS_DB_PASS is set, run .\protect-db-password.ps1 to encrypt it at rest (optional but recommended)."
 
 # Restrict .env to this account + SYSTEM, parallel to install.sh's `chmod 600`.
 icacls $EnvPath /inheritance:r /grant:r "$($env:USERDOMAIN)\$($env:USERNAME):F" "SYSTEM:F" | Out-Null

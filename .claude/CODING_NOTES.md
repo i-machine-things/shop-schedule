@@ -196,6 +196,12 @@ This note was created based on issues encountered with PyInstaller executables r
 
 ## Windows Port
 
+**DPAPI's `CurrentUser` scope is incompatible with a SYSTEM-run scheduled task encrypting/decrypting across different accounts.** `protect-db-password.ps1` runs interactively as whoever's logged in; `ShopScheduleServer`/`ShopScheduleUpdate` run as `SYSTEM` (see `install.ps1`). A `CurrentUser`-scoped blob from the first can't be decrypted by the second. Use `LocalMachine` scope instead -- any local account can decrypt it, which is weaker than `CurrentUser` but matches this cross-account reality; still far better than the plaintext it replaces.
+
+**.NET's `System.Security.Cryptography.ProtectedData` (PowerShell, via `Add-Type -AssemblyName System.Security`) and pywin32's `win32crypt.CryptProtectData`/`CryptUnprotectData` (Python) are the same DPAPI primitive.** No need for pywin32 on the PowerShell encrypt side -- only the Python decrypt side (`jobboss_db.py`, which has no .NET available) needs that dependency, and only on Windows.
+
+**Resolve an optionally-encrypted credential lazily, inside the function that uses it, not at module import time.** A `dpapi:`-prefixed `JOBBOSS_DB_PASS` left in `.env` would otherwise break importing `jobboss_db` at all -- including on Linux, or during a Gmail-path run that never touches the DB. `_resolve_db_pass()` is only ever called from inside `fetch_from_db()`'s own `try`, so a decrypt failure is reported the same way as any other connection failure.
+
 **Gating Gmail auto-fetch on Windows must not also block manual PDF drop/upload.** First pass returned early from `main()`'s whole non-DB branch on Windows, which also silently broke `options.html`/SMB manual uploads -- those go through the same `else` branch via `parse_pdf()`, with no dependency on Gmail at all. Fix: only skip the `fetch_pdf()` IMAP call itself on Windows; still fall through to parsing an already-present PDF either way.
 
 **Modern Windows has no equivalent to Samba's guest access.** The SMB1 guest-fallback removal in the 1709 update means `New-SmbShare` can't offer a true no-password share the way `install.sh`'s Samba config does — `install.ps1`'s `schedule-drop` share always requires a real Windows account on that PC. Documented as a real limitation, not something to fake with registry hacks.

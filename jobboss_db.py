@@ -27,6 +27,11 @@ _DB_PORT_RAW = os.environ.get('JOBBOSS_DB_PORT', '').strip()
 DB_PORT = int(_DB_PORT_RAW) if _DB_PORT_RAW else None
 DB_NAME = os.environ.get('JOBBOSS_DB_NAME', '').strip()
 DB_USER = os.environ.get('JOBBOSS_DB_USER', '').strip()
+# A 'dpapi:<base64>' prefix means this was encrypted by protect-db-password.ps1
+# (Windows DPAPI, see that script) -- resolved lazily in _resolve_db_pass(),
+# not here at import time, so a leftover Windows-encrypted value can't break
+# module import -- or a Gmail-path run that doesn't even touch the DB -- on
+# a platform that can't decrypt it.
 DB_PASS = os.environ.get('JOBBOSS_DB_PASS', '')
 # Optional -- path to the SQL Server's certificate (PEM/Base-64 .cer), exported
 # by a DBA from SQL Server Configuration Manager. Without this, pytds leaves
@@ -81,6 +86,24 @@ def is_configured():
     return bool(DB_HOST and DB_NAME and DB_USER)
 
 
+def _resolve_db_pass():
+    """Decrypt DB_PASS if protect-db-password.ps1 DPAPI-encrypted it, else
+    return it unchanged. Only decryptable on the Windows machine that
+    encrypted it (DPAPI, LocalMachine-scoped) -- raises clearly instead of
+    pytds producing a confusing auth failure on the literal 'dpapi:...' blob.
+    """
+    if not DB_PASS.startswith('dpapi:'):
+        return DB_PASS
+    if not sys.platform.startswith('win'):
+        raise RuntimeError(
+            "JOBBOSS_DB_PASS is DPAPI-encrypted, which only decrypts on the "
+            "Windows machine it was encrypted on (see protect-db-password.ps1).")
+    import base64
+    import win32crypt  # Windows-only (pywin32) -- import lazily, not installed on Linux.
+    blob = base64.b64decode(DB_PASS[len('dpapi:'):])
+    return win32crypt.CryptUnprotectData(blob, None, None, None, 0)[1].decode('utf-8')
+
+
 def _fmt_date(dt):
     """Match the PDF parser's dd-Mon-yy date format, e.g. '18-Sep-26'."""
     return dt.strftime('%d-%b-%y') if dt else ''
@@ -96,16 +119,20 @@ def fetch_from_db():
     # are given ("Both instance and port shouldn't be specified"), so a static
     # port means connecting to the bare host instead.
     dsn = DB_HOST
-    connect_kwargs = {
-        'database': DB_NAME, 'user': DB_USER, 'password': DB_PASS,
-        'timeout': 15, 'as_dict': True,
-    }
     if DB_PORT is not None:
         dsn = DB_HOST.split('\\', 1)[0]
-        connect_kwargs['port'] = DB_PORT
-    if DB_CAFILE:
-        connect_kwargs['cafile'] = DB_CAFILE
     try:
+        # Password resolution (DPAPI decrypt, if applicable) happens inside
+        # this try too -- a decryption failure is a connection failure from
+        # the caller's point of view, and should be reported the same way.
+        connect_kwargs = {
+            'database': DB_NAME, 'user': DB_USER, 'password': _resolve_db_pass(),
+            'timeout': 15, 'as_dict': True,
+        }
+        if DB_PORT is not None:
+            connect_kwargs['port'] = DB_PORT
+        if DB_CAFILE:
+            connect_kwargs['cafile'] = DB_CAFILE
         with pytds.connect(dsn, **connect_kwargs) as conn:
             with conn.cursor() as cur:
                 cur.execute(_QUERY, (cutoff,))

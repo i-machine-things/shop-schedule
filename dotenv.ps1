@@ -24,3 +24,19 @@ function Import-DotEnv {
         Set-Item -Path "Env:$key" -Value $val
     }
 }
+
+# Shared .env writer -- single-quotes the value (matching Import-DotEnv's
+# read side above) and replaces the key's existing line if present, appends
+# otherwise. Used by install.ps1 (initial prompts) and protect-db-password.ps1
+# (rewriting JOBBOSS_DB_PASS in place after encrypting it).
+function Set-DotEnvValue {
+    param([string]$Key, [string]$Value, [string]$Path)
+    $line = "$Key='$Value'"
+    $content = @(if (Test-Path $Path) { Get-Content $Path } else { @() })
+    if ($content -match "^$Key=") {
+        $content = $content | ForEach-Object { if ($_ -match "^$Key=") { $line } else { $_ } }
+    } else {
+        $content += $line
+    }
+    Set-Content -Path $Path -Value $content -Encoding utf8
+}
