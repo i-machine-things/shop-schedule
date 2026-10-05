@@ -217,4 +217,4 @@ PDFs uploaded via the Options → Upload section are displayed in the kiosk page
 
 ## Related projects
 
-- [`shop-schedule-roku`](https://github.com/i-machine-roku/shop-schedule-roku) — planned native Roku (BrightScript/SceneGraph) port of this kiosk. The port is planned, not started; it will map each part of this project to its Roku counterpart and links back here.
+- [`shop-schedule-roku`](https://github.com/i-machine-things/shop-schedule-roku) — a native Roku (BrightScript/SceneGraph) port of this kiosk: point a Roku device at this project's server instead of running a Banana Pi with Chromium in kiosk mode. Polls the `/schedule.json` export (see above) and renders job number, customer, description, operation, and current work center per job, grouped by work center with this kiosk's own department color scheme. Merged and buildable from source; no tagged release yet.
