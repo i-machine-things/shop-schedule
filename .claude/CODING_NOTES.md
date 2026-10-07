@@ -194,6 +194,16 @@ This note was created based on issues encountered with PyInstaller executables r
 
 **Verify CodeRabbit API-change claims against the actual library version in use.** CR claimed `PDFDocumentProxy.destroy()` was removed in PDF.js 3.x; it wasn't — `cleanup()` doesn't terminate the worker and would have leaked it.
 
+## Work Center Load Calculation
+
+**"Work center load in weeks" stops at the first gap of ≥1 week between jobs, rather than reporting the furthest-out job's end date.** Walk `[sch_start, sch_end]` intervals in start order; a gap here is real idle time at that work center, which sales needs visible to fill — reporting the far job's date instead would hide it. See `_work_center_load_weeks()`.
+
+**Report the gap's *size*, not just that one exists.** First version returned only `load_weeks` (when the opening starts); caught before pushing that this alone invites scheduling a 2-week job into what might actually be a 1-week hole. `_work_center_load_weeks()` now returns `(load_weeks, gap_weeks)` — `gap_weeks` is `None` when the queue simply has nothing scheduled after it (open-ended, not a bounded opening) vs. an actual number when there's a real gap with a known size.
+
+**`apply_work_center_loads()` runs once in `main()` on `data['sections']`, after either the DB or PDF path produces it — not duplicated per-source.** Both paths already produce the same job dict shape (`sch_start`/`sch_end` as `'dd-Mon-yy'` strings, confirmed by `_fmt_date()`'s own docstring: the DB path formats dates to match the PDF parser's native format), so the gap-detection algorithm only needs to exist once and re-parses those display strings rather than needing raw datetimes threaded through from `jobboss_db.py` separately.
+
+**Verified the gap-detection boundary with synthetic data before pushing, not just read through it** — seven cases (no gap, gap >1wk, gap <1wk that must NOT stop early, empty job list, unordered input, all-past-due clamped to 0, gap exactly at the 7-day threshold) all matched hand-computed `(load_weeks, gap_weeks)` pairs. Cheap and worth doing for any date-arithmetic-with-a-threshold change; off-by-one-week errors here are exactly the kind of bug that looks right on a quick read.
+
 ## Documentation & Config Hygiene
 
 **Quote `.env.example` values that contain spaces.** `KEY=Value With Spaces` may parse incorrectly in some dotenv loaders; use `KEY="Value With Spaces"`.
