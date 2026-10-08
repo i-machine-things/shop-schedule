@@ -853,7 +853,10 @@ setInterval(async () => {{
 
 def main():
     """Regenerate schedule.html/kiosk.html from the JobBoss DB if configured,
-    otherwise fall back to the Gmail/PDF pipeline."""
+    otherwise fall back to parsing a PDF -- auto-fetched from Gmail (Linux
+    only, deprecated) or already sitting at PDF_PATH from a manual drop/
+    upload (works on both platforms either way; see README's SMB/upload
+    docs -- only the *automatic Gmail checking* is Linux-only)."""
     if jobboss_db.is_configured():
         data = jobboss_db.fetch_from_db()
         if data is None:
@@ -866,12 +869,23 @@ def main():
         print(f"[{datetime.now():%Y-%m-%d %H:%M}] DB fetch OK: "
               f"{len(data['sections'])} sections, {total_jobs} job rows. Display refreshed.")
     else:
-        fetched = fetch_pdf() if GMAIL_USER else False
+        # install.ps1 doesn't offer Gmail and fetch_pdf()'s IMAP flow is
+        # untested on Windows, so skip the auto-fetch there regardless of
+        # GMAIL_USER -- but still fall through to parse_pdf() below if a PDF
+        # already exists from a manual drop/upload, same as Linux.
+        on_windows = sys.platform.startswith('win')
+        fetched = fetch_pdf() if (GMAIL_USER and not on_windows) else False
         if not os.path.exists(PDF_PATH):
-            print("No PDF yet. Send the Shop Schedule PDF to the Gmail inbox.", file=sys.stderr)
+            if on_windows:
+                print("JOBBOSS_DB_* is not configured and no PDF has been provided. "
+                      "Windows installs don't support automatic Gmail polling -- fill in "
+                      ".env's JOBBOSS_DB_* (preferred), or drop a PDF into incoming/.",
+                      file=sys.stderr)
+            else:
+                print("No PDF yet. Send the Shop Schedule PDF to the Gmail inbox.", file=sys.stderr)
             return
         data = parse_pdf(PDF_PATH)
-        if not fetched:
+        if not fetched and not on_windows:
             print("No new email. Display refreshed.")
 
     apply_work_center_backlogs(data['sections'])
