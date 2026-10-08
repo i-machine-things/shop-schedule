@@ -166,7 +166,7 @@ def parse_pdf(path):
                     'curr_wc': m.group(6).strip(),
                     'ship_qty': m.group(7),
                     'promised': m.group(8),
-                    'customer': '', 'oper': '', 'sch_end': '',
+                    'customer': '', 'oper': '', 'oper_desc': '', 'sch_end': '',
                     'num_ops': '', 'rem_hrs': '', 'qty_run': '',
                     'part': '', 'description': '',
                 }
@@ -386,7 +386,7 @@ def generate_html(data, out_path, *, kiosk=False, gen_ts=None):
             backlog_text += f" ({_format_weeks_days(gap_days)} gap)"
         rows.append(f'''
       <tr class="section-hdr" data-wc="{wc_attr}">
-        <td colspan="11" style="background:{bg};border-left:4px solid {accent}">
+        <td colspan="12" style="background:{bg};border-left:4px solid {accent}">
           <span class="wc-name">{wc_attr}</span>
           <span class="dept-name">{dept_e} &thinsp;&middot;&thinsp; {wcg_e}</span>
           <span class="wc-backlog">{backlog_text}</span>
@@ -408,6 +408,7 @@ def generate_html(data, out_path, *, kiosk=False, gen_ts=None):
         <td class="pdesc"><span class="pnum">{je["part"]}</span><br><span class="desc">{je["description"]}</span></td>
         <td class="c">{je["rev"]}</td>
         <td class="c">{je["oper"]}</td>
+        <td class="odesc">{je["oper_desc"]}</td>
         <td class="c">{je["make_qty"]}</td>
         <td class="c">{je["sch_start"]}<br><span class="sub">{je["sch_end"]}</span></td>
         <td class="c">{je["curr_wc"]}</td>
@@ -564,6 +565,7 @@ thead th{{position:sticky;top:0;z-index:20;background:#0d0d20;color:#7799ff;font
 .job:nth-child(even){{background:rgba(255,255,255,0.02)}}
 .jnum{{color:#4af;font-weight:bold;font-size:15px;white-space:nowrap}}
 .pdesc{{max-width:220px;white-space:normal}}
+.odesc{{max-width:160px;white-space:normal;color:#aaa;font-size:12px}}
 .pnum{{color:#eee}}
 .desc{{color:#777;font-size:12px}}
 .c{{text-align:center;white-space:nowrap}}
@@ -600,6 +602,7 @@ thead th{{position:sticky;top:0;z-index:20;background:#0d0d20;color:#7799ff;font
 [data-theme="light"] .jnum{{color:#0066cc}}
 [data-theme="light"] .pnum{{color:#222}}
 [data-theme="light"] .desc{{color:#555}}
+[data-theme="light"] .odesc{{color:#555}}
 [data-theme="light"] .sub{{color:#666}}
 [data-theme="light"] .overdue{{color:#cc0000}}
 {kiosk_css}
@@ -632,7 +635,7 @@ thead th{{position:sticky;top:0;z-index:20;background:#0d0d20;color:#7799ff;font
   <thead>
     <tr>
       <th>Job</th><th>Customer</th><th>Part / Description</th>
-      <th>Rev</th><th>Oper</th><th>Qty</th>
+      <th>Rev</th><th>Oper</th><th>Oper Desc</th><th>Qty</th>
       <th>Sch Start/End</th><th>Curr WC</th>
       <th>Rem Hrs</th><th>Ship Qty</th><th>Promised</th>
     </tr>
