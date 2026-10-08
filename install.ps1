@@ -44,12 +44,26 @@ if (-not $SystemPython) {
 
 & $SystemPython -m venv (Join-Path $InstallDir 'venv')
 $VenvPython = Join-Path $InstallDir 'venv\Scripts\python.exe'
+# $ErrorActionPreference = 'Stop' does NOT catch a native command's non-zero
+# exit code on its own (that's a PowerShell/.NET error, not a process exit
+# status) -- without checking $LASTEXITCODE explicitly here, a failed pip
+# install wouldn't stop the script, and the scheduled tasks registered below
+# would still get created and started with a venv that can't actually import
+# its own dependencies. CodeRabbit catch on PR #277.
 & $VenvPython -m pip install --quiet --upgrade pip
+if ($LASTEXITCODE -ne 0) {
+    Write-Error "pip upgrade failed (exit $LASTEXITCODE) -- aborting install."
+    exit 1
+}
 # Same pin as install.sh (python-tds 1.14+ needs typing.Protocol/TypedDict,
 # unavailable on the Pi's old Python 3.7) -- kept identical here too so a
 # shared .env/venv story stays simple, even though a Windows install is
 # unlikely to hit that specific constraint itself.
 & $VenvPython -m pip install --quiet pdfplumber reportlab "python-tds==1.13.0" pyOpenSSL
+if ($LASTEXITCODE -ne 0) {
+    Write-Error "pip install of dependencies failed (exit $LASTEXITCODE) -- aborting install."
+    exit 1
+}
 
 # --- .env --------------------------------------------------------------
 
@@ -63,8 +77,16 @@ Import-DotEnv $EnvPath
 
 function Set-EnvFileValue {
     param([string]$Key, [string]$Value, [string]$Path)
-    $line = "$Key='$Value'"
-    $content = @(if (Test-Path $Path) { Get-Content $Path } else { @() })
+    # Escape an embedded single quote the same way install.sh's _set_env()
+    # does (close quote, double-quoted literal quote, reopen quote) -- this
+    # .env format is shared with the Linux side, and a plain
+    # SHOP_NAME='Joe's Garage' is a bash syntax error (unterminated quote)
+    # when run_update.sh sources it, even though PowerShell's own
+    # Import-DotEnv tolerates it. CodeRabbit catch on PR #277.
+    $dq = [char]34
+    $escaped = $Value -replace "'", "'$dq'$dq'"
+    $line = "$Key='$escaped'"
+    $content = @(if (Test-Path $Path) { Get-Content -Path $Path -Encoding UTF8 } else { @() })
     if ($content -match "^$Key=") {
         $content = $content | ForEach-Object { if ($_ -match "^$Key=") { $line } else { $_ } }
     } else {
@@ -84,6 +106,16 @@ if (-not $env:SHOP_NAME -or $env:SHOP_NAME -eq 'Your Shop Name') {
 Write-Host "  Fill in JOBBOSS_DB_HOST/NAME/USER/PASS in .env before the first scheduled run -- see README.md."
 
 # Restrict .env to this account + SYSTEM, parallel to install.sh's `chmod 600`.
+# /reset first, THEN apply the restriction -- /inheritance:r only strips
+# INHERITED ACEs and /grant:r only replaces the grant for the named accounts;
+# neither removes other pre-existing EXPLICIT ACEs an existing .env (this
+# installer reuses one if present) might already have, which could leave a
+# broader-than-intended grant readable alongside these two. /reset clears
+# back to default inherited ACLs first so the explicit grant below is the
+# only one left standing. CodeRabbit security catch on PR #277, confirmed
+# against Microsoft's icacls docs (semantics of /inheritance:r and /grant:r
+# are each scoped as described, not a full ACL wipe).
+icacls $EnvPath /reset | Out-Null
 icacls $EnvPath /inheritance:r /grant:r "$($env:USERDOMAIN)\$($env:USERNAME):F" "SYSTEM:F" | Out-Null
 
 # --- Placeholder pages (schedule + kiosk) shown before first run -----------
@@ -178,6 +210,15 @@ $IncomingPath = Join-Path $InstallDir 'incoming'
 if (-not (Get-SmbShare -Name $ShareName -ErrorAction SilentlyContinue)) {
     New-SmbShare -Name $ShareName -Path $IncomingPath -FullAccess 'Everyone' | Out-Null
 }
+# New-SmbShare -FullAccess only sets the SHARE-level permission, not the
+# NTFS filesystem ACL -- effective access needs both, and incoming/ was
+# created with whatever ACL it inherited from $InstallDir, which may not
+# grant write to the account that actually connects. Without this, the
+# share looks reachable (authenticates fine) but dropping a PDF fails with
+# access denied. Scoped to incoming/ only, not the whole install directory.
+# CodeRabbit catch on PR #277, confirmed against Microsoft's New-SmbShare
+# docs (share permissions and NTFS permissions are separate layers).
+icacls $IncomingPath /grant 'Everyone:(OI)(CI)M' | Out-Null
 # Modern Windows removed true anonymous/guest SMB access (the 1709 update
 # dropped the SMB1 guest fallback) -- there's no equivalent to install.sh's
 # `map to guest = bad user` Samba setting here. The share above still
