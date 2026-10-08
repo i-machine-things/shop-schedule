@@ -190,6 +190,8 @@ This note was created based on issues encountered with PyInstaller executables r
 
 **Guard `int(Content-Length)` parsing with try/except; return 400 on failure or negative values.** Malformed requests otherwise raise an unhandled `ValueError` and produce a 500.
 
+**`jo.Description` (operation description) must be aliased to avoid colliding with `j.Description` (job description) in the same query.** Both `Job` and `Job_Operation` have a `Description` column; `jobboss_db.py`'s `_QUERY` already selects `j.Description` unaliased for the job's own description, so the new operation-level field is `jo.Description AS Oper_Desc` -- pytds's `as_dict=True` keys by column name, and an unaliased second `Description` would have silently overwritten the first in the result row.
+
 ## PDF Handling
 
 **Verify CodeRabbit API-change claims against the actual library version in use.** CR claimed `PDFDocumentProxy.destroy()` was removed in PDF.js 3.x; it wasn't — `cleanup()` doesn't terminate the worker and would have leaked it.
