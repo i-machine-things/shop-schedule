@@ -116,7 +116,9 @@ Write-Host "  Fill in JOBBOSS_DB_HOST/NAME/USER/PASS in .env before the first sc
 # against Microsoft's icacls docs (semantics of /inheritance:r and /grant:r
 # are each scoped as described, not a full ACL wipe).
 icacls $EnvPath /reset | Out-Null
+if ($LASTEXITCODE -ne 0) { Write-Error "icacls /reset on .env failed (exit $LASTEXITCODE)"; exit 1 }
 icacls $EnvPath /inheritance:r /grant:r "$($env:USERDOMAIN)\$($env:USERNAME):F" "SYSTEM:F" | Out-Null
+if ($LASTEXITCODE -ne 0) { Write-Error "icacls restriction on .env failed (exit $LASTEXITCODE)"; exit 1 }
 
 # --- Placeholder pages (schedule + kiosk) shown before first run -----------
 

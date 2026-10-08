@@ -220,6 +220,10 @@ This note was created based on issues encountered with PyInstaller executables r
 
 **A Task Scheduler `AtLogOn` trigger has no ordering guarantee against a separate `AtStartup` task**, unlike systemd's `After=` unit dependency. `kiosk-launch.ps1` retries until the HTTP server actually answers instead of a fixed sleep, mirroring `install-client.sh`'s existing retry loop rather than `foreman-kiosk.service`'s flat 5s sleep (which only works because of the `After=` ordering this setup doesn't have).
 
+**Checking `$LASTEXITCODE` once after a native command is not the same as checking it after every native command in a sequence.** The `.env` lockdown runs `icacls /reset` then `icacls /inheritance:r /grant:r` back to back; only checking after the first (or neither) lets a failed second call leave a broader ACL than intended while the installer still proceeds to print `=== Done ===`. Both calls need their own `if ($LASTEXITCODE -ne 0) { Write-Error ...; exit 1 }`. CodeRabbit catch on PR #277, second review pass.
+
+**Deliberately not adding the same `$LASTEXITCODE` check to the `incoming/` SMB-share `icacls` call (line ~221) that was just added to the `.env` one above.** Same underlying bug (unchecked native-command exit code), but SMB drop is being deprecated and removed in the next major version per explicit user direction — not worth hardening an error path on a feature that's going away. Logged per Rule 5 instead of silently dropping the finding; revisit only if SMB outlives that plan. CodeRabbit catch on PR #277, second review pass.
+
 ## Documentation & Config Hygiene
 
 **Quote `.env.example` values that contain spaces.** `KEY=Value With Spaces` may parse incorrectly in some dotenv loaders; use `KEY="Value With Spaces"`.
