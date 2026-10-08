@@ -194,6 +194,36 @@ This note was created based on issues encountered with PyInstaller executables r
 
 **Verify CodeRabbit API-change claims against the actual library version in use.** CR claimed `PDFDocumentProxy.destroy()` was removed in PDF.js 3.x; it wasn't — `cleanup()` doesn't terminate the worker and would have leaked it.
 
+## Windows Port
+
+**Gating Gmail auto-fetch on Windows must not also block manual PDF drop/upload.** First pass returned early from `main()`'s whole non-DB branch on Windows, which also silently broke `options.html`/SMB manual uploads -- those go through the same `else` branch via `parse_pdf()`, with no dependency on Gmail at all. Fix: only skip the `fetch_pdf()` IMAP call itself on Windows; still fall through to parsing an already-present PDF either way.
+
+**Modern Windows has no equivalent to Samba's guest access.** The SMB1 guest-fallback removal in the 1709 update means `New-SmbShare` can't offer a true no-password share the way `install.sh`'s Samba config does — `install.ps1`'s `schedule-drop` share always requires a real Windows account on that PC. Documented as a real limitation, not something to fake with registry hacks.
+
+**A native .exe's non-zero exit code does NOT raise a PowerShell terminating error on its own**, even with `$ErrorActionPreference = 'Stop'` — that setting only affects cmdlets/script errors. This cuts both ways: `run_update.ps1` doesn't need bash's `|| true` equivalent around `process_drop.py` since a failure there already can't halt the script, but `install.ps1`'s `pip install` calls needed an explicit `if ($LASTEXITCODE -ne 0)` check added — without it, a failed dependency install silently let the script continue on to register and start scheduled tasks with a venv that can't import its own packages. CodeRabbit catch on PR #277; same underlying mechanism as the `process_drop.py` case, opposite correct handling.
+
+**`icacls /inheritance:r /grant:r` does not reset an ACL — it only removes *inherited* ACEs and replaces the *named accounts'* explicit grants.** Other pre-existing explicit ACEs on a file (e.g. a broader grant left over on an existing `.env` this installer reuses) survive untouched, which could leave `JOBBOSS_DB_PASS` more readable than intended despite the command looking like a full lockdown. Run `icacls $Path /reset` first to clear back to default inherited ACLs, then apply the restrictive `/inheritance:r /grant:r`. CodeRabbit security catch on PR #277, confirmed against Microsoft's icacls docs.
+
+**`New-SmbShare -FullAccess` sets only the SHARE-level permission, not the NTFS filesystem ACL — both layers gate actual access.** A folder shared with `-FullAccess 'Everyone'` can still refuse writes if its NTFS ACL (inherited from its parent) doesn't separately grant the connecting account write access -- the share looks reachable (authenticates fine) but dropping a file fails with access denied. Grant the matching NTFS permission on that specific folder too (`icacls $Path /grant 'Everyone:(OI)(CI)M'`), scoped to just that folder, not the whole install directory. CodeRabbit catch on PR #277.
+
+**Windows PowerShell 5.1's `Get-Content` defaults to the system ANSI codepage for a BOM-less file, not UTF-8.** A `.env` saved as UTF-8-without-BOM (common from most editors) containing any non-ASCII character would decode wrong and silently corrupt that value. Always pass `-Encoding UTF8` explicitly when reading a file another tool might have saved as UTF-8. CodeRabbit catch on PR #277 (`Import-DotEnv`); same principle already noted elsewhere in this file for the write side (`Set-Content`/`Out-File`).
+
+**A value written with embedded single quotes into the shared `.env` format must stay valid bash, not just valid for this project's own PowerShell reader.** `SHOP_NAME='Joe's Garage'` parses fine under this project's own lenient `Import-DotEnv` (naive first/last-char quote stripping) but is a bash syntax error (unterminated quote) when `run_update.sh` sources it on Linux. Fixed by matching `install.sh`'s own `_set_env()` escaping exactly: replace an embedded `'` with `'"'"'` (close-quote, double-quoted literal quote, reopen-quote) -- then taught `Import-DotEnv` to reverse that same sequence back to a literal `'`, so a value survives a full round trip through either platform's writer and either platform's reader, not just bash's `eval`-based one. Verified directly (write → read back through the real `Import-DotEnv`, not just reasoned about) before pushing. CodeRabbit catch on PR #277.
+
+**`-RepetitionDuration ([TimeSpan]::MaxValue)` on a scheduled task trigger risks failing to serialize into Task Scheduler's XML.** Use a large-but-concrete span instead, e.g. `(New-TimeSpan -Days 3650)`, for "repeat indefinitely."
+
+**`install.ps1` requires Administrator; `install.sh` refuses to run as root.** Not a contradiction — Windows's privilege model is the opposite of sudo-per-command, and scheduled tasks + SMB shares both need an elevated session to register at all.
+
+**`dotenv.ps1`'s parser matches bash's single-quote semantics (strip one layer of matching quotes, no escape interpretation inside) on purpose.** Keeps one `.env` file portable between `run_update.sh` and `run_update.ps1`, including backslash-containing values like a named SQL Server instance (`JOBBOSS_DB_HOST='SRV\INSTANCE'`).
+
+**Use `pythonw.exe`, not `python.exe`, for the Windows HTTP server's scheduled task.** `pythonw.exe` (ships alongside `python.exe` in every stock venv) runs with no console window, the Windows equivalent of a systemd service with no attached TTY.
+
+**A Task Scheduler `AtLogOn` trigger has no ordering guarantee against a separate `AtStartup` task**, unlike systemd's `After=` unit dependency. `kiosk-launch.ps1` retries until the HTTP server actually answers instead of a fixed sleep, mirroring `install-client.sh`'s existing retry loop rather than `foreman-kiosk.service`'s flat 5s sleep (which only works because of the `After=` ordering this setup doesn't have).
+
+**Checking `$LASTEXITCODE` once after a native command is not the same as checking it after every native command in a sequence.** The `.env` lockdown runs `icacls /reset` then `icacls /inheritance:r /grant:r` back to back; only checking after the first (or neither) lets a failed second call leave a broader ACL than intended while the installer still proceeds to print `=== Done ===`. Both calls need their own `if ($LASTEXITCODE -ne 0) { Write-Error ...; exit 1 }`. CodeRabbit catch on PR #277, second review pass.
+
+**Deliberately not adding the same `$LASTEXITCODE` check to the `incoming/` SMB-share `icacls` call (line ~221) that was just added to the `.env` one above.** Same underlying bug (unchecked native-command exit code), but SMB drop is being deprecated and removed in the next major version per explicit user direction — not worth hardening an error path on a feature that's going away. Logged per Rule 5 instead of silently dropping the finding; revisit only if SMB outlives that plan. CodeRabbit catch on PR #277, second review pass.
+
 ## Documentation & Config Hygiene
 
 **Quote `.env.example` values that contain spaces.** `KEY=Value With Spaces` may parse incorrectly in some dotenv loaders; use `KEY="Value With Spaces"`.
