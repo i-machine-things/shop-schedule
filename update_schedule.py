@@ -269,25 +269,25 @@ def _save_dept_colors(colors):
     os.replace(tmp, DEPT_COLORS_PATH)
 
 
-def apply_work_center_loads(sections):
-    """Attach load_weeks/gap_weeks to any section that doesn't already have
+def apply_work_center_backlogs(sections):
+    """Attach backlog_weeks/gap_weeks to any section that doesn't already have
     them. The DB path (jobboss_db.fetch_from_db()) computes these itself
     from a separate, unbounded query and attaches them before this ever
     runs -- sec['jobs'] here is intentionally truncated to JOBBOSS_DAYS_AHEAD
-    for display, and using it for the load calc silently capped the load
-    stat at ~days_ahead too, which defeated the point. This only fills the
+    for display, and using it for the backlog calc silently capped the
+    backlog stat at ~days_ahead too, which defeated the point. This only fills the
     gap for the PDF path, which has no such wider query available and keeps
     the existing (narrower) behavior as a reasonable fallback.
 
-    _work_center_load_weeks() lives in jobboss_db.py, not here -- that
+    _work_center_backlog_weeks() lives in jobboss_db.py, not here -- that
     module doesn't import this one, so it's the only side that can be
     shared without a circular import."""
     now = datetime.now()
     for sec in sections:
-        if 'load_weeks' in sec:
+        if 'backlog_weeks' in sec:
             continue
-        load_weeks, gap_weeks = jobboss_db._work_center_load_weeks(sec.get('jobs', []), now)
-        sec['load_weeks'] = round(load_weeks, 1)
+        backlog_weeks, gap_weeks = jobboss_db._work_center_backlog_weeks(sec.get('jobs', []), now)
+        sec['backlog_weeks'] = round(backlog_weeks, 1)
         sec['gap_weeks'] = gap_weeks
 
 
@@ -361,21 +361,21 @@ def generate_html(data, out_path, *, kiosk=False, gen_ts=None):
         wc_attr = _html.escape(sec["wc"])
         dept_e = _html.escape(sec["department"])
         wcg_e = _html.escape(sec["wc_group"])
-        load_weeks = sec.get('load_weeks', 0)
+        backlog_weeks = sec.get('backlog_weeks', 0)
         gap_weeks = sec.get('gap_weeks')
-        load_text = f"{load_weeks:.1f} wk load" if load_weeks > 0 else "open now"
-        # gap_weeks is the *size* of the opening right after load_weeks, not
+        backlog_text = f"{backlog_weeks:.1f} wk backlog" if backlog_weeks > 0 else "open now"
+        # gap_weeks is the *size* of the opening right after backlog_weeks, not
         # just that one exists -- a 1-week hole can't take a 2-week job, so
         # showing only "when" there's room without "how much" would be
         # actively misleading for exactly the use case this is for.
         if gap_weeks is not None:
-            load_text += f" ({gap_weeks:.1f} wk gap)"
+            backlog_text += f" ({gap_weeks:.1f} wk gap)"
         rows.append(f'''
       <tr class="section-hdr" data-wc="{wc_attr}">
         <td colspan="11" style="background:{bg};border-left:4px solid {accent}">
           <span class="wc-name">{wc_attr}</span>
           <span class="dept-name">{dept_e} &thinsp;&middot;&thinsp; {wcg_e}</span>
-          <span class="wc-load">{load_text}</span>
+          <span class="wc-backlog">{backlog_text}</span>
         </td>
       </tr>''')
         for j in sec['jobs']:
@@ -545,7 +545,7 @@ thead th{{position:sticky;top:0;z-index:20;background:#0d0d20;color:#7799ff;font
 .section-hdr td{{position:sticky;z-index:10;padding:8px 14px;border-bottom:1px solid #333}}
 .wc-name{{font-size:16px;font-weight:bold;color:#fff;letter-spacing:2px;text-transform:uppercase;margin-right:14px}}
 .dept-name{{font-size:11px;color:#888}}
-.wc-load{{font-size:11px;color:#4af;font-weight:bold;margin-left:14px}}
+.wc-backlog{{font-size:11px;color:#4af;font-weight:bold;margin-left:14px}}
 .job td{{padding:5px 8px;border-bottom:1px solid #111;vertical-align:top}}
 .job:nth-child(even){{background:rgba(255,255,255,0.02)}}
 .jnum{{color:#4af;font-weight:bold;font-size:15px;white-space:nowrap}}
@@ -580,7 +580,7 @@ thead th{{position:sticky;top:0;z-index:20;background:#0d0d20;color:#7799ff;font
 [data-theme="light"] .section-hdr td{{background:#eaecf8!important;border-bottom-color:#ccc}}
 [data-theme="light"] .wc-name{{color:#111}}
 [data-theme="light"] .dept-name{{color:#555}}
-[data-theme="light"] .wc-load{{color:#0066cc}}
+[data-theme="light"] .wc-backlog{{color:#0066cc}}
 [data-theme="light"] .job td{{border-bottom-color:#ddd}}
 [data-theme="light"] .job:nth-child(even){{background:rgba(0,0,0,0.03)}}
 [data-theme="light"] .jnum{{color:#0066cc}}
@@ -860,7 +860,7 @@ def main():
         if not fetched:
             print("No new email. Display refreshed.")
 
-    apply_work_center_loads(data['sections'])
+    apply_work_center_backlogs(data['sections'])
 
     gen_ts = int(datetime.now().timestamp())
     generate_html(data, HTML_PATH, gen_ts=gen_ts)

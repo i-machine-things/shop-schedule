@@ -75,17 +75,17 @@ WHERE jo.Status <> 'C'
 ORDER BY wc.Department, COALESCE(wc.Parent_ID, wc.Work_Center), jo.Work_Center, j.Job, jo.Sequence
 """
 
-# Separate, unbounded query for work-center load only -- no Sched_Start
+# Separate, unbounded query for work-center backlog only -- no Sched_Start
 # cutoff and no per-row CROSS APPLY (don't need Rem_Hrs/NumOps_Ahead/Curr_WC
 # here, just the schedule window). The main query above is intentionally
 # limited to JOBBOSS_DAYS_AHEAD so the scrolling kiosk display stays
-# near-term, but reusing that same limited row set for the load stat
+# near-term, but reusing that same limited row set for the backlog stat
 # silently capped it at ~days_ahead too -- defeating the point, since sales
 # needs to see real backlog depth beyond what's on screen. Cheaper than
 # widening the main query's cutoff would be: no CROSS APPLY means this
 # doesn't pay the correlated-subquery cost per row across a much larger date
 # range on every 60s refresh.
-_LOAD_QUERY = """
+_BACKLOG_QUERY = """
 SELECT
     wc.Department,
     COALESCE(wc.Parent_ID, wc.Work_Center) AS WC_Group,
@@ -112,7 +112,7 @@ def _fmt_date(dt):
 def _parse_sched_date(s):
     """Parse a 'dd-Mon-yy' sch_start/sch_end string back to a datetime, or
     None if blank/unparseable. Lives here (not update_schedule.py) so both
-    this module's wide load query and update_schedule.py's PDF-path fallback
+    this module's wide backlog query and update_schedule.py's PDF-path fallback
     can share it without a circular import (update_schedule.py already
     imports this module, not the other way around)."""
     if not s:
@@ -123,10 +123,10 @@ def _parse_sched_date(s):
         return None
 
 
-def _work_center_load_weeks(jobs, now):
+def _work_center_backlog_weeks(jobs, now):
     """Weeks of work queued at a work center, based on the end time of the
     last job -- but stopping at the first gap of at least a week between
-    jobs, so the reported load reflects the nearer job instead of hiding an
+    jobs, so the reported backlog reflects the nearer job instead of hiding an
     open gap behind a later one. Lets sales see where there's actually room
     to slot something in rather than reading a work center as fully booked
     out to its furthest-out job when it isn't really.
@@ -136,9 +136,9 @@ def _work_center_load_weeks(jobs, now):
     job's end and the next job's start, not just a distance between two
     end dates.
 
-    Returns (load_weeks, gap_weeks). gap_weeks is the size of that opening --
-    load_weeks alone says *when* there's room, not *how much*; a work center
-    reading "2 wk load" could have a 1-week hole right after that point or a
+    Returns (backlog_weeks, gap_weeks). gap_weeks is the size of that opening --
+    backlog_weeks alone says *when* there's room, not *how much*; a work center
+    reading "2 wk backlog" could have a 1-week hole right after that point or a
     4-week one, and only one of those actually fits a 2-week job. None if the
     queue simply has nothing scheduled after it (open-ended, not a bounded gap).
     """
@@ -190,8 +190,8 @@ def fetch_from_db():
             with conn.cursor() as cur:
                 cur.execute(_QUERY, (cutoff,))
                 rows = cur.fetchall()
-                cur.execute(_LOAD_QUERY)
-                load_rows = cur.fetchall()
+                cur.execute(_BACKLOG_QUERY)
+                backlog_rows = cur.fetchall()
     except Exception as exc:
         # Log only the exception type, not str(exc) -- TDS driver error text can
         # echo back connection parameters, and this is the one error path in the
@@ -227,22 +227,22 @@ def fetch_from_db():
             'description': r['Description'] or '',
         })
 
-    # Group the unbounded load-query rows by the same (department, wc_group,
-    # wc) key as sections above, and compute load_weeks/gap_weeks from that
-    # full set -- not from sec['jobs'], which is intentionally truncated to
-    # JOBBOSS_DAYS_AHEAD for display.
-    load_jobs_by_wc = {}
-    for r in load_rows:
+    # Group the unbounded backlog-query rows by the same (department,
+    # wc_group, wc) key as sections above, and compute backlog_weeks/
+    # gap_weeks from that full set -- not from sec['jobs'], which is
+    # intentionally truncated to JOBBOSS_DAYS_AHEAD for display.
+    backlog_jobs_by_wc = {}
+    for r in backlog_rows:
         key = (r['Department'] or '', r['WC_Group'] or '', r['WC'] or '')
-        load_jobs_by_wc.setdefault(key, []).append({
+        backlog_jobs_by_wc.setdefault(key, []).append({
             'sch_start': _fmt_date(r['Sched_Start']),
             'sch_end': _fmt_date(r['Sched_End']),
         })
 
     now = datetime.now()
     for key, sec in sections.items():
-        load_weeks, gap_weeks = _work_center_load_weeks(load_jobs_by_wc.get(key, []), now)
-        sec['load_weeks'] = round(load_weeks, 1)
+        backlog_weeks, gap_weeks = _work_center_backlog_weeks(backlog_jobs_by_wc.get(key, []), now)
+        sec['backlog_weeks'] = round(backlog_weeks, 1)
         sec['gap_weeks'] = gap_weeks
 
     return {
