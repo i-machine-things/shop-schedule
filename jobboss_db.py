@@ -131,32 +131,33 @@ def _work_center_backlog_days(jobs, now):
     to slot something in rather than reading a work center as fully booked
     out to its furthest-out job when it isn't really.
 
-    Jobs are treated as occupying [sch_start, sch_end] at this work center;
-    walking them in start order, a gap here means idle time between one
-    job's end and the next job's start, not just a distance between two
+    Jobs are treated as occupying [sch_start, max(sch_end, now)] at this work
+    center -- the max(..., now) matters for a job that's overdue but still
+    open (sch_end already passed, Status <> 'C' per the caller's query): that
+    means the work center is *behind*, not free starting at that stale date.
+    Without the clamp, a real near-term job starting shortly after would read
+    as a gap (idle time) right after the overdue job's stale end, when in
+    reality the work center is going to spend that time catching up on the
+    overdue job, not sitting idle. Jobs scheduled before today get applied to
+    filling in apparent gaps, not treated as already finished and out of the
+    way. Walking jobs in start order, a gap means idle time between one job's
+    (clamped) end and the next job's start, not just a distance between two
     end dates.
 
     Returns (backlog_days, gap_days) as integer days, not fractional weeks --
     exact, so weeks-and-days display formatting doesn't compound rounding on
-    top of an already-rounded decimal. A gap *qualifies* (counts as a real
-    gap at all) based on the raw dates -- is there really a >=1wk hole
-    somewhere in this work center's schedule -- but its *reported size* is
-    floored at "now": a work center with an overdue/stale job (sch_end
-    already in the past) otherwise reports a gap size measured from that
-    stale date instead of from today, e.g. "open now (1.1 wk gap)" when the
-    next job was actually only a few days out. gap_days is None when the
-    queue simply has nothing scheduled after it (open-ended, not a bounded
-    gap) -- backlog_days alone says *when* there's room, not *how much*; a
-    work center reading "2 wk backlog" could have a 1-week hole right after
-    that point or a 4-week one, and only one of those actually fits a
-    2-week job.
+    top of an already-rounded decimal. gap_days is None when the queue simply
+    has nothing scheduled after it (open-ended, not a bounded gap) --
+    backlog_days alone says *when* there's room, not *how much*; a work
+    center reading "2 wk backlog" could have a 1-week hole right after that
+    point or a 4-week one, and only one of those actually fits a 2-week job.
     """
     intervals = []
     for j in jobs:
         start = _parse_sched_date(j.get('sch_start'))
         end = _parse_sched_date(j.get('sch_end'))
         if start and end:
-            intervals.append((start, end))
+            intervals.append((start, max(end, now)))
     if not intervals:
         return 0, None
     intervals.sort(key=lambda t: t[0])
@@ -164,13 +165,8 @@ def _work_center_backlog_days(jobs, now):
     queue_end = None
     gap_days = None
     for start, end in intervals:
-        # Qualify the gap on the raw dates (is there really a >=1wk hole in
-        # this work center's schedule at all), but report its size floored
-        # at "now" -- a stale/overdue job's end date is a real scheduling
-        # gap by that raw measure, but reporting its size from that past
-        # date instead of today isn't the number sales can act on.
         if queue_end is not None and (start - queue_end) >= timedelta(weeks=1):
-            gap_days = max(0, (start - max(queue_end, now)).days)
+            gap_days = (start - queue_end).days
             break
         if queue_end is None or end > queue_end:
             queue_end = end
