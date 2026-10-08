@@ -15,7 +15,7 @@ import re
 import socket
 import sys
 import pdfplumber
-from datetime import datetime, timedelta
+from datetime import datetime
 
 import jobboss_db
 
@@ -269,69 +269,24 @@ def _save_dept_colors(colors):
     os.replace(tmp, DEPT_COLORS_PATH)
 
 
-def _parse_sched_date(s):
-    """Parse a 'dd-Mon-yy' sch_start/sch_end string (both jobboss_db.py and
-    parse_pdf() use this format -- the DB path formats dates to match the
-    PDF's own native format) back to a datetime, or None if blank/unparseable."""
-    if not s:
-        return None
-    try:
-        return datetime.strptime(s, '%d-%b-%y')
-    except ValueError:
-        return None
-
-
-def _work_center_load_weeks(jobs, now):
-    """Weeks of work queued at a work center, based on the end time of the
-    last job -- but stopping at the first gap of at least a week between
-    jobs, so the reported load reflects the nearer job instead of hiding an
-    open gap behind a later one. Lets sales see where there's actually room
-    to slot something in rather than reading a work center as fully booked
-    out to its furthest-out job when it isn't really.
-
-    Jobs are treated as occupying [sch_start, sch_end] at this work center;
-    walking them in start order, a gap here means idle time between one
-    job's end and the next job's start, not just a distance between two
-    end dates.
-
-    Returns (load_weeks, gap_weeks). gap_weeks is the size of that opening --
-    load_weeks alone says *when* there's room, not *how much*; a work center
-    reading "2 wk load" could have a 1-week hole right after that point or a
-    4-week one, and only one of those actually fits a 2-week job. None if the
-    queue simply has nothing scheduled after it (open-ended, not a bounded gap).
-    """
-    intervals = []
-    for j in jobs:
-        start = _parse_sched_date(j.get('sch_start'))
-        end = _parse_sched_date(j.get('sch_end'))
-        if start and end:
-            intervals.append((start, end))
-    if not intervals:
-        return 0.0, None
-    intervals.sort(key=lambda t: t[0])
-
-    queue_end = None
-    gap_weeks = None
-    for start, end in intervals:
-        if queue_end is not None and (start - queue_end) >= timedelta(weeks=1):
-            gap_weeks = round((start - queue_end).days / 7, 1)
-            break
-        if queue_end is None or end > queue_end:
-            queue_end = end
-
-    if queue_end is None:
-        return 0.0, None
-    return max(0.0, (queue_end - now).days / 7), gap_weeks
-
-
 def apply_work_center_loads(sections):
-    """Attach load_weeks/gap_weeks to every section in place -- source-
-    agnostic (DB and PDF paths already share the same job dict shape), so
-    this runs once in main() after either path produces `sections`, not
-    duplicated in both."""
+    """Attach load_weeks/gap_weeks to any section that doesn't already have
+    them. The DB path (jobboss_db.fetch_from_db()) computes these itself
+    from a separate, unbounded query and attaches them before this ever
+    runs -- sec['jobs'] here is intentionally truncated to JOBBOSS_DAYS_AHEAD
+    for display, and using it for the load calc silently capped the load
+    stat at ~days_ahead too, which defeated the point. This only fills the
+    gap for the PDF path, which has no such wider query available and keeps
+    the existing (narrower) behavior as a reasonable fallback.
+
+    _work_center_load_weeks() lives in jobboss_db.py, not here -- that
+    module doesn't import this one, so it's the only side that can be
+    shared without a circular import."""
     now = datetime.now()
     for sec in sections:
-        load_weeks, gap_weeks = _work_center_load_weeks(sec.get('jobs', []), now)
+        if 'load_weeks' in sec:
+            continue
+        load_weeks, gap_weeks = jobboss_db._work_center_load_weeks(sec.get('jobs', []), now)
         sec['load_weeks'] = round(load_weeks, 1)
         sec['gap_weeks'] = gap_weeks
 
@@ -590,7 +545,7 @@ thead th{{position:sticky;top:0;z-index:20;background:#0d0d20;color:#7799ff;font
 .section-hdr td{{position:sticky;z-index:10;padding:8px 14px;border-bottom:1px solid #333}}
 .wc-name{{font-size:16px;font-weight:bold;color:#fff;letter-spacing:2px;text-transform:uppercase;margin-right:14px}}
 .dept-name{{font-size:11px;color:#888}}
-.wc-load{{font-size:11px;color:#4af;font-weight:bold;float:right}}
+.wc-load{{font-size:11px;color:#4af;font-weight:bold;margin-left:14px}}
 .job td{{padding:5px 8px;border-bottom:1px solid #111;vertical-align:top}}
 .job:nth-child(even){{background:rgba(255,255,255,0.02)}}
 .jnum{{color:#4af;font-weight:bold;font-size:15px;white-space:nowrap}}

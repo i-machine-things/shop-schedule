@@ -75,6 +75,29 @@ WHERE jo.Status <> 'C'
 ORDER BY wc.Department, COALESCE(wc.Parent_ID, wc.Work_Center), jo.Work_Center, j.Job, jo.Sequence
 """
 
+# Separate, unbounded query for work-center load only -- no Sched_Start
+# cutoff and no per-row CROSS APPLY (don't need Rem_Hrs/NumOps_Ahead/Curr_WC
+# here, just the schedule window). The main query above is intentionally
+# limited to JOBBOSS_DAYS_AHEAD so the scrolling kiosk display stays
+# near-term, but reusing that same limited row set for the load stat
+# silently capped it at ~days_ahead too -- defeating the point, since sales
+# needs to see real backlog depth beyond what's on screen. Cheaper than
+# widening the main query's cutoff would be: no CROSS APPLY means this
+# doesn't pay the correlated-subquery cost per row across a much larger date
+# range on every 60s refresh.
+_LOAD_QUERY = """
+SELECT
+    wc.Department,
+    COALESCE(wc.Parent_ID, wc.Work_Center) AS WC_Group,
+    jo.Work_Center                          AS WC,
+    jo.Sched_Start, jo.Sched_End
+FROM Job_Operation jo
+JOIN Job j          ON j.Job = jo.Job
+JOIN Work_Center wc ON wc.Work_Center = jo.Work_Center
+WHERE jo.Status <> 'C'
+  AND j.Released_Date IS NOT NULL
+"""
+
 
 def is_configured():
     """True if enough JOBBOSS_DB_* env vars are set to attempt a connection."""
@@ -84,6 +107,63 @@ def is_configured():
 def _fmt_date(dt):
     """Match the PDF parser's dd-Mon-yy date format, e.g. '18-Sep-26'."""
     return dt.strftime('%d-%b-%y') if dt else ''
+
+
+def _parse_sched_date(s):
+    """Parse a 'dd-Mon-yy' sch_start/sch_end string back to a datetime, or
+    None if blank/unparseable. Lives here (not update_schedule.py) so both
+    this module's wide load query and update_schedule.py's PDF-path fallback
+    can share it without a circular import (update_schedule.py already
+    imports this module, not the other way around)."""
+    if not s:
+        return None
+    try:
+        return datetime.strptime(s, '%d-%b-%y')
+    except ValueError:
+        return None
+
+
+def _work_center_load_weeks(jobs, now):
+    """Weeks of work queued at a work center, based on the end time of the
+    last job -- but stopping at the first gap of at least a week between
+    jobs, so the reported load reflects the nearer job instead of hiding an
+    open gap behind a later one. Lets sales see where there's actually room
+    to slot something in rather than reading a work center as fully booked
+    out to its furthest-out job when it isn't really.
+
+    Jobs are treated as occupying [sch_start, sch_end] at this work center;
+    walking them in start order, a gap here means idle time between one
+    job's end and the next job's start, not just a distance between two
+    end dates.
+
+    Returns (load_weeks, gap_weeks). gap_weeks is the size of that opening --
+    load_weeks alone says *when* there's room, not *how much*; a work center
+    reading "2 wk load" could have a 1-week hole right after that point or a
+    4-week one, and only one of those actually fits a 2-week job. None if the
+    queue simply has nothing scheduled after it (open-ended, not a bounded gap).
+    """
+    intervals = []
+    for j in jobs:
+        start = _parse_sched_date(j.get('sch_start'))
+        end = _parse_sched_date(j.get('sch_end'))
+        if start and end:
+            intervals.append((start, end))
+    if not intervals:
+        return 0.0, None
+    intervals.sort(key=lambda t: t[0])
+
+    queue_end = None
+    gap_weeks = None
+    for start, end in intervals:
+        if queue_end is not None and (start - queue_end) >= timedelta(weeks=1):
+            gap_weeks = round((start - queue_end).days / 7, 1)
+            break
+        if queue_end is None or end > queue_end:
+            queue_end = end
+
+    if queue_end is None:
+        return 0.0, None
+    return max(0.0, (queue_end - now).days / 7), gap_weeks
 
 
 def fetch_from_db():
@@ -110,6 +190,8 @@ def fetch_from_db():
             with conn.cursor() as cur:
                 cur.execute(_QUERY, (cutoff,))
                 rows = cur.fetchall()
+                cur.execute(_LOAD_QUERY)
+                load_rows = cur.fetchall()
     except Exception as exc:
         # Log only the exception type, not str(exc) -- TDS driver error text can
         # echo back connection parameters, and this is the one error path in the
@@ -144,6 +226,24 @@ def fetch_from_db():
             'part': r['Part_Number'] or '',
             'description': r['Description'] or '',
         })
+
+    # Group the unbounded load-query rows by the same (department, wc_group,
+    # wc) key as sections above, and compute load_weeks/gap_weeks from that
+    # full set -- not from sec['jobs'], which is intentionally truncated to
+    # JOBBOSS_DAYS_AHEAD for display.
+    load_jobs_by_wc = {}
+    for r in load_rows:
+        key = (r['Department'] or '', r['WC_Group'] or '', r['WC'] or '')
+        load_jobs_by_wc.setdefault(key, []).append({
+            'sch_start': _fmt_date(r['Sched_Start']),
+            'sch_end': _fmt_date(r['Sched_End']),
+        })
+
+    now = datetime.now()
+    for key, sec in sections.items():
+        load_weeks, gap_weeks = _work_center_load_weeks(load_jobs_by_wc.get(key, []), now)
+        sec['load_weeks'] = round(load_weeks, 1)
+        sec['gap_weeks'] = gap_weeks
 
     return {
         'report_date': datetime.now().strftime('%d-%b-%y %I:%M%p'),
