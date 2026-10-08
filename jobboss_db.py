@@ -123,8 +123,8 @@ def _parse_sched_date(s):
         return None
 
 
-def _work_center_backlog_weeks(jobs, now):
-    """Weeks of work queued at a work center, based on the end time of the
+def _work_center_backlog_days(jobs, now):
+    """Days of work queued at a work center, based on the end time of the
     last job -- but stopping at the first gap of at least a week between
     jobs, so the reported backlog reflects the nearer job instead of hiding an
     open gap behind a later one. Lets sales see where there's actually room
@@ -136,11 +136,20 @@ def _work_center_backlog_weeks(jobs, now):
     job's end and the next job's start, not just a distance between two
     end dates.
 
-    Returns (backlog_weeks, gap_weeks). gap_weeks is the size of that opening --
-    backlog_weeks alone says *when* there's room, not *how much*; a work center
-    reading "2 wk backlog" could have a 1-week hole right after that point or a
-    4-week one, and only one of those actually fits a 2-week job. None if the
-    queue simply has nothing scheduled after it (open-ended, not a bounded gap).
+    Returns (backlog_days, gap_days) as integer days, not fractional weeks --
+    exact, so weeks-and-days display formatting doesn't compound rounding on
+    top of an already-rounded decimal. A gap *qualifies* (counts as a real
+    gap at all) based on the raw dates -- is there really a >=1wk hole
+    somewhere in this work center's schedule -- but its *reported size* is
+    floored at "now": a work center with an overdue/stale job (sch_end
+    already in the past) otherwise reports a gap size measured from that
+    stale date instead of from today, e.g. "open now (1.1 wk gap)" when the
+    next job was actually only a few days out. gap_days is None when the
+    queue simply has nothing scheduled after it (open-ended, not a bounded
+    gap) -- backlog_days alone says *when* there's room, not *how much*; a
+    work center reading "2 wk backlog" could have a 1-week hole right after
+    that point or a 4-week one, and only one of those actually fits a
+    2-week job.
     """
     intervals = []
     for j in jobs:
@@ -149,21 +158,26 @@ def _work_center_backlog_weeks(jobs, now):
         if start and end:
             intervals.append((start, end))
     if not intervals:
-        return 0.0, None
+        return 0, None
     intervals.sort(key=lambda t: t[0])
 
     queue_end = None
-    gap_weeks = None
+    gap_days = None
     for start, end in intervals:
+        # Qualify the gap on the raw dates (is there really a >=1wk hole in
+        # this work center's schedule at all), but report its size floored
+        # at "now" -- a stale/overdue job's end date is a real scheduling
+        # gap by that raw measure, but reporting its size from that past
+        # date instead of today isn't the number sales can act on.
         if queue_end is not None and (start - queue_end) >= timedelta(weeks=1):
-            gap_weeks = round((start - queue_end).days / 7, 1)
+            gap_days = max(0, (start - max(queue_end, now)).days)
             break
         if queue_end is None or end > queue_end:
             queue_end = end
 
     if queue_end is None:
-        return 0.0, None
-    return max(0.0, (queue_end - now).days / 7), gap_weeks
+        return 0, None
+    return max(0, (queue_end - now).days), gap_days
 
 
 def fetch_from_db():
@@ -228,8 +242,8 @@ def fetch_from_db():
         })
 
     # Group the unbounded backlog-query rows by the same (department,
-    # wc_group, wc) key as sections above, and compute backlog_weeks/
-    # gap_weeks from that full set -- not from sec['jobs'], which is
+    # wc_group, wc) key as sections above, and compute backlog_days/
+    # gap_days from that full set -- not from sec['jobs'], which is
     # intentionally truncated to JOBBOSS_DAYS_AHEAD for display.
     backlog_jobs_by_wc = {}
     for r in backlog_rows:
@@ -241,9 +255,9 @@ def fetch_from_db():
 
     now = datetime.now()
     for key, sec in sections.items():
-        backlog_weeks, gap_weeks = _work_center_backlog_weeks(backlog_jobs_by_wc.get(key, []), now)
-        sec['backlog_weeks'] = round(backlog_weeks, 1)
-        sec['gap_weeks'] = gap_weeks
+        backlog_days, gap_days = _work_center_backlog_days(backlog_jobs_by_wc.get(key, []), now)
+        sec['backlog_days'] = backlog_days
+        sec['gap_days'] = gap_days
 
     return {
         'report_date': datetime.now().strftime('%d-%b-%y %I:%M%p'),

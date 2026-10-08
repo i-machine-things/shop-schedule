@@ -270,7 +270,7 @@ def _save_dept_colors(colors):
 
 
 def apply_work_center_backlogs(sections):
-    """Attach backlog_weeks/gap_weeks to any section that doesn't already have
+    """Attach backlog_days/gap_days to any section that doesn't already have
     them. The DB path (jobboss_db.fetch_from_db()) computes these itself
     from a separate, unbounded query and attaches them before this ever
     runs -- sec['jobs'] here is intentionally truncated to JOBBOSS_DAYS_AHEAD
@@ -279,16 +279,30 @@ def apply_work_center_backlogs(sections):
     gap for the PDF path, which has no such wider query available and keeps
     the existing (narrower) behavior as a reasonable fallback.
 
-    _work_center_backlog_weeks() lives in jobboss_db.py, not here -- that
+    _work_center_backlog_days() lives in jobboss_db.py, not here -- that
     module doesn't import this one, so it's the only side that can be
     shared without a circular import."""
     now = datetime.now()
     for sec in sections:
-        if 'backlog_weeks' in sec:
+        if 'backlog_days' in sec:
             continue
-        backlog_weeks, gap_weeks = jobboss_db._work_center_backlog_weeks(sec.get('jobs', []), now)
-        sec['backlog_weeks'] = round(backlog_weeks, 1)
-        sec['gap_weeks'] = gap_weeks
+        backlog_days, gap_days = jobboss_db._work_center_backlog_days(sec.get('jobs', []), now)
+        sec['backlog_days'] = backlog_days
+        sec['gap_days'] = gap_days
+
+
+def _format_weeks_days(days):
+    """'2 wk 3 day' style formatting from a raw day count -- omits a zero
+    component ('3 day' or '2 wk', not '0 wk 3 day') and deliberately isn't a
+    decimal-weeks number: "2.3 wk" doesn't translate into an actual calendar
+    date at a glance on the shop floor the way "2 wk 2 day" does."""
+    weeks, rem_days = divmod(days, 7)
+    parts = []
+    if weeks:
+        parts.append(f"{weeks} wk")
+    if rem_days or not parts:
+        parts.append(f"{rem_days} day")
+    return ' '.join(parts)
 
 
 def generate_json(data, out_path):
@@ -361,15 +375,15 @@ def generate_html(data, out_path, *, kiosk=False, gen_ts=None):
         wc_attr = _html.escape(sec["wc"])
         dept_e = _html.escape(sec["department"])
         wcg_e = _html.escape(sec["wc_group"])
-        backlog_weeks = sec.get('backlog_weeks', 0)
-        gap_weeks = sec.get('gap_weeks')
-        backlog_text = f"{backlog_weeks:.1f} wk backlog" if backlog_weeks > 0 else "open now"
-        # gap_weeks is the *size* of the opening right after backlog_weeks, not
+        backlog_days = sec.get('backlog_days', 0)
+        gap_days = sec.get('gap_days')
+        backlog_text = f"{_format_weeks_days(backlog_days)} backlog" if backlog_days > 0 else "open now"
+        # gap_days is the *size* of the opening right after backlog_days, not
         # just that one exists -- a 1-week hole can't take a 2-week job, so
         # showing only "when" there's room without "how much" would be
         # actively misleading for exactly the use case this is for.
-        if gap_weeks is not None:
-            backlog_text += f" ({gap_weeks:.1f} wk gap)"
+        if gap_days is not None:
+            backlog_text += f" ({_format_weeks_days(gap_days)} gap)"
         rows.append(f'''
       <tr class="section-hdr" data-wc="{wc_attr}">
         <td colspan="11" style="background:{bg};border-left:4px solid {accent}">
