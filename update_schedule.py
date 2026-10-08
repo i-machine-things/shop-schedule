@@ -269,6 +269,42 @@ def _save_dept_colors(colors):
     os.replace(tmp, DEPT_COLORS_PATH)
 
 
+def apply_work_center_backlogs(sections):
+    """Attach backlog_days/gap_days to any section that doesn't already have
+    them. The DB path (jobboss_db.fetch_from_db()) computes these itself
+    from a separate, unbounded query and attaches them before this ever
+    runs -- sec['jobs'] here is intentionally truncated to JOBBOSS_DAYS_AHEAD
+    for display, and using it for the backlog calc silently capped the
+    backlog stat at ~days_ahead too, which defeated the point. This only fills the
+    gap for the PDF path, which has no such wider query available and keeps
+    the existing (narrower) behavior as a reasonable fallback.
+
+    _work_center_backlog_days() lives in jobboss_db.py, not here -- that
+    module doesn't import this one, so it's the only side that can be
+    shared without a circular import."""
+    now = datetime.now()
+    for sec in sections:
+        if 'backlog_days' in sec:
+            continue
+        backlog_days, gap_days = jobboss_db._work_center_backlog_days(sec.get('jobs', []), now)
+        sec['backlog_days'] = backlog_days
+        sec['gap_days'] = gap_days
+
+
+def _format_weeks_days(days):
+    """'2 wk 3 day' style formatting from a raw day count -- omits a zero
+    component ('3 day' or '2 wk', not '0 wk 3 day') and deliberately isn't a
+    decimal-weeks number: "2.3 wk" doesn't translate into an actual calendar
+    date at a glance on the shop floor the way "2 wk 2 day" does."""
+    weeks, rem_days = divmod(days, 7)
+    parts = []
+    if weeks:
+        parts.append(f"{weeks} wk")
+    if rem_days or not parts:
+        parts.append(f"{rem_days} day")
+    return ' '.join(parts)
+
+
 def generate_json(data, out_path):
     """Write the parsed schedule data as JSON for non-HTML consumers (e.g. a Roku
     kiosk client) -- same {report_date, thru_date, sections} shape used internally,
@@ -339,11 +375,21 @@ def generate_html(data, out_path, *, kiosk=False, gen_ts=None):
         wc_attr = _html.escape(sec["wc"])
         dept_e = _html.escape(sec["department"])
         wcg_e = _html.escape(sec["wc_group"])
+        backlog_days = sec.get('backlog_days', 0)
+        gap_days = sec.get('gap_days')
+        backlog_text = f"{_format_weeks_days(backlog_days)} backlog" if backlog_days > 0 else "open now"
+        # gap_days is the *size* of the opening right after backlog_days, not
+        # just that one exists -- a 1-week hole can't take a 2-week job, so
+        # showing only "when" there's room without "how much" would be
+        # actively misleading for exactly the use case this is for.
+        if gap_days is not None:
+            backlog_text += f" ({_format_weeks_days(gap_days)} gap)"
         rows.append(f'''
       <tr class="section-hdr" data-wc="{wc_attr}">
         <td colspan="11" style="background:{bg};border-left:4px solid {accent}">
           <span class="wc-name">{wc_attr}</span>
           <span class="dept-name">{dept_e} &thinsp;&middot;&thinsp; {wcg_e}</span>
+          <span class="wc-backlog">{backlog_text}</span>
         </td>
       </tr>''')
         for j in sec['jobs']:
@@ -513,6 +559,7 @@ thead th{{position:sticky;top:0;z-index:20;background:#0d0d20;color:#7799ff;font
 .section-hdr td{{position:sticky;z-index:10;padding:8px 14px;border-bottom:1px solid #333}}
 .wc-name{{font-size:16px;font-weight:bold;color:#fff;letter-spacing:2px;text-transform:uppercase;margin-right:14px}}
 .dept-name{{font-size:11px;color:#888}}
+.wc-backlog{{font-size:11px;color:#4af;font-weight:bold;margin-left:14px}}
 .job td{{padding:5px 8px;border-bottom:1px solid #111;vertical-align:top}}
 .job:nth-child(even){{background:rgba(255,255,255,0.02)}}
 .jnum{{color:#4af;font-weight:bold;font-size:15px;white-space:nowrap}}
@@ -547,6 +594,7 @@ thead th{{position:sticky;top:0;z-index:20;background:#0d0d20;color:#7799ff;font
 [data-theme="light"] .section-hdr td{{background:#eaecf8!important;border-bottom-color:#ccc}}
 [data-theme="light"] .wc-name{{color:#111}}
 [data-theme="light"] .dept-name{{color:#555}}
+[data-theme="light"] .wc-backlog{{color:#0066cc}}
 [data-theme="light"] .job td{{border-bottom-color:#ddd}}
 [data-theme="light"] .job:nth-child(even){{background:rgba(0,0,0,0.03)}}
 [data-theme="light"] .jnum{{color:#0066cc}}
@@ -839,6 +887,8 @@ def main():
         data = parse_pdf(PDF_PATH)
         if not fetched and not on_windows:
             print("No new email. Display refreshed.")
+
+    apply_work_center_backlogs(data['sections'])
 
     gen_ts = int(datetime.now().timestamp())
     generate_html(data, HTML_PATH, gen_ts=gen_ts)
