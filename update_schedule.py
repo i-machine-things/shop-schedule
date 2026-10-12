@@ -195,7 +195,7 @@ def parse_pdf(path):
                         'curr_wc': m2.group(6).strip(),
                         'ship_qty': m2.group(7),
                         'promised': m2.group(8),
-                        'customer': '', 'oper': '', 'sch_end': '',
+                        'customer': '', 'oper': '', 'oper_desc': '', 'sch_end': '',
                         'num_ops': '', 'rem_hrs': '', 'qty_run': '',
                         'part': '', 'description': '',
                     }

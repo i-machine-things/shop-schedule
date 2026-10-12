@@ -196,6 +196,8 @@ This note was created based on issues encountered with PyInstaller executables r
 
 **Verify CodeRabbit API-change claims against the actual library version in use.** CR claimed `PDFDocumentProxy.destroy()` was removed in PDF.js 3.x; it wasn't — `cleanup()` doesn't terminate the worker and would have leaked it.
 
+**Every job-record initializer branch in `parse_pdf()`'s state machine must set the same keys.** The `state==0` happy path and the `state==1` recovery branch (an "unexpected line" that turns out to be a new job line, not a customer line) each build their own `job_data` dict from scratch — adding a field to one without the other means any job reaching the template via the branch you missed hits a `KeyError` on an unconditional `je["<field>"]` lookup in `generate_html()`. Happened with `oper_desc` (PR #282): the recovery branch was missed when the field was added to the happy path. Grep both initializers whenever adding a new job field, not just the first one you find.
+
 ## Work Center Backlog Calculation
 
 **Call it "backlog," not "load."** Shipped the first version as `load_weeks`/"wk load"; the actual shop-floor term for queued work at a work center is backlog, not load. Renamed throughout (`_work_center_backlog_days()`, `_BACKLOG_QUERY`, `apply_work_center_backlogs()`, `.wc-backlog`, "wk backlog") after the fact rather than caught before shipping -- worth getting shop-floor terminology right from a domain person before building the feature, not after.
