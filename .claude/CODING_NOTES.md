@@ -190,9 +190,13 @@ This note was created based on issues encountered with PyInstaller executables r
 
 **Guard `int(Content-Length)` parsing with try/except; return 400 on failure or negative values.** Malformed requests otherwise raise an unhandled `ValueError` and produce a 500.
 
+**`jo.Description` (operation description) must be aliased to avoid colliding with `j.Description` (job description) in the same query.** Both `Job` and `Job_Operation` have a `Description` column; `jobboss_db.py`'s `_QUERY` already selects `j.Description` unaliased for the job's own description, so the new operation-level field is `jo.Description AS Oper_Desc` -- pytds's `as_dict=True` keys by column name, and an unaliased second `Description` would have silently overwritten the first in the result row.
+
 ## PDF Handling
 
 **Verify CodeRabbit API-change claims against the actual library version in use.** CR claimed `PDFDocumentProxy.destroy()` was removed in PDF.js 3.x; it wasn't — `cleanup()` doesn't terminate the worker and would have leaked it.
+
+**Every job-record initializer branch in `parse_pdf()`'s state machine must set the same keys.** The `state==0` happy path and the `state==1` recovery branch (an "unexpected line" that turns out to be a new job line, not a customer line) each build their own `job_data` dict from scratch — adding a field to one without the other means any job reaching the template via the branch you missed hits a `KeyError` on an unconditional `je["<field>"]` lookup in `generate_html()`. Happened with `oper_desc` (PR #282): the recovery branch was missed when the field was added to the happy path. Grep both initializers whenever adding a new job field, not just the first one you find.
 
 ## Work Center Backlog Calculation
 
