@@ -392,7 +392,16 @@ def generate_html(data, out_path, *, kiosk=False, gen_ts=None):
           <span class="wc-backlog">{backlog_text}</span>
         </td>
       </tr>''')
-        for j in sec['jobs']:
+        # Source order is Department/WC_Group/WC/Job/Sequence (DB) or PDF
+        # document order (PDF path) -- neither is chronological, so a work
+        # center's rows can jump around in start date unless sorted here.
+        # Blank/unparseable sch_start sorts last rather than first (datetime.min
+        # default) so a job missing a date doesn't jump the whole queue.
+        sec_jobs = sorted(
+            sec['jobs'],
+            key=lambda j: jobboss_db._parse_sched_date(j['sch_start']) or datetime.max,
+        )
+        for j in sec_jobs:
             overdue = ''
             if j['promised']:
                 try:
