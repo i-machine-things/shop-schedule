@@ -1,14 +1,13 @@
 #!/usr/bin/env python3
 """
-Foreman Schedule - Email poller & HTML generator for shop floor display.
-Run via cron every 15 minutes. Checks Gmail for new Shop Schedule PDF, parses it,
-and regenerates schedule.html for the kiosk display.
+Foreman Schedule - HTML generator for shop floor display.
+Run via cron every 15 minutes. Pulls the current Foreman's Report (JobBoss DB,
+or a PDF dropped/uploaded into place) and regenerates schedule.html for the
+kiosk display.
 """
 
 import hashlib
 import html as _html
-import imaplib
-import email
 import json
 import os
 import re
@@ -20,8 +19,6 @@ from datetime import datetime
 import jobboss_db
 
 # ── Config (loaded from .env by run_update.sh) ─────────────────────────────────
-GMAIL_USER = os.environ.get('GMAIL_USER', '')
-GMAIL_PASS = os.environ.get('GMAIL_PASS', '')   # Gmail App Password
 SHOP_NAME = os.environ.get('SHOP_NAME', 'My Shop')
 PDF_FILENAME = os.path.basename(os.environ.get('PDF_FILENAME', '').strip()) or 'last_report.pdf'
 PDF_COMPANY_NAME = os.environ.get('PDF_COMPANY_NAME', '').strip()
@@ -44,40 +41,6 @@ def _get_local_ip():
         return ip
     except Exception:
         return None
-
-
-# ── Email (deprecated) ──────────────────────────────────────────────────────────
-
-def fetch_pdf():
-    """Check Gmail inbox for unread email with PDF attachment. Returns True if new PDF saved.
-
-    DEPRECATED: prefer the JobBoss DB source (see jobboss_db.py / README). Email
-    polling stays functional for now but will be removed in a future version.
-    """
-    print("DEPRECATED: Gmail/email polling is deprecated in favor of the JobBoss "
-          "DB source -- see README's 'JobBoss DB source' section.", file=sys.stderr)
-    try:
-        socket.setdefaulttimeout(30)
-        conn = imaplib.IMAP4_SSL('imap.gmail.com')
-        conn.login(GMAIL_USER, GMAIL_PASS)
-        conn.select('inbox')
-        _, data = conn.search(None, 'UNSEEN')
-        for num in data[0].split():
-            _, raw = conn.fetch(num, '(RFC822)')
-            msg = email.message_from_bytes(raw[0][1])
-            for part in msg.walk():
-                fname = part.get_filename() or ''
-                if fname.lower().endswith('.pdf'):
-                    with open(PDF_PATH, 'wb') as f:
-                        f.write(part.get_payload(decode=True))
-                    conn.store(num, '+FLAGS', '\\Seen')
-                    conn.logout()
-                    print(f"[{datetime.now():%Y-%m-%d %H:%M}] Saved: {fname}")
-                    return True
-        conn.logout()
-    except Exception as exc:
-        print(f"Email error: {exc}", file=sys.stderr)
-    return False
 
 
 # ── PDF Parsing ─────────────────────────────────────────────────────────────────
@@ -865,10 +828,9 @@ setInterval(async () => {{
 
 def main():
     """Regenerate schedule.html/kiosk.html from the JobBoss DB if configured,
-    otherwise fall back to parsing a PDF -- auto-fetched from Gmail (Linux
-    only, deprecated) or already sitting at PDF_PATH from a manual drop/
-    upload (works on both platforms either way; see README's SMB/upload
-    docs -- only the *automatic Gmail checking* is Linux-only)."""
+    otherwise fall back to parsing a PDF already sitting at PDF_PATH from a
+    manual drop (incoming/) or web upload (options.html) -- same on both
+    platforms."""
     if jobboss_db.is_configured():
         data = jobboss_db.fetch_from_db()
         if data is None:
@@ -881,24 +843,13 @@ def main():
         print(f"[{datetime.now():%Y-%m-%d %H:%M}] DB fetch OK: "
               f"{len(data['sections'])} sections, {total_jobs} job rows. Display refreshed.")
     else:
-        # install.ps1 doesn't offer Gmail and fetch_pdf()'s IMAP flow is
-        # untested on Windows, so skip the auto-fetch there regardless of
-        # GMAIL_USER -- but still fall through to parse_pdf() below if a PDF
-        # already exists from a manual drop/upload, same as Linux.
-        on_windows = sys.platform.startswith('win')
-        fetched = fetch_pdf() if (GMAIL_USER and not on_windows) else False
         if not os.path.exists(PDF_PATH):
-            if on_windows:
-                print("JOBBOSS_DB_* is not configured and no PDF has been provided. "
-                      "Windows installs don't support automatic Gmail polling -- fill in "
-                      ".env's JOBBOSS_DB_* (preferred), or drop a PDF into incoming/.",
-                      file=sys.stderr)
-            else:
-                print("No PDF yet. Send the Shop Schedule PDF to the Gmail inbox.", file=sys.stderr)
+            print("JOBBOSS_DB_* is not configured and no PDF has been provided. "
+                  "Fill in .env's JOBBOSS_DB_* (preferred), or drop a PDF into incoming/.",
+                  file=sys.stderr)
             return
         data = parse_pdf(PDF_PATH)
-        if not fetched and not on_windows:
-            print("No new email. Display refreshed.")
+        print(f"[{datetime.now():%Y-%m-%d %H:%M}] Parsed {PDF_PATH}. Display refreshed.")
 
     apply_work_center_backlogs(data['sections'])
 
