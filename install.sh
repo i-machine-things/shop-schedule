@@ -15,9 +15,7 @@ echo ""
 
 # Dependencies
 sudo apt-get update -q
-sudo apt-get install -y python3-venv samba
-# wsdd enables WSD discovery for Windows clients — package name varies by distro
-sudo apt-get install -y wsdd 2>/dev/null || sudo apt-get install -y wsdd2 2>/dev/null || true
+sudo apt-get install -y python3-venv
 python3 -m venv "$INSTALL_DIR/venv"
 "$INSTALL_DIR/venv/bin/pip" install --quiet --upgrade pip
 # python-tds pinned to 1.13.0 -- 1.14.0+ imports typing.Protocol/TypedDict,
@@ -38,21 +36,6 @@ _get_env() {
     raw=$(grep -m1 "^$1=" "$2" 2>/dev/null | cut -d= -f2-) || true
     [ -z "$raw" ] && return 0
     eval "printf '%s' $raw" 2>/dev/null || true
-}
-
-# Prompt for a password, echoing * per character; outputs the value on stdout
-_read_masked() {
-    local prompt="$1" pass="" char
-    printf '%s' "$prompt" > /dev/tty
-    while IFS= read -r -s -n1 char; do
-        case "$char" in
-            '') break ;;
-            $'\x7f') [[ -n "$pass" ]] && { pass="${pass%?}"; printf '\b \b' > /dev/tty; } ;;
-            *) pass+="$char"; printf '*' > /dev/tty ;;
-        esac
-    done
-    printf '\n' > /dev/tty
-    printf '%s' "$pass"
 }
 
 # Write or replace a key='value' line in .env (safe for & | " \ $ and backticks)
@@ -87,20 +70,6 @@ if [ -z "$_v" ] || [ "$_v" = "Your Shop Name" ]; then
     [ -n "$_v" ] && _set_env SHOP_NAME "$_v" "$INSTALL_DIR/.env"
 fi
 
-echo "  Gmail/PDF email polling is DEPRECATED — prefer the JobBoss DB source (see README)."
-_v=$(_get_env GMAIL_USER "$INSTALL_DIR/.env")
-if [ -z "$_v" ] || [ "$_v" = "your@gmail.com" ]; then
-    read -rp "  Gmail address (optional, deprecated — Enter to skip): " _v || true
-    [ -n "$_v" ] && _set_env GMAIL_USER "$_v" "$INSTALL_DIR/.env"
-fi
-
-_v=$(_get_env GMAIL_PASS "$INSTALL_DIR/.env")
-if [ -z "$_v" ] || [ "$_v" = "xxxx-xxxx-xxxx-xxxx" ]; then
-    echo "  (App Password — generate at https://myaccount.google.com/apppasswords)"
-    _v=$(_read_masked "  Gmail App Password (optional, deprecated — Enter to skip): ") || true
-    [ -n "$_v" ] && _set_env GMAIL_PASS "$_v" "$INSTALL_DIR/.env"
-fi
-
 _v=$(_get_env PDF_COMPANY_NAME "$INSTALL_DIR/.env")
 if [ -z "$_v" ] || [ "$_v" = "Your Company Name" ]; then
     read -rp "  Company name as it appears in the PDF header (optional, Enter to skip): " _v || true
@@ -123,11 +92,11 @@ fi
 
 # Process any PDFs in incoming/ and regenerate schedule.html so the sidebar
 # is populated on first boot rather than waiting for the first cron run.
-GMAIL_USER='' "$INSTALL_DIR/venv/bin/python3" "$INSTALL_DIR/process_drop.py" --no-regen 2>&1 || true
+"$INSTALL_DIR/venv/bin/python3" "$INSTALL_DIR/process_drop.py" --no-regen 2>&1 || true
 if [ -f "$INSTALL_DIR/last_report.pdf" ]; then
     echo "Regenerating schedule from existing PDF..."
     ( set -a; source "$INSTALL_DIR/.env" 2>/dev/null; set +a
-      GMAIL_USER='' "$INSTALL_DIR/venv/bin/python3" "$INSTALL_DIR/update_schedule.py" ) || true
+      "$INSTALL_DIR/venv/bin/python3" "$INSTALL_DIR/update_schedule.py" ) || true
 fi
 
 # Create page-rotation config from example if not present
@@ -149,25 +118,6 @@ sudo systemctl daemon-reload
 sudo systemctl enable foreman-server
 sudo systemctl restart foreman-server
 
-# Allow guest connections for the drop share; patch any legacy 'map to guest = never'
-if sudo grep -qiE '^[[:space:]]*map[[:space:]]+to[[:space:]]+guest[[:space:]]*=' /etc/samba/smb.conf 2>/dev/null; then
-    sudo sed -i -E 's/^[[:space:]]*map[[:space:]]+to[[:space:]]+guest[[:space:]]*=.*/   map to guest = bad user/I' /etc/samba/smb.conf
-else
-    tmp=$(mktemp)
-    awk '/^\[global\]/{print; print "   map to guest = bad user"; next}1' \
-        /etc/samba/smb.conf > "$tmp"
-    sudo install -o root -g root -m 0644 "$tmp" /etc/samba/smb.conf
-    rm -f "$tmp"
-fi
-
-# Remove [homes] share so the user home directory is not exposed via SMB
-if grep -q '^\[homes\]' /etc/samba/smb.conf 2>/dev/null; then
-    tmp=$(mktemp)
-    awk '/^\[homes\]/{skip=1;next} /^\[/{skip=0} !skip{print}' \
-        /etc/samba/smb.conf > "$tmp"
-    sudo mv "$tmp" /etc/samba/smb.conf
-fi
-
 # Migrate legacy incoming/processed/ to BASE_DIR/processed/ if it exists
 if [ -d "$INSTALL_DIR/incoming/processed" ]; then
     mkdir -p "$INSTALL_DIR/processed"
@@ -176,39 +126,20 @@ if [ -d "$INSTALL_DIR/incoming/processed" ]; then
     rmdir "$INSTALL_DIR/incoming/processed" 2>/dev/null || true
 fi
 
-# Configure SMB share for incoming/ drop folder
-if ! grep -q '\[schedule-drop\]' /etc/samba/smb.conf 2>/dev/null; then
-    sudo tee -a /etc/samba/smb.conf > /dev/null << EOF
-
-[schedule-drop]
-   comment = Shop Schedule PDF Drop
-   path = $INSTALL_DIR/incoming
-   guest ok = yes
-   force user = $USER
-   writable = yes
-   browseable = yes
-   create mask = 0664
-   directory mask = 0775
-   veto files = /processed/
-EOF
+# Retire a legacy [schedule-drop] SMB share from a pre-removal install --
+# only if it's still pointing at this install's incoming/ (not repointed),
+# and only that one stanza -- leave every other share and smbd/nmbd/wsdd
+# untouched, since this box may use Samba for something unrelated to this app.
+if grep -q '^\[schedule-drop\]' /etc/samba/smb.conf 2>/dev/null \
+        && grep -A10 '^\[schedule-drop\]' /etc/samba/smb.conf | grep -qF "path = $INSTALL_DIR/incoming"; then
+    tmp=$(mktemp)
+    awk '/^\[schedule-drop\]/{skip=1;next} /^\[/{skip=0} !skip{print}' \
+        /etc/samba/smb.conf > "$tmp"
+    sudo install -o root -g root -m 0644 "$tmp" /etc/samba/smb.conf
+    rm -f "$tmp"
+    systemctl is-active --quiet smbd 2>/dev/null && sudo systemctl reload smbd || true
+    echo "Removed legacy [schedule-drop] SMB share -- SMB drop is no longer supported (see README.md)."
 fi
-
-# Patch existing installs: add veto files and migrate to guest access
-if grep -q '\[schedule-drop\]' /etc/samba/smb.conf 2>/dev/null; then
-    if ! grep -A10 '\[schedule-drop\]' /etc/samba/smb.conf | grep -q 'veto files'; then
-        sudo sed -i '/\[schedule-drop\]/a\   veto files = \/processed\/' /etc/samba/smb.conf
-    fi
-    sudo sed -i '/^\[schedule-drop\]/,/^\[/{/^[[:space:]]*valid users[[:space:]]*=/d; /^[[:space:]]*guest ok[[:space:]]*=/d; /^[[:space:]]*force user[[:space:]]*=/d}' /etc/samba/smb.conf
-    sudo sed -i '/^\[schedule-drop\]/a\   guest ok = yes' /etc/samba/smb.conf
-    sudo sed -i "/^\[schedule-drop\]/a\\   force user = $USER" /etc/samba/smb.conf
-fi
-sudo systemctl enable smbd nmbd
-sudo systemctl restart smbd nmbd
-# Enable wsdd/wsdd2 if either was installed
-for svc in wsdd wsdd2; do
-    systemctl list-unit-files "${svc}.service" 2>/dev/null | grep -q "${svc}.service" \
-        && sudo systemctl enable "$svc" && sudo systemctl restart "$svc" || true
-done
 
 # Add cron job (every 15 minutes)
 CRON="*/15 * * * * \"$INSTALL_DIR/run_update.sh\" >> /tmp/shop-schedule.log 2>&1"
@@ -216,9 +147,8 @@ CRON="*/15 * * * * \"$INSTALL_DIR/run_update.sh\" >> /tmp/shop-schedule.log 2>&1
 
 echo ""
 echo "=== Done ==="
-echo "1. Review/edit $INSTALL_DIR/.env if any credentials need updating"
-echo "2. Drop a PDF into $INSTALL_DIR/incoming/ to test, or email it directly"
+echo "1. Review/edit $INSTALL_DIR/.env -- fill in JOBBOSS_DB_* (see README.md)"
+echo "2. Drop a PDF into $INSTALL_DIR/incoming/ to test"
 echo "3. View at:    http://$(hostname -I | awk '{print $1}'):8080/"
-echo "4. Upload at:  http://$(hostname -I | awk '{print $1}'):8080/upload.html"
+echo "4. Upload at:  http://$(hostname -I | awk '{print $1}'):8080/options.html"
 echo "5. Edit $INSTALL_DIR/public/pages.json to manually add URLs to the kiosk rotation"
-printf '6. Drop PDFs via SMB: \\\\%s\\schedule-drop  (no password needed)\n' "$(hostname -I | awk '{print $1}')"

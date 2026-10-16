@@ -126,12 +126,11 @@ class Handler(SimpleHTTPRequestHandler):
         DROP_DIR.mkdir(exist_ok=True)
         (DROP_DIR / name).write_bytes(data)
         script = BASE_DIR / 'process_drop.py'
-        env = {**os.environ, 'GMAIL_USER': ''}
 
         def _run():
             try:
                 r = subprocess.run(
-                    [sys.executable, str(script)], env=env,
+                    [sys.executable, str(script)],
                     capture_output=True, text=True, check=False,
                 )
                 if r.stdout:
