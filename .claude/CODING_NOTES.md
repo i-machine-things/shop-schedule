@@ -120,6 +120,8 @@ This note was created based on issues encountered with PyInstaller executables r
 
 **Guard env vars with `.strip() or default`, not just `.get(key, default)`.** An empty or whitespace-only value (e.g. `FILENAME=` ) is non-empty to `.get()` and slips through, producing a broken path.
 
+**Removing an installer-provisioned feature must also retire it on existing installs, not just stop provisioning it on new ones.** `install.sh`/`install.ps1` dropped the SMB `schedule-drop` share setup (PR #284), but re-running either installer on an already-provisioned box left the old share and its ACL/Samba config live -- an upgrade silently didn't remove the thing being removed. Fix: on run, check for the specific resource this installer previously created (match by path, not just by name, in case it was repointed) and retire only that -- never touch unrelated shares or disable shared services (`smbd`/`nmbd`) wholesale, since the host may use them for something else. CodeRabbit catch on PR #284.
+
 ## Security
 
 **Never interpolate raw user input into a `sed` replacement pattern.** `&`, `|`, backslashes, and `$()` in the value corrupt the sed command or execute later on `source`; rewrite lines via a temp file and single-quote values instead.

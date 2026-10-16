@@ -150,8 +150,9 @@ if (-not (Test-Path $PagesJson)) {
     Copy-Item (Join-Path $InstallDir 'pages.json.example') $PagesJson
 }
 
+$IncomingPath = Join-Path $InstallDir 'incoming'
 New-Item -ItemType Directory -Force -Path (Join-Path $PublicDir 'raw') | Out-Null
-New-Item -ItemType Directory -Force -Path (Join-Path $InstallDir 'incoming') | Out-Null
+New-Item -ItemType Directory -Force -Path $IncomingPath | Out-Null
 New-Item -ItemType Directory -Force -Path (Join-Path $InstallDir 'processed') | Out-Null
 
 # --- HTTP server: scheduled task, starts at boot, restarts on failure ------
@@ -204,6 +205,20 @@ if (-not $Browser) {
     Write-Host "Kiosk display ($Browser) will launch on next login -- log off/on to start it now."
 }
 
+# --- Retire a legacy SMB drop share from a pre-removal install -------------
+# Only touch it if it's still pointing at this install's incoming/ (not
+# repointed/renamed) -- and only remove the share plus the explicit Everyone
+# grant this installer itself added (icacls /grant 'Everyone:(OI)(CI)M' in
+# older versions), not smbd/discovery services wholesale, since this PC may
+# use SMB for something unrelated to this app.
+$LegacyShare = Get-SmbShare -Name 'schedule-drop' -ErrorAction SilentlyContinue
+if ($LegacyShare -and (Test-Path $LegacyShare.Path) -and
+        ((Get-Item $LegacyShare.Path).FullName -eq (Get-Item $IncomingPath).FullName)) {
+    Remove-SmbShare -Name 'schedule-drop' -Force
+    icacls $IncomingPath /remove:g 'Everyone' | Out-Null
+    Write-Host "Removed legacy 'schedule-drop' SMB share -- SMB drop is no longer supported (see README.md)."
+}
+
 # --- Done --------------------------------------------------------------
 
 $IpAddress = (Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue |
@@ -212,7 +227,7 @@ $IpAddress = (Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue
 Write-Host ""
 Write-Host "=== Done ==="
 Write-Host "1. Edit $EnvPath -- fill in JOBBOSS_DB_HOST/NAME/USER/PASS (see README.md)"
-Write-Host "2. Drop a PDF into $(Join-Path $InstallDir 'incoming') to test"
+Write-Host "2. Drop a PDF into $IncomingPath to test"
 Write-Host "3. View at:    http://${IpAddress}:8080/"
 Write-Host "4. Upload at:  http://${IpAddress}:8080/options.html"
 Write-Host "5. Edit $PagesJson to manually add URLs to the kiosk rotation"

@@ -126,6 +126,21 @@ if [ -d "$INSTALL_DIR/incoming/processed" ]; then
     rmdir "$INSTALL_DIR/incoming/processed" 2>/dev/null || true
 fi
 
+# Retire a legacy [schedule-drop] SMB share from a pre-removal install --
+# only if it's still pointing at this install's incoming/ (not repointed),
+# and only that one stanza -- leave every other share and smbd/nmbd/wsdd
+# untouched, since this box may use Samba for something unrelated to this app.
+if grep -q '^\[schedule-drop\]' /etc/samba/smb.conf 2>/dev/null \
+        && grep -A10 '^\[schedule-drop\]' /etc/samba/smb.conf | grep -qF "path = $INSTALL_DIR/incoming"; then
+    tmp=$(mktemp)
+    awk '/^\[schedule-drop\]/{skip=1;next} /^\[/{skip=0} !skip{print}' \
+        /etc/samba/smb.conf > "$tmp"
+    sudo install -o root -g root -m 0644 "$tmp" /etc/samba/smb.conf
+    rm -f "$tmp"
+    systemctl is-active --quiet smbd 2>/dev/null && sudo systemctl reload smbd || true
+    echo "Removed legacy [schedule-drop] SMB share -- SMB drop is no longer supported (see README.md)."
+fi
+
 # Add cron job (every 15 minutes)
 CRON="*/15 * * * * \"$INSTALL_DIR/run_update.sh\" >> /tmp/shop-schedule.log 2>&1"
 ( crontab -l 2>/dev/null || true ) | grep -v shop-schedule | { cat; echo "$CRON"; } | crontab -
