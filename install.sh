@@ -130,10 +130,17 @@ fi
 # only if it's still pointing at this install's incoming/ (not repointed),
 # and only that one stanza -- leave every other share and smbd/nmbd/wsdd
 # untouched, since this box may use Samba for something unrelated to this app.
-if grep -q '^\[schedule-drop\]' /etc/samba/smb.conf 2>/dev/null \
-        && grep -A10 '^\[schedule-drop\]' /etc/samba/smb.conf | grep -qF "path = $INSTALL_DIR/incoming"; then
+if [ "$(awk '
+    /^[[:space:]]*\[/ { in_share = ($0 ~ /^[[:space:]]*\[schedule-drop\][[:space:]]*$/) }
+    in_share && /^[[:space:]]*path[[:space:]]*=/ {
+        sub(/^[^=]*=[[:space:]]*/, "")
+        sub(/[[:space:]]*$/, "")
+        path = $0
+    }
+    END { print path }
+' /etc/samba/smb.conf 2>/dev/null)" = "$INSTALL_DIR/incoming" ]; then
     tmp=$(mktemp)
-    awk '/^\[schedule-drop\]/{skip=1;next} /^\[/{skip=0} !skip{print}' \
+    awk '/^[[:space:]]*\[/ {skip=($0 ~ /^[[:space:]]*\[schedule-drop\][[:space:]]*$/)} !skip{print}' \
         /etc/samba/smb.conf > "$tmp"
     sudo install -o root -g root -m 0644 "$tmp" /etc/samba/smb.conf
     rm -f "$tmp"
