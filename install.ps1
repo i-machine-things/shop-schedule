@@ -1,12 +1,11 @@
 # Windows counterpart to install.sh -- server role only (DB polling, HTTP
-# server, drop-folder share, local kiosk display). Run once from the cloned
-# repo directory, as Administrator (scheduled tasks and the SMB share both
-# need it -- the opposite of install.sh's "do not run as root", because
-# Windows's privilege model works the other way around).
+# server, local kiosk display). Run once from the cloned repo directory, as
+# Administrator (scheduled tasks need it -- the opposite of install.sh's
+# "do not run as root", because Windows's privilege model works the other
+# way around).
 #
-# JobBoss DB is the only source this installer sets up -- Gmail/PDF polling
-# is deprecated (see README.md) and isn't offered here even though it's
-# still technically supported by update_schedule.py for existing installs.
+# JobBoss DB is the only source this installer sets up -- PDFs can still be
+# dropped into incoming/ or uploaded via options.html as a fallback.
 
 $ErrorActionPreference = 'Stop'
 $InstallDir = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -151,8 +150,9 @@ if (-not (Test-Path $PagesJson)) {
     Copy-Item (Join-Path $InstallDir 'pages.json.example') $PagesJson
 }
 
+$IncomingPath = Join-Path $InstallDir 'incoming'
 New-Item -ItemType Directory -Force -Path (Join-Path $PublicDir 'raw') | Out-Null
-New-Item -ItemType Directory -Force -Path (Join-Path $InstallDir 'incoming') | Out-Null
+New-Item -ItemType Directory -Force -Path $IncomingPath | Out-Null
 New-Item -ItemType Directory -Force -Path (Join-Path $InstallDir 'processed') | Out-Null
 
 # --- HTTP server: scheduled task, starts at boot, restarts on failure ------
@@ -205,27 +205,40 @@ if (-not $Browser) {
     Write-Host "Kiosk display ($Browser) will launch on next login -- log off/on to start it now."
 }
 
-# --- SMB drop share ----------------------------------------------------
-
-$ShareName = 'schedule-drop'
-$IncomingPath = Join-Path $InstallDir 'incoming'
-if (-not (Get-SmbShare -Name $ShareName -ErrorAction SilentlyContinue)) {
-    New-SmbShare -Name $ShareName -Path $IncomingPath -FullAccess 'Everyone' | Out-Null
+# --- Retire a legacy SMB drop share from a pre-removal install -------------
+# Only touch it if it's still pointing at this install's incoming/ (not
+# repointed/renamed) -- and only remove the share plus the EXACT Everyone
+# grant this installer itself added (icacls /grant 'Everyone:(OI)(CI)M' in
+# older versions), not smbd/discovery services wholesale, since this PC may
+# use SMB for something unrelated to this app.
+#
+# RemoveAccessRuleSpecific(), not RemoveAccessRule(), is required here --
+# verified directly (not just reasoned about): RemoveAccessRule() does a
+# rights SUBTRACTION against any rule for the same identity, so on a folder
+# with only an unrelated Everyone:(OI)(CI)(R) grant (not the legacy Modify
+# one), it still returns $true and rewrites that grant down to a near-empty
+# Everyone:(OI)(CI)(S) ACE -- corrupting an admin's unrelated grant instead
+# of leaving it alone. RemoveAccessRuleSpecific() only removes a rule that
+# matches identity+rights+inheritance+propagation+type exactly, with no
+# partial-match mutation, confirmed by comparing $Acl.Access counts
+# before/after against both an exact-match folder and an unrelated-grant one.
+$LegacyShare = Get-SmbShare -Name 'schedule-drop' -ErrorAction SilentlyContinue
+if ($LegacyShare -and (Test-Path $LegacyShare.Path) -and
+        ((Get-Item $LegacyShare.Path).FullName -eq (Get-Item $IncomingPath).FullName)) {
+    Remove-SmbShare -Name 'schedule-drop' -Force
+    $Acl = Get-Acl $IncomingPath
+    $CountBefore = $Acl.Access.Count
+    $EveryoneSid = New-Object System.Security.Principal.SecurityIdentifier('S-1-1-0')
+    $LegacyRule = New-Object System.Security.AccessControl.FileSystemAccessRule(
+        $EveryoneSid, 'Modify', 'ContainerInherit,ObjectInherit', 'None', 'Allow')
+    $Acl.RemoveAccessRuleSpecific($LegacyRule)
+    if ($Acl.Access.Count -lt $CountBefore) {
+        Set-Acl -Path $IncomingPath -AclObject $Acl
+        Write-Host "Removed legacy 'schedule-drop' SMB share and its ACL grant -- SMB drop is no longer supported (see README.md)."
+    } else {
+        Write-Warning "Removed legacy 'schedule-drop' SMB share, but found no matching Everyone:(OI)(CI)M grant on $IncomingPath to clean up -- check its ACL manually if needed."
+    }
 }
-# New-SmbShare -FullAccess only sets the SHARE-level permission, not the
-# NTFS filesystem ACL -- effective access needs both, and incoming/ was
-# created with whatever ACL it inherited from $InstallDir, which may not
-# grant write to the account that actually connects. Without this, the
-# share looks reachable (authenticates fine) but dropping a PDF fails with
-# access denied. Scoped to incoming/ only, not the whole install directory.
-# CodeRabbit catch on PR #277, confirmed against Microsoft's New-SmbShare
-# docs (share permissions and NTFS permissions are separate layers).
-icacls $IncomingPath /grant 'Everyone:(OI)(CI)M' | Out-Null
-# Modern Windows removed true anonymous/guest SMB access (the 1709 update
-# dropped the SMB1 guest fallback) -- there's no equivalent to install.sh's
-# `map to guest = bad user` Samba setting here. The share above still
-# requires connecting machines to authenticate with a real Windows account
-# on this PC; see README.md for what that means in practice.
 
 # --- Done --------------------------------------------------------------
 
@@ -239,4 +252,3 @@ Write-Host "2. Drop a PDF into $IncomingPath to test"
 Write-Host "3. View at:    http://${IpAddress}:8080/"
 Write-Host "4. Upload at:  http://${IpAddress}:8080/options.html"
 Write-Host "5. Edit $PagesJson to manually add URLs to the kiosk rotation"
-Write-Host "6. Drop PDFs via SMB: \\$IpAddress\$ShareName  (requires a Windows account on this PC -- see README.md)"

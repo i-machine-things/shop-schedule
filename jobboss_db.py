@@ -3,7 +3,7 @@
 
 Returns the same {report_date, thru_date, sections} shape as parse_pdf() in
 update_schedule.py, so generate_html() needs no changes to consume either
-source. Used instead of the Gmail/PDF pipeline when JOBBOSS_DB_* is set.
+source. Used instead of the PDF pipeline when JOBBOSS_DB_* is set.
 
 Only SELECTs the columns needed for display (no pricing/cost/margin fields)
 and only ever runs read queries — pair this with a SQL login that has

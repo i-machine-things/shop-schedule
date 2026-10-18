@@ -15,7 +15,7 @@ from datetime import datetime
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DROP_DIR = os.path.join(BASE_DIR, 'incoming')
-PROCESSED = os.path.join(BASE_DIR, 'processed')   # outside incoming/ — not visible in SMB share
+PROCESSED = os.path.join(BASE_DIR, 'processed')   # outside incoming/ — not re-picked-up on next run
 _PDF_FILENAME = os.path.basename(os.environ.get('PDF_FILENAME', '').strip()) or 'last_report.pdf'
 PDF_PATH = os.path.join(BASE_DIR, _PDF_FILENAME)
 MAIN_SCRIPT = os.path.join(BASE_DIR, 'update_schedule.py')
@@ -68,8 +68,7 @@ def main(regen=True):
     print(f"[{datetime.now():%Y-%m-%d %H:%M}] Drop-dir: picked up {os.path.basename(newest)}")
 
     if regen:
-        env = {**os.environ, 'GMAIL_USER': ''}
-        subprocess.run([sys.executable, MAIN_SCRIPT], env=env, check=True)
+        subprocess.run([sys.executable, MAIN_SCRIPT], check=True)
 
 
 if __name__ == '__main__':
