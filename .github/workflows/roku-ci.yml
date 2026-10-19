@@ -1,15 +1,18 @@
-name: CI
+name: Roku CI
 
 on:
   pull_request:
-    branches: [main]
+    branches: [master]
+    paths:
+      - 'roku/**'
+      - '.github/workflows/roku-ci.yml'
 
 jobs:
   # ---------------------------------------------------------------------------
   # Lint — bslint (BrightScript static analysis).
   # ---------------------------------------------------------------------------
   lint:
-    name: Lint (bslint)
+    name: Roku Lint (bslint)
     runs-on: ubuntu-latest
 
     steps:
@@ -20,13 +23,14 @@ jobs:
           node-version: '20'
 
       - name: Run bslint
+        working-directory: roku
         run: npx --yes @rokucommunity/bslint
 
   # ---------------------------------------------------------------------------
   # Security scan — gitleaks, catching hardcoded credentials/secrets.
   # ---------------------------------------------------------------------------
   security:
-    name: Security scan (gitleaks)
+    name: Roku Security scan (gitleaks)
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -56,10 +60,10 @@ jobs:
 
   # ---------------------------------------------------------------------------
   # Tests — no automated test framework for BrightScript in this project.
-  # Rule 3's "run the test suite" step is manual sideload verification instead.
+  # Manual sideload verification substitutes (see roku/.claude/CLAUDE.md).
   # ---------------------------------------------------------------------------
   test:
-    name: Tests
+    name: Roku Tests
     runs-on: ubuntu-latest
 
     steps:
@@ -71,7 +75,7 @@ jobs:
   # reviewers can sideload-test the exact commit under review.
   # ---------------------------------------------------------------------------
   build:
-    name: Build channel package
+    name: Roku Build channel package
     runs-on: ubuntu-latest
 
     steps:
@@ -80,7 +84,8 @@ jobs:
       - name: Package channel zip
         run: |
           mkdir -p build
-          zip -r "build/shop-schedule-roku-pr-${{ github.event.pull_request.number }}.zip" \
+          cd roku
+          zip -r "../build/shop-schedule-roku-pr-${{ github.event.pull_request.number }}.zip" \
             manifest components source images media \
             -x '*.bak'
 

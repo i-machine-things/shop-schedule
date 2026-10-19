@@ -1,14 +1,14 @@
 <div align="center">
   <img src="images/logo.png" alt="ShopScheduleRoku Logo" width="200">
   <h1>ShopScheduleRoku</h1>
-  <p>A native Roku kiosk client for <a href="https://github.com/i-machine-things/shop-schedule">shop-schedule</a> — displays the shop floor schedule on a wall-mounted TV via a Roku device.</p>
+  <p>A native Roku kiosk client, part of the <a href="https://github.com/i-machine-things/shop-schedule">shop-schedule</a> project (lives in its <code>roku/</code> subdirectory) — displays the shop floor schedule on a wall-mounted TV via a Roku device.</p>
 </div>
 
 ---
 
 ## 📖 Learn More
 
-[**shop-schedule**](https://github.com/i-machine-things/shop-schedule) is a Single Board Computer kiosk that pulls the current Foreman's Report (from JobBoss directly, or via a Gmail/PDF fallback) and serves it as an auto-scrolling web page. **ShopScheduleRoku** is an alternative display target for the same data — instead of a Banana Pi running Chromium in kiosk mode, point a Roku at the same server.
+[**shop-schedule**](https://github.com/i-machine-things/shop-schedule) is a Single Board Computer kiosk that pulls the current Foreman's Report (from JobBoss directly, or via a dropped/uploaded PDF fallback) and serves it as an auto-scrolling web page. **ShopScheduleRoku** is an alternative display target for the same data — instead of a Banana Pi running Chromium in kiosk mode, point a Roku at the same server. The two release together under one version number — see the repo root's `.claude/CLAUDE.md`.
 
 Roku's public SDK has no web-view/embedded-browser component, so this channel can't just display `kiosk.html` directly. It polls a small JSON export (`/schedule.json`) that `shop-schedule`'s server exposes alongside the HTML pages, and renders a simplified table natively in BrightScript — just job number, customer, description, operation, and current work center per job, grouped by work center with the same department color scheme as the web kiosk, continuously auto-scrolling.
 
@@ -35,7 +35,7 @@ On the Roku remote, enter this sequence rapidly:
 Follow the prompts to enable Developer Mode. It will give you a webserver **password** — write it down along with the Roku's **IP address**.
 
 ### Step 2: Download the App
-Grab the latest `shop-schedule-roku-vX.Y.Z.zip` from the [Releases](../../releases) tab (or build it from source — see CI's build job).
+Grab the latest `shop-schedule-roku-vX.Y.Z.zip` from the [shop-schedule Releases](https://github.com/i-machine-things/shop-schedule/releases) page (or build it from source — see `roku-ci.yml`'s build job).
 
 ### Step 3: Install the App
 1. On a computer/phone on the same network, go to `http://<roku-ip>` in a browser.

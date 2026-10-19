@@ -130,7 +130,7 @@ The schedule polls for updates every 60 seconds and swaps in new content without
 
 ## Non-browser clients
 
-`schedule.json` carries the same `{report_date, thru_date, sections}` data used internally to render the HTML pages — regenerated on every `update_schedule.py` run, served as a static file (no extra endpoint). Useful for any display that can't run a browser, e.g. [**shop-schedule-roku**](https://github.com/i-machine-things/shop-schedule-roku), a native Roku kiosk channel that polls this and renders the table natively (Roku's public SDK has no web-view component to show `kiosk.html` directly).
+`schedule.json` carries the same `{report_date, thru_date, sections}` data used internally to render the HTML pages — regenerated on every `update_schedule.py` run, served as a static file (no extra endpoint). Useful for any display that can't run a browser, e.g. the [**Roku client**](#roku-client) in this repo, a native Roku kiosk channel that polls this and renders the table natively (Roku's public SDK has no web-view component to show `kiosk.html` directly).
 
 ## Client kiosks
 
@@ -232,6 +232,8 @@ A **light/dark mode toggle** (☀/☾) appears in the header of the schedule, ki
 
 PDFs uploaded via the Options → Upload section are displayed in the kiosk page-rotation overlay using a built-in PDF viewer (`pdf-viewer.html`) that renders pages as canvases and auto-scrolls from top to bottom over the configured display duration. Requires internet access to load PDF.js from cdnjs.
 
-## Related projects
+## Roku client
 
-- [`shop-schedule-roku`](https://github.com/i-machine-things/shop-schedule-roku) — a native Roku (BrightScript/SceneGraph) port of this kiosk: point a Roku device at this project's server instead of running a Banana Pi with Chromium in kiosk mode. Polls the `/schedule.json` export (see above) and renders job number, customer, description, operation (with its own description as a second line), and current work center per job, grouped by work center with this kiosk's own department color scheme. [**Released**](https://github.com/i-machine-things/shop-schedule-roku/releases/tag/v1.0.0) as of `v1.0.0` — download the zip from that release and sideload it, or build from source.
+[`roku/`](roku/) — a native Roku (BrightScript/SceneGraph) port of this kiosk, in this same repo: point a Roku device at this project's server instead of running a Banana Pi with Chromium in kiosk mode. Polls the `/schedule.json` export (see above) and renders job number, customer, description, operation (with its own description as a second line), and current work center per job, grouped by work center with this kiosk's own department color scheme. See [`roku/README.md`](roku/README.md) for Roku-specific details.
+
+Releases together with the rest of this project — pushing a `vMAJOR.MINOR.PATCH` tag builds and attaches the Roku sideload zip to that same GitHub Release (see `.claude/CLAUDE.md` Rule 4). Formerly a separate repo (`shop-schedule-roku`, now archived) — merged in with full commit history preserved so the two release under one version number instead of drifting independently.

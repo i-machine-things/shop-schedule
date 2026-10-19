@@ -1,5 +1,10 @@
-name: Release
+name: Roku Release
 
+# Shares the same vMAJOR.MINOR.PATCH tag namespace as the web kiosk/server side
+# (see .claude/CLAUDE.md Rule 4) -- one tag releases both together. This
+# workflow always runs on a real tag push, even if nothing under roku/
+# actually changed since the last tag, so the Roku zip attached to every
+# GitHub Release stays current with that release's commit.
 on:
   push:
     tags:
@@ -12,7 +17,7 @@ on:
 
 jobs:
   release:
-    name: Build and publish release
+    name: Build and publish Roku release
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -22,12 +27,12 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Require tag to be on main
+      - name: Require tag to be on master
         if: github.event_name == 'push'
         run: |
-          git fetch origin main
-          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
-            echo "::error::Tag $GITHUB_REF_NAME does not point at a commit on main. Per .claude/CLAUDE.md Rule 4, only tag from main." >&2
+          git fetch origin master
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/master; then
+            echo "::error::Tag $GITHUB_REF_NAME does not point at a commit on master. Per .claude/CLAUDE.md Rule 4, only tag from master." >&2
             exit 1
           fi
 
@@ -48,7 +53,8 @@ jobs:
           RELEASE_TAG: ${{ steps.version.outputs.tag }}
         run: |
           mkdir -p build
-          zip -r "build/shop-schedule-roku-${RELEASE_TAG}.zip" \
+          cd roku
+          zip -r "../build/shop-schedule-roku-${RELEASE_TAG}.zip" \
             manifest components source images media \
             -x '*.bak'
 

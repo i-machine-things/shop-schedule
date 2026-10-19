@@ -254,3 +254,9 @@ This note was created based on issues encountered with PyInstaller executables r
 **Quote `.env.example` values that contain spaces.** `KEY=Value With Spaces` may parse incorrectly in some dotenv loaders; use `KEY="Value With Spaces"`.
 
 **Always tag fenced code blocks in Markdown with a language.** An untagged block (e.g. raw `.env` vars) fails MD040 lint; use e.g. ` ```dotenv `.
+
+## Repository Structure
+
+**`git subtree add --prefix=<dir> <remote> <branch>` merges another repo's full history into a subdirectory, preserving it — not a squash or re-import.** Used to absorb the formerly-separate `shop-schedule-roku` repo into `roku/`. The merged-in history isn't visible to a plain `git log -- roku/some/file` (path-filtered log doesn't walk across the subtree merge boundary without `--follow`, which itself doesn't handle this case) -- to confirm it's actually there, check the merge commit's second parent directly: `git log <merge-commit>^2 -- <original-unprefixed-path>`.
+
+**GitHub Actions only reads `.github/workflows/` from the repo root -- a workflow file inside a merged subdirectory (e.g. `roku/.github/workflows/ci.yml`) silently never runs.** After the `roku/` subtree merge, its CI/release workflows had to move to the root `.github/workflows/` as `roku-ci.yml`/`roku-release.yml` (renamed to avoid colliding with this repo's own existing `ci.yml`), with `paths: ['roku/**']` filters on the PR-triggered one so it doesn't run on every unrelated Python change, and internal zip commands changed to `cd roku` first so the packaged zip still has `manifest` at its root instead of nested under `roku/`.
