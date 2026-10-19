@@ -114,6 +114,19 @@ cd C:\shop-schedule
 
 Sets up the same `.env`, a venv, a Task Scheduler job every 15 minutes (`ShopScheduleUpdate`), the HTTP server at boot (`ShopScheduleServer`), and a local kiosk display at logon (`ShopScheduleKiosk`, Chrome if present else Edge). The installer only prompts for `SHOP_NAME` — fill in `JOBBOSS_DB_HOST`/`NAME`/`USER`/`PASS` in `.env` yourself afterward (see [JobBoss DB source](#jobboss-db-source) below).
 
+#### Securing the DB password (Windows)
+
+`JOBBOSS_DB_PASS` sits in `.env` as plaintext by default, like every other value here — fine on Linux where `install.sh` locks the file to `600`, but Windows has a better option. Excel/Power Query avoids storing a SQL password at all by defaulting to Windows Integrated Authentication (your logged-in identity, not a password); when it does remember one, it encrypts it via **DPAPI**, the same mechanism behind Windows Credential Manager.
+
+```powershell
+# After JOBBOSS_DB_PASS is set in .env:
+.\protect-db-password.ps1
+```
+
+Rewrites `JOBBOSS_DB_PASS` in `.env` as a DPAPI-encrypted blob (`dpapi:...`); `jobboss_db.py` decrypts it transparently at connect time. Re-run it any time after changing the password — it's a no-op if already encrypted.
+
+Uses `LocalMachine` scope, not `CurrentUser`: the `ShopScheduleServer`/`ShopScheduleUpdate` scheduled tasks run as `SYSTEM`, not the account that ran this script, and `CurrentUser`-scoped DPAPI blobs only decrypt for the exact account that created them. `LocalMachine` scope means any local account on that PC *could* decrypt it, not only `SYSTEM` — still meaningfully better than the plaintext file it replaces (decryption needs local code execution on that specific machine, not just read access to `.env`), but it isn't full account-level secrecy. Windows Integrated Authentication (no stored password at all) would be stronger still, but needs the JobBoss SQL Server to allow Windows logins and a DBA-provisioned service account — out of scope here, left as a possible future option.
+
 ## Remote access
 
 Once the installer runs, the kiosk and schedule are served over HTTP on port 8080:
@@ -215,7 +228,8 @@ python3 process_drop.py
 | `run_update.ps1` | Scheduled-task wrapper (Windows) — loads `.env` and calls the script |
 | `install.ps1` | One-time server setup (Windows): deps, Task Scheduler jobs |
 | `kiosk-launch.ps1` | Waits for the HTTP server to answer, then opens the browser in kiosk mode (Windows `ShopScheduleKiosk` task) |
-| `dotenv.ps1` | `.env` parser shared by `install.ps1`/`run_update.ps1` |
+| `dotenv.ps1` | `.env` parser/writer shared by `install.ps1`/`run_update.ps1`/`protect-db-password.ps1` |
+| `protect-db-password.ps1` | DPAPI-encrypts `JOBBOSS_DB_PASS` in `.env` at rest (Windows, optional) |
 | `public/install.html` | Web UI showing the copyable client install one-liner |
 | `public/options.html` | Admin UI — page rotation config, uploads, and department color pickers |
 | `public/kiosk.html` | Rotation shell — wraps the schedule and fades to configured pages |

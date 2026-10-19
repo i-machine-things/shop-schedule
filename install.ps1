@@ -58,7 +58,7 @@ if ($LASTEXITCODE -ne 0) {
 # unavailable on the Pi's old Python 3.7) -- kept identical here too so a
 # shared .env/venv story stays simple, even though a Windows install is
 # unlikely to hit that specific constraint itself.
-& $VenvPython -m pip install --quiet pdfplumber reportlab "python-tds==1.13.0" pyOpenSSL
+& $VenvPython -m pip install --quiet pdfplumber reportlab "python-tds==1.13.0" pyOpenSSL pywin32
 if ($LASTEXITCODE -ne 0) {
     Write-Error "pip install of dependencies failed (exit $LASTEXITCODE) -- aborting install."
     exit 1
@@ -74,35 +74,16 @@ if (-not (Test-Path $EnvPath)) {
 . (Join-Path $InstallDir 'dotenv.ps1')
 Import-DotEnv $EnvPath
 
-function Set-EnvFileValue {
-    param([string]$Key, [string]$Value, [string]$Path)
-    # Escape an embedded single quote the same way install.sh's _set_env()
-    # does (close quote, double-quoted literal quote, reopen quote) -- this
-    # .env format is shared with the Linux side, and a plain
-    # SHOP_NAME='Joe's Garage' is a bash syntax error (unterminated quote)
-    # when run_update.sh sources it, even though PowerShell's own
-    # Import-DotEnv tolerates it. CodeRabbit catch on PR #277.
-    $dq = [char]34
-    $escaped = $Value -replace "'", "'$dq'$dq'"
-    $line = "$Key='$escaped'"
-    $content = @(if (Test-Path $Path) { Get-Content -Path $Path -Encoding UTF8 } else { @() })
-    if ($content -match "^$Key=") {
-        $content = $content | ForEach-Object { if ($_ -match "^$Key=") { $line } else { $_ } }
-    } else {
-        $content += $line
-    }
-    Set-Content -Path $Path -Value $content -Encoding utf8
-}
-
 Write-Host ""
 Write-Host "=== Configure .env ==="
 
 if (-not $env:SHOP_NAME -or $env:SHOP_NAME -eq 'Your Shop Name') {
     $shopName = Read-Host '  Shop name (shown in schedule header)'
-    if ($shopName) { Set-EnvFileValue -Key 'SHOP_NAME' -Value $shopName -Path $EnvPath }
+    if ($shopName) { Set-DotEnvValue -Key 'SHOP_NAME' -Value $shopName -Path $EnvPath }
 }
 
 Write-Host "  Fill in JOBBOSS_DB_HOST/NAME/USER/PASS in .env before the first scheduled run -- see README.md."
+Write-Host "  Once JOBBOSS_DB_PASS is set, run .\protect-db-password.ps1 to encrypt it at rest (optional but recommended)."
 
 # Restrict .env to this account + SYSTEM, parallel to install.sh's `chmod 600`.
 # /reset first, THEN apply the restriction -- /inheritance:r only strips
