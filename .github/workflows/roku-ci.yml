@@ -7,6 +7,12 @@ on:
       - 'roku/**'
       - '.github/workflows/roku-ci.yml'
 
+# Least-privilege default -- none of these jobs push anything; each only
+# needs read access to the checked-out code. CodeRabbit/zizmor catch on
+# PR #286.
+permissions:
+  contents: read
+
 jobs:
   # ---------------------------------------------------------------------------
   # Lint — bslint (BrightScript static analysis).
@@ -17,6 +23,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - uses: actions/setup-node@v4
         with:
@@ -39,6 +47,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          persist-credentials: false
           fetch-depth: 0
 
       - name: Install gitleaks
@@ -80,12 +89,21 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
+      # PR_NUMBER via env, not direct ${{ }} interpolation into the run:
+      # block -- see roku/.claude/CODING_NOTES.md's CI/CD note on this.
+      # Not exploitable here (a PR number is server-generated, not
+      # attacker-controlled text), but the pattern itself is what's banned,
+      # not just the cases where it'd be dangerous.
       - name: Package channel zip
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
           mkdir -p build
           cd roku
-          zip -r "../build/shop-schedule-roku-pr-${{ github.event.pull_request.number }}.zip" \
+          zip -r "../build/shop-schedule-roku-pr-${PR_NUMBER}.zip" \
             manifest components source images media \
             -x '*.bak'
 

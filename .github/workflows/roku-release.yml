@@ -25,6 +25,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          persist-credentials: false
           fetch-depth: 0
 
       - name: Require tag to be on master
@@ -43,6 +44,15 @@ jobs:
           DISPATCH_VERSION: ${{ github.event.inputs.version }}
         run: |
           if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            # Free-text input ends up in the zip filename and artifact name
+            # below -- a "/" would make `zip` fail (build/ subdirectory
+            # doesn't exist) and something like "../x" would write outside
+            # build/ entirely. Reject anything that isn't vMAJOR.MINOR.PATCH
+            # up front for a clear error instead of an obscure failure.
+            if ! printf '%s' "$DISPATCH_VERSION" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
+              echo "::error::Version must look like v1.2.3, got: $DISPATCH_VERSION" >&2
+              exit 1
+            fi
             echo "tag=$DISPATCH_VERSION" >> "$GITHUB_OUTPUT"
           else
             echo "tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"

@@ -3,8 +3,13 @@
     <script type="text/brightscript" uri="pkg:/components/Tasks/ScheduleTask.brs" />
     <interface>
         <field id="serverUrl" type="string" />
-        <!-- Parsed {report_date, thru_date, sections} on success, invalid on failure -->
-        <field id="scheduleData" type="assocarray" />
+        <!-- Parsed {report_date, thru_date, sections} on success, invalid on
+             failure. alwaysNotify -- without it, consecutive failed polls
+             (invalid -> invalid) never re-fire the observer at all (Roku
+             only notifies on an actual value change by default), so a
+             changed errorMessage between two failures would never reach
+             the screen. CodeRabbit catch on PR #286. -->
+        <field id="scheduleData" type="assocarray" alwaysNotify="true" />
         <!-- Set only when scheduleData is invalid -->
         <field id="errorMessage" type="string" value="" />
         <!-- {lowercase_dept_name: {name, bg, accent}} from dept_colors.json --

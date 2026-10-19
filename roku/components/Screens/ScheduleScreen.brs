@@ -210,6 +210,37 @@ sub buildContent(sections as Object)
     ' leaving the last frame stuck on screen with no timers left running.
     ' See CODING_NOTES.md "Resilience" for the incident this came from.
     try
+        ' Build the replacement rows into a plain detached array first --
+        ' NOT yet touching m.scrollContent/m.sectionBounds/m.contentHeight.
+        ' A malformed section/job from the server (buildSectionHeader/
+        ' buildJobRow throwing on an unexpected shape) used to be caught
+        ' here too, but only *after* the old content was already wiped
+        ' below -- the catch block could show an error banner but had
+        ' nothing left to restore the last good schedule to. Now a failure
+        ' in this loop leaves the currently displayed schedule completely
+        ' untouched; the error banner shows on top of it instead of on an
+        ' empty screen. CodeRabbit catch on PR #286.
+        newRows = []
+        newSectionBounds = []
+        y = 0
+        for each section in sections
+            if section.jobs <> invalid and section.jobs.Count() > 0 then
+                newSectionBounds.push({ startY: y, section: section })
+
+                newRows.push(buildSectionHeader(section, y))
+                y = y + m.HEADER_HEIGHT
+
+                for each job in section.jobs
+                    newRows.push(buildJobRow(job, y))
+                    y = y + m.ROW_HEIGHT
+                end for
+            end if
+        end for
+        newContentHeight = y
+
+        ' Everything above succeeded -- safe to actually swap the new
+        ' content in now.
+
         ' A 60s refresh landing while the warp menu is open would otherwise
         ' leave it showing rows built from the section list that's about to
         ' be replaced below -- simplest fix is just closing it; m.scrollState
@@ -225,30 +256,14 @@ sub buildContent(sections as Object)
         wasManuallyPaused = (m.scrollState = "manualPaused")
 
         m.scrollContent.removeChildren(m.scrollContent.getChildren(-1, 0))
+        m.scrollContent.appendChildren(newRows)
         m.scrollTimer.control = "stop"
         m.pauseTimer.control = "stop"
         m.scrollState = "idle"
-        m.sectionBounds = []
+        m.sectionBounds = newSectionBounds
         m.currentSectionIdx = -1
+        m.contentHeight = newContentHeight
 
-        y = 0
-        for each section in sections
-            if section.jobs <> invalid and section.jobs.Count() > 0 then
-                m.sectionBounds.push({ startY: y, section: section })
-
-                headerGroup = buildSectionHeader(section, y)
-                m.scrollContent.appendChild(headerGroup)
-                y = y + m.HEADER_HEIGHT
-
-                for each job in section.jobs
-                    rowGroup = buildJobRow(job, y)
-                    m.scrollContent.appendChild(rowGroup)
-                    y = y + m.ROW_HEIGHT
-                end for
-            end if
-        end for
-
-        m.contentHeight = y
         maxScroll = m.contentHeight - m.viewportHeight
 
         if maxScroll > 0 then
@@ -389,6 +404,16 @@ end function
 ' either previous failure mode, and there's no timing window left to get
 ' wrong. See CODING_NOTES.md "Sticky header v2".
 sub updateStickyHeader(idx as Integer)
+    ' "Always visible once there's at least one section" (above) means the
+    ' other half has to hold too: a refresh that lands on zero populated
+    ' sections left the PREVIOUS section's header stuck on screen, since the
+    ' idx-out-of-range guard below returned early without ever touching
+    ' .visible. CodeRabbit catch on PR #286.
+    if m.sectionBounds.Count() = 0 then
+        m.stickyHeader.visible = false
+        m.currentSectionIdx = -1
+        return
+    end if
     if idx < 0 or idx >= m.sectionBounds.Count() then return
     if idx = m.currentSectionIdx then return
     m.currentSectionIdx = idx

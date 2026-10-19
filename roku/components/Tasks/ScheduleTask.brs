@@ -26,20 +26,20 @@ sub fetchSchedule()
         if code = 200 then
             data = ParseJson(body)
             if data <> invalid and data.sections <> invalid then
-                m.top.scheduleData = data
                 m.top.errorMessage = ""
+                m.top.scheduleData = data
             else
-                m.top.scheduleData = invalid
                 m.top.errorMessage = "Server returned unexpected data."
+                m.top.scheduleData = invalid
             end if
         else
-            m.top.scheduleData = invalid
             m.top.errorMessage = "Server returned HTTP " + code.ToStr() + "."
+            m.top.scheduleData = invalid
         end if
     else
         request.AsyncCancel()
-        m.top.scheduleData = invalid
         m.top.errorMessage = "Could not reach server (timed out)."
+        m.top.scheduleData = invalid
     end if
 
     fetchDeptColors()
