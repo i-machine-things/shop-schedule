@@ -24,12 +24,30 @@ if (-not $env:JOBBOSS_DB_PASS) {
     Write-Error "JOBBOSS_DB_PASS is not set in $EnvPath -- nothing to encrypt."
     exit 1
 }
+Add-Type -AssemblyName System.Security
+
+$alreadyEncrypted = $false
 if ($env:JOBBOSS_DB_PASS.StartsWith('dpapi:')) {
+    # A prefix match alone isn't enough to conclude this is already
+    # encrypted -- a legitimate plaintext password could itself start with
+    # "dpapi:". Confirm it's genuinely DPAPI data by attempting to unprotect
+    # it; only skip re-encryption if that actually succeeds. Otherwise fall
+    # through and encrypt it as plaintext below. CodeRabbit catch on PR #278.
+    try {
+        $blob = [Convert]::FromBase64String($env:JOBBOSS_DB_PASS.Substring(6))
+        [System.Security.Cryptography.ProtectedData]::Unprotect(
+            $blob, $null, [System.Security.Cryptography.DataProtectionScope]::LocalMachine) | Out-Null
+        $alreadyEncrypted = $true
+    } catch {
+        # Not valid DPAPI data -- a plaintext password that happens to start
+        # with "dpapi:".
+    }
+}
+if ($alreadyEncrypted) {
     Write-Host "JOBBOSS_DB_PASS is already DPAPI-encrypted -- nothing to do."
     exit 0
 }
 
-Add-Type -AssemblyName System.Security
 $bytes = [System.Text.Encoding]::UTF8.GetBytes($env:JOBBOSS_DB_PASS)
 $encrypted = [System.Security.Cryptography.ProtectedData]::Protect(
     $bytes, $null, [System.Security.Cryptography.DataProtectionScope]::LocalMachine)
