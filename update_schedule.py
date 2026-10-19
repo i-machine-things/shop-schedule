@@ -235,12 +235,11 @@ def _save_dept_colors(colors):
 def apply_work_center_backlogs(sections):
     """Attach backlog_days/gap_days to any section that doesn't already have
     them. The DB path (jobboss_db.fetch_from_db()) computes these itself
-    from a separate, unbounded query and attaches them before this ever
-    runs -- sec['jobs'] here is intentionally truncated to JOBBOSS_DAYS_AHEAD
-    for display, and using it for the backlog calc silently capped the
-    backlog stat at ~days_ahead too, which defeated the point. This only fills the
-    gap for the PDF path, which has no such wider query available and keeps
-    the existing (narrower) behavior as a reasonable fallback.
+    from a separate query (no CROSS APPLY, cheaper) and attaches them before
+    this ever runs. This only fills the gap for the PDF path, which has no
+    such query available -- it falls back to deriving backlog from
+    sec['jobs'] (whatever's in the uploaded PDF) as a reasonable, if
+    narrower, approximation.
 
     _work_center_backlog_days() lives in jobboss_db.py, not here -- that
     module doesn't import this one, so it's the only side that can be
