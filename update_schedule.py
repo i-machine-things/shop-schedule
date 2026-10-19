@@ -1,14 +1,13 @@
 #!/usr/bin/env python3
 """
-Foreman Schedule - Email poller & HTML generator for shop floor display.
-Run via cron every 15 minutes. Checks Gmail for new Shop Schedule PDF, parses it,
-and regenerates schedule.html for the kiosk display.
+Foreman Schedule - HTML generator for shop floor display.
+Run via cron every 15 minutes. Pulls the current Foreman's Report (JobBoss DB,
+or a PDF dropped/uploaded into place) and regenerates schedule.html for the
+kiosk display.
 """
 
 import hashlib
 import html as _html
-import imaplib
-import email
 import json
 import os
 import re
@@ -20,8 +19,6 @@ from datetime import datetime
 import jobboss_db
 
 # ── Config (loaded from .env by run_update.sh) ─────────────────────────────────
-GMAIL_USER = os.environ.get('GMAIL_USER', '')
-GMAIL_PASS = os.environ.get('GMAIL_PASS', '')   # Gmail App Password
 SHOP_NAME = os.environ.get('SHOP_NAME', 'My Shop')
 PDF_FILENAME = os.path.basename(os.environ.get('PDF_FILENAME', '').strip()) or 'last_report.pdf'
 PDF_COMPANY_NAME = os.environ.get('PDF_COMPANY_NAME', '').strip()
@@ -44,40 +41,6 @@ def _get_local_ip():
         return ip
     except Exception:
         return None
-
-
-# ── Email (deprecated) ──────────────────────────────────────────────────────────
-
-def fetch_pdf():
-    """Check Gmail inbox for unread email with PDF attachment. Returns True if new PDF saved.
-
-    DEPRECATED: prefer the JobBoss DB source (see jobboss_db.py / README). Email
-    polling stays functional for now but will be removed in a future version.
-    """
-    print("DEPRECATED: Gmail/email polling is deprecated in favor of the JobBoss "
-          "DB source -- see README's 'JobBoss DB source' section.", file=sys.stderr)
-    try:
-        socket.setdefaulttimeout(30)
-        conn = imaplib.IMAP4_SSL('imap.gmail.com')
-        conn.login(GMAIL_USER, GMAIL_PASS)
-        conn.select('inbox')
-        _, data = conn.search(None, 'UNSEEN')
-        for num in data[0].split():
-            _, raw = conn.fetch(num, '(RFC822)')
-            msg = email.message_from_bytes(raw[0][1])
-            for part in msg.walk():
-                fname = part.get_filename() or ''
-                if fname.lower().endswith('.pdf'):
-                    with open(PDF_PATH, 'wb') as f:
-                        f.write(part.get_payload(decode=True))
-                    conn.store(num, '+FLAGS', '\\Seen')
-                    conn.logout()
-                    print(f"[{datetime.now():%Y-%m-%d %H:%M}] Saved: {fname}")
-                    return True
-        conn.logout()
-    except Exception as exc:
-        print(f"Email error: {exc}", file=sys.stderr)
-    return False
 
 
 # ── PDF Parsing ─────────────────────────────────────────────────────────────────
@@ -166,7 +129,7 @@ def parse_pdf(path):
                     'curr_wc': m.group(6).strip(),
                     'ship_qty': m.group(7),
                     'promised': m.group(8),
-                    'customer': '', 'oper': '', 'sch_end': '',
+                    'customer': '', 'oper': '', 'oper_desc': '', 'sch_end': '',
                     'num_ops': '', 'rem_hrs': '', 'qty_run': '',
                     'part': '', 'description': '',
                 }
@@ -195,7 +158,7 @@ def parse_pdf(path):
                         'curr_wc': m2.group(6).strip(),
                         'ship_qty': m2.group(7),
                         'promised': m2.group(8),
-                        'customer': '', 'oper': '', 'sch_end': '',
+                        'customer': '', 'oper': '', 'oper_desc': '', 'sch_end': '',
                         'num_ops': '', 'rem_hrs': '', 'qty_run': '',
                         'part': '', 'description': '',
                     }
@@ -269,6 +232,42 @@ def _save_dept_colors(colors):
     os.replace(tmp, DEPT_COLORS_PATH)
 
 
+def apply_work_center_backlogs(sections):
+    """Attach backlog_days/gap_days to any section that doesn't already have
+    them. The DB path (jobboss_db.fetch_from_db()) computes these itself
+    from a separate, unbounded query and attaches them before this ever
+    runs -- sec['jobs'] here is intentionally truncated to JOBBOSS_DAYS_AHEAD
+    for display, and using it for the backlog calc silently capped the
+    backlog stat at ~days_ahead too, which defeated the point. This only fills the
+    gap for the PDF path, which has no such wider query available and keeps
+    the existing (narrower) behavior as a reasonable fallback.
+
+    _work_center_backlog_days() lives in jobboss_db.py, not here -- that
+    module doesn't import this one, so it's the only side that can be
+    shared without a circular import."""
+    now = datetime.now()
+    for sec in sections:
+        if 'backlog_days' in sec:
+            continue
+        backlog_days, gap_days = jobboss_db._work_center_backlog_days(sec.get('jobs', []), now)
+        sec['backlog_days'] = backlog_days
+        sec['gap_days'] = gap_days
+
+
+def _format_weeks_days(days):
+    """'2 wk 3 day' style formatting from a raw day count -- omits a zero
+    component ('3 day' or '2 wk', not '0 wk 3 day') and deliberately isn't a
+    decimal-weeks number: "2.3 wk" doesn't translate into an actual calendar
+    date at a glance on the shop floor the way "2 wk 2 day" does."""
+    weeks, rem_days = divmod(days, 7)
+    parts = []
+    if weeks:
+        parts.append(f"{weeks} wk")
+    if rem_days or not parts:
+        parts.append(f"{rem_days} day")
+    return ' '.join(parts)
+
+
 def generate_json(data, out_path):
     """Write the parsed schedule data as JSON for non-HTML consumers (e.g. a Roku
     kiosk client) -- same {report_date, thru_date, sections} shape used internally,
@@ -339,14 +338,33 @@ def generate_html(data, out_path, *, kiosk=False, gen_ts=None):
         wc_attr = _html.escape(sec["wc"])
         dept_e = _html.escape(sec["department"])
         wcg_e = _html.escape(sec["wc_group"])
+        backlog_days = sec.get('backlog_days', 0)
+        gap_days = sec.get('gap_days')
+        backlog_text = f"{_format_weeks_days(backlog_days)} backlog" if backlog_days > 0 else "open now"
+        # gap_days is the *size* of the opening right after backlog_days, not
+        # just that one exists -- a 1-week hole can't take a 2-week job, so
+        # showing only "when" there's room without "how much" would be
+        # actively misleading for exactly the use case this is for.
+        if gap_days is not None:
+            backlog_text += f" ({_format_weeks_days(gap_days)} gap)"
         rows.append(f'''
       <tr class="section-hdr" data-wc="{wc_attr}">
-        <td colspan="11" style="background:{bg};border-left:4px solid {accent}">
+        <td colspan="12" style="background:{bg};border-left:4px solid {accent}">
           <span class="wc-name">{wc_attr}</span>
           <span class="dept-name">{dept_e} &thinsp;&middot;&thinsp; {wcg_e}</span>
+          <span class="wc-backlog">{backlog_text}</span>
         </td>
       </tr>''')
-        for j in sec['jobs']:
+        # Source order is Department/WC_Group/WC/Job/Sequence (DB) or PDF
+        # document order (PDF path) -- neither is chronological, so a work
+        # center's rows can jump around in start date unless sorted here.
+        # Blank/unparseable sch_start sorts last rather than first (datetime.min
+        # default) so a job missing a date doesn't jump the whole queue.
+        sec_jobs = sorted(
+            sec['jobs'],
+            key=lambda j: jobboss_db._parse_sched_date(j['sch_start']) or datetime.max,
+        )
+        for j in sec_jobs:
             overdue = ''
             if j['promised']:
                 try:
@@ -362,6 +380,7 @@ def generate_html(data, out_path, *, kiosk=False, gen_ts=None):
         <td class="pdesc"><span class="pnum">{je["part"]}</span><br><span class="desc">{je["description"]}</span></td>
         <td class="c">{je["rev"]}</td>
         <td class="c">{je["oper"]}</td>
+        <td class="odesc">{je["oper_desc"]}</td>
         <td class="c">{je["make_qty"]}</td>
         <td class="c">{je["sch_start"]}<br><span class="sub">{je["sch_end"]}</span></td>
         <td class="c">{je["curr_wc"]}</td>
@@ -513,10 +532,12 @@ thead th{{position:sticky;top:0;z-index:20;background:#0d0d20;color:#7799ff;font
 .section-hdr td{{position:sticky;z-index:10;padding:8px 14px;border-bottom:1px solid #333}}
 .wc-name{{font-size:16px;font-weight:bold;color:#fff;letter-spacing:2px;text-transform:uppercase;margin-right:14px}}
 .dept-name{{font-size:11px;color:#888}}
+.wc-backlog{{font-size:11px;color:#4af;font-weight:bold;margin-left:14px}}
 .job td{{padding:5px 8px;border-bottom:1px solid #111;vertical-align:top}}
 .job:nth-child(even){{background:rgba(255,255,255,0.02)}}
 .jnum{{color:#4af;font-weight:bold;font-size:15px;white-space:nowrap}}
 .pdesc{{max-width:220px;white-space:normal}}
+.odesc{{max-width:160px;white-space:normal;color:#aaa;font-size:12px}}
 .pnum{{color:#eee}}
 .desc{{color:#777;font-size:12px}}
 .c{{text-align:center;white-space:nowrap}}
@@ -547,11 +568,13 @@ thead th{{position:sticky;top:0;z-index:20;background:#0d0d20;color:#7799ff;font
 [data-theme="light"] .section-hdr td{{background:#eaecf8!important;border-bottom-color:#ccc}}
 [data-theme="light"] .wc-name{{color:#111}}
 [data-theme="light"] .dept-name{{color:#555}}
+[data-theme="light"] .wc-backlog{{color:#0066cc}}
 [data-theme="light"] .job td{{border-bottom-color:#ddd}}
 [data-theme="light"] .job:nth-child(even){{background:rgba(0,0,0,0.03)}}
 [data-theme="light"] .jnum{{color:#0066cc}}
 [data-theme="light"] .pnum{{color:#222}}
 [data-theme="light"] .desc{{color:#555}}
+[data-theme="light"] .odesc{{color:#555}}
 [data-theme="light"] .sub{{color:#666}}
 [data-theme="light"] .overdue{{color:#cc0000}}
 {kiosk_css}
@@ -584,7 +607,7 @@ thead th{{position:sticky;top:0;z-index:20;background:#0d0d20;color:#7799ff;font
   <thead>
     <tr>
       <th>Job</th><th>Customer</th><th>Part / Description</th>
-      <th>Rev</th><th>Oper</th><th>Qty</th>
+      <th>Rev</th><th>Oper</th><th>Oper Desc</th><th>Qty</th>
       <th>Sch Start/End</th><th>Curr WC</th>
       <th>Rem Hrs</th><th>Ship Qty</th><th>Promised</th>
     </tr>
@@ -805,10 +828,9 @@ setInterval(async () => {{
 
 def main():
     """Regenerate schedule.html/kiosk.html from the JobBoss DB if configured,
-    otherwise fall back to parsing a PDF -- auto-fetched from Gmail (Linux
-    only, deprecated) or already sitting at PDF_PATH from a manual drop/
-    upload (works on both platforms either way; see README's SMB/upload
-    docs -- only the *automatic Gmail checking* is Linux-only)."""
+    otherwise fall back to parsing a PDF already sitting at PDF_PATH from a
+    manual drop (incoming/) or web upload (options.html) -- same on both
+    platforms."""
     if jobboss_db.is_configured():
         data = jobboss_db.fetch_from_db()
         if data is None:
@@ -821,24 +843,15 @@ def main():
         print(f"[{datetime.now():%Y-%m-%d %H:%M}] DB fetch OK: "
               f"{len(data['sections'])} sections, {total_jobs} job rows. Display refreshed.")
     else:
-        # install.ps1 doesn't offer Gmail and fetch_pdf()'s IMAP flow is
-        # untested on Windows, so skip the auto-fetch there regardless of
-        # GMAIL_USER -- but still fall through to parse_pdf() below if a PDF
-        # already exists from a manual drop/upload, same as Linux.
-        on_windows = sys.platform.startswith('win')
-        fetched = fetch_pdf() if (GMAIL_USER and not on_windows) else False
         if not os.path.exists(PDF_PATH):
-            if on_windows:
-                print("JOBBOSS_DB_* is not configured and no PDF has been provided. "
-                      "Windows installs don't support automatic Gmail polling -- fill in "
-                      ".env's JOBBOSS_DB_* (preferred), or drop a PDF into incoming/.",
-                      file=sys.stderr)
-            else:
-                print("No PDF yet. Send the Shop Schedule PDF to the Gmail inbox.", file=sys.stderr)
+            print("JOBBOSS_DB_* is not configured and no PDF has been provided. "
+                  "Fill in .env's JOBBOSS_DB_* (preferred), or drop a PDF into incoming/.",
+                  file=sys.stderr)
             return
         data = parse_pdf(PDF_PATH)
-        if not fetched and not on_windows:
-            print("No new email. Display refreshed.")
+        print(f"[{datetime.now():%Y-%m-%d %H:%M}] Parsed {PDF_PATH}. Display refreshed.")
+
+    apply_work_center_backlogs(data['sections'])
 
     gen_ts = int(datetime.now().timestamp())
     generate_html(data, HTML_PATH, gen_ts=gen_ts)

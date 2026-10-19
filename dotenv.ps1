@@ -9,7 +9,12 @@
 function Import-DotEnv {
     param([Parameter(Mandatory)][string]$Path)
     if (-not (Test-Path $Path)) { return }
-    foreach ($line in Get-Content -Path $Path) {
+    # Explicit -Encoding UTF8 -- Windows PowerShell 5.1's Get-Content defaults
+    # to the system ANSI codepage for a BOM-less file, not UTF-8. A .env saved
+    # as UTF-8 without a BOM (common from most editors) with any non-ASCII
+    # character (e.g. in SHOP_NAME) would otherwise decode wrong. CodeRabbit
+    # catch on PR #277.
+    foreach ($line in Get-Content -Path $Path -Encoding UTF8) {
         $trimmed = $line.Trim()
         if (-not $trimmed -or $trimmed.StartsWith('#')) { continue }
         if ($trimmed -notmatch '^([^=]+)=(.*)$') { continue }
@@ -19,6 +24,17 @@ function Import-DotEnv {
             $first = $val[0]; $last = $val[$val.Length - 1]
             if ((($first -eq "'") -and ($last -eq "'")) -or (($first -eq '"') -and ($last -eq '"'))) {
                 $val = $val.Substring(1, $val.Length - 2)
+                if ($first -eq "'") {
+                    # Reverse install.ps1's Set-EnvFileValue / install.sh's
+                    # _set_env() escaping for an embedded single quote
+                    # (close-quote, double-quoted literal quote, reopen-
+                    # quote) back to a literal ' -- so a value written by
+                    # either platform's installer round-trips correctly
+                    # through this reader too, not just through bash's own
+                    # eval-based one in _get_env().
+                    $dq = [char]34
+                    $val = $val -replace "'$dq'$dq'", "'"
+                }
             }
         }
         Set-Item -Path "Env:$key" -Value $val
@@ -31,8 +47,19 @@ function Import-DotEnv {
 # (rewriting JOBBOSS_DB_PASS in place after encrypting it).
 function Set-DotEnvValue {
     param([string]$Key, [string]$Value, [string]$Path)
-    $line = "$Key='$Value'"
-    $content = @(if (Test-Path $Path) { Get-Content $Path } else { @() })
+    # Escape an embedded single quote the same way install.sh's _set_env()
+    # does (close quote, double-quoted literal quote, reopen quote) -- this
+    # .env format is shared with the Linux side, and a plain
+    # SHOP_NAME='Joe's Garage' is a bash syntax error (unterminated quote)
+    # when run_update.sh sources it, even though PowerShell's own
+    # Import-DotEnv tolerates it. CodeRabbit catch on PR #277.
+    $dq = [char]34
+    $escaped = $Value -replace "'", "'$dq'$dq'"
+    $line = "$Key='$escaped'"
+    # Explicit -Encoding UTF8 -- Windows PowerShell 5.1's Get-Content defaults
+    # to the system ANSI codepage for a BOM-less file, not UTF-8. CodeRabbit
+    # catch on PR #277.
+    $content = @(if (Test-Path $Path) { Get-Content -Path $Path -Encoding UTF8 } else { @() })
     if ($content -match "^$Key=") {
         $content = $content | ForEach-Object { if ($_ -match "^$Key=") { $line } else { $_ } }
     } else {

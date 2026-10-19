@@ -1,6 +1,6 @@
 # Windows counterpart to run_update.sh -- invoked every 15 minutes by the
 # "ShopScheduleUpdate" scheduled task (see install.ps1). Loads .env, stages
-# any SMB-dropped PDFs, then regenerates the schedule.
+# any dropped/uploaded PDFs, then regenerates the schedule.
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 . (Join-Path $ScriptDir 'dotenv.ps1')
 Import-DotEnv (Join-Path $ScriptDir '.env')
