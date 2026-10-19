@@ -1,0 +1,72 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to rehearse (e.g. v1.0.0) -- packages the zip as a workflow artifact for sideload testing; does not tag or publish a release.'
+        required: true
+
+jobs:
+  release:
+    name: Build and publish release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Require tag to be on main
+        if: github.event_name == 'push'
+        run: |
+          git fetch origin main
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "::error::Tag $GITHUB_REF_NAME does not point at a commit on main. Per .claude/CLAUDE.md Rule 4, only tag from main." >&2
+            exit 1
+          fi
+
+      - name: Determine version
+        id: version
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          DISPATCH_VERSION: ${{ github.event.inputs.version }}
+        run: |
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            echo "tag=$DISPATCH_VERSION" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Package channel zip
+        env:
+          RELEASE_TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          mkdir -p build
+          zip -r "build/shop-schedule-roku-${RELEASE_TAG}.zip" \
+            manifest components source images media \
+            -x '*.bak'
+
+      # Rehearsal (workflow_dispatch) stops here -- the artifact below is for
+      # downloading and sideloading onto real hardware per CLAUDE.md's
+      # "Rehearse before releasing": a green rehearsal proves the zip
+      # packaged, not that the channel actually launches and renders on a
+      # Roku. Only a real tag push reaches the publish step after this.
+      - name: Upload rehearsal artifact
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@v4
+        with:
+          name: shop-schedule-roku-${{ steps.version.outputs.tag }}
+          path: build/*.zip
+
+      - name: Create GitHub release
+        if: github.event_name == 'push'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: build/shop-schedule-roku-${{ github.ref_name }}.zip
+          generate_release_notes: true
