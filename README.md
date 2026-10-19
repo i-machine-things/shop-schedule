@@ -160,7 +160,7 @@ The schedule page has a fixed sidebar listing every work center in the current r
 
 ## Schedule window
 
-Below the work center filter, a **Schedule Window** control (Today / 3 Days / 1 Week / 2 Weeks / All) limits the view to jobs starting within that many days. A section's header hides too once none of its jobs are visible. This is purely a local, per-browser display preference — stored in `localStorage` like the theme toggle — and has no effect on the server, `schedule.json`, or any other kiosk/browser viewing the same schedule. The server always sends the entire open schedule (see [JobBoss DB source](#jobboss-db-source) above); this control just decides how much of it this one browser actually displays, with **All** showing everything.
+Below the work center filter, a **Schedule Window** control (Today / 3 Days / 1 Week / 2 Weeks / All) limits the view to jobs starting within that many days. A section's header hides too once none of its jobs are visible. This is purely a local, per-browser display preference — stored in `localStorage` like the theme toggle — and has no effect on the server, `schedule.json`, or any other kiosk/browser viewing the same schedule. This control just decides how much of the server's data this one browser actually displays, with **All** showing everything the server sent. What "everything" means depends on the data source: with [JobBoss DB source](#jobboss-db-source), the server always queries and sends the entire open schedule, no day cap; with [PDF source](#pdf-source), "everything" is whatever job rows the Foreman's Report PDF itself contained — the server has no way to pull more than the PDF supplied.
 
 ## Page rotation
 
