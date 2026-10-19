@@ -157,6 +157,10 @@ Uploaded display PDFs are stored in `public/raw/` and their entries are managed 
 
 The schedule page has a fixed sidebar listing every work center in the current report. Tapping a WC solos it (first tap); subsequent taps toggle additional WCs in or out. Tapping the sole active WC resets to showing all. The **All** button at the top also resets to the full view.
 
+## Schedule window
+
+Below the work center filter, a **Schedule Window** control (Today / 3 Days / 1 Week / 2 Weeks / All) limits the view to jobs starting within that many days. A section's header hides too once none of its jobs are visible. This is purely a local, per-browser display preference — stored in `localStorage` like the theme toggle — and has no effect on the server, `schedule.json`, or any other kiosk/browser viewing the same schedule. It narrows what's shown from the data the server already sent; it doesn't change how far ahead that data goes (see `JOBBOSS_DAYS_AHEAD` above).
+
 ## Page rotation
 
 The kiosk can rotate through additional web pages between schedule views. After the schedule has scrolled a configurable number of times, it fades to the next page, holds it, then fades back.
