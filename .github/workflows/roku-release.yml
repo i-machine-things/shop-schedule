@@ -64,6 +64,16 @@ jobs:
             fi
             echo "tag=$DISPATCH_VERSION" >> "$GITHUB_OUTPUT"
           else
+            # Not the same injection risk as the dispatch path above -- git
+            # ref names can't contain newlines, so there's no GITHUB_OUTPUT
+            # smuggling angle here. Same check anyway for consistency and to
+            # catch a malformed tag (the v*.*.* trigger glob above is looser
+            # than this regex -- e.g. "v1.2.3-rc1" matches the glob but not
+            # this) with a clear error instead of a weird zip filename.
+            if [[ ! "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo "::error::Tag must look like v1.2.3, got: $GITHUB_REF_NAME" >&2
+              exit 1
+            fi
             echo "tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
           fi
 
