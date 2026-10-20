@@ -77,6 +77,32 @@ jobs:
             echo "tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
           fi
 
+      # roku/manifest's major_version/minor_version/build_version are
+      # committed as whatever they were at the last manual bump -- without
+      # this, a tag like v1.2.3 would ship a zip whose *filename* says
+      # v1.2.3 but whose *installed channel* (what Roku's own Settings UI
+      # reports on the device) still says 1.1.0 or whatever's checked in,
+      # breaking the "one tag, one version, both halves" contract this
+      # merge exists for. Rewrites only the ephemeral CI checkout, not the
+      # repo -- the committed manifest is free to lag between releases.
+      # RELEASE_TAG is already validated as vMAJOR.MINOR.PATCH by the step
+      # above, so the parameter expansions below can't land on a non-numeric
+      # field. CodeRabbit catch on PR #286, fourth review pass.
+      - name: Sync manifest version to release tag
+        env:
+          RELEASE_TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          VERSION="${RELEASE_TAG#v}"
+          MAJOR="${VERSION%%.*}"
+          REST="${VERSION#*.}"
+          MINOR="${REST%%.*}"
+          PATCH="${REST#*.}"
+          sed -i \
+            -e "s/^major_version=.*/major_version=${MAJOR}/" \
+            -e "s/^minor_version=.*/minor_version=${MINOR}/" \
+            -e "s/^build_version=.*/build_version=${PATCH}/" \
+            roku/manifest
+
       - name: Package channel zip
         env:
           RELEASE_TAG: ${{ steps.version.outputs.tag }}
