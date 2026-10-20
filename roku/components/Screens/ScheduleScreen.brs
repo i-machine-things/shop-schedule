@@ -48,6 +48,7 @@ sub init()
     m.warpMenuCloseAnim.observeField("state", "onWarpMenuCloseAnimState")
 
     m.scheduleTask.observeField("scheduleData", "onScheduleData")
+    m.scheduleTask.observeField("deptColors", "onDeptColors")
     m.refreshTimer.observeField("fire", "onRefreshTimer")
     m.scrollTimer.observeField("fire", "onScrollTick")
     m.pauseTimer.observeField("fire", "onPauseTimerFire")
@@ -167,7 +168,14 @@ sub onScheduleData()
         ' Independent of scheduleData below -- ScheduleTask fetches both every
         ' run, so this stays current even on a cycle where schedule.json
         ' itself fails (deptColors keeps its last good value either way,
-        ' see ScheduleTask.xml's field comment).
+        ' see ScheduleTask.xml's field comment). This just makes sure
+        ' m.deptColors is current for the headers buildContent() is ABOUT to
+        ' build below -- it does not handle colors arriving for headers that
+        ' are already on screen (fetchDeptColors() runs after scheduleData is
+        ' set, so onScheduleData() can fire and build with stale/neutral
+        ' colors before deptColors has caught up for this cycle). That's what
+        ' the separate onDeptColors() observer below is for. CodeRabbit catch
+        ' on PR #286, fifth review pass.
         if m.scheduleTask.deptColors <> invalid then m.deptColors = m.scheduleTask.deptColors
 
         data = m.scheduleTask.scheduleData
@@ -193,6 +201,41 @@ sub onScheduleData()
         buildContent(data.sections)
     catch e
         print "onScheduleData error: "; e.getMessage()
+    end try
+end sub
+
+' Repaints already-built section headers (inline + sticky) once deptColors
+' actually lands -- fetchDeptColors() runs after scheduleData is set in
+' ScheduleTask.brs, so buildContent() can run (via onScheduleData() above,
+' itself observing scheduleData) with stale/neutral colors before this
+' cycle's deptColors has arrived. Without this, those headers would stay
+' wrong until the NEXT full rebuild, up to 60s later. Direct node mutation
+' via the header reference kept on each m.sectionBounds entry, not a
+' rebuild -- same pattern highlightWarpMenuRow() already uses. CodeRabbit
+' catch on PR #286, fifth review pass.
+sub onDeptColors()
+    try
+        if m.scheduleTask.deptColors = invalid then return
+        m.deptColors = m.scheduleTask.deptColors
+
+        for each sectionInfo in m.sectionBounds
+            colors = colorsForDept(sectionInfo.section.department)
+            sectionInfo.header.getChild(0).color = colors.bg
+            sectionInfo.header.getChild(1).color = colors.accent
+        end for
+
+        ' updateStickyHeader() no-ops if idx already equals
+        ' m.currentSectionIdx (the normal case here -- the section hasn't
+        ' changed, just its colors) -- force it to actually re-run by
+        ' clearing that first, same trick applyScroll() has no need for
+        ' since scrolling always changes idx itself.
+        if m.currentSectionIdx >= 0 then
+            idx = m.currentSectionIdx
+            m.currentSectionIdx = -1
+            updateStickyHeader(idx)
+        end if
+    catch e
+        print "onDeptColors error: "; e.getMessage()
     end try
 end sub
 
@@ -223,11 +266,17 @@ sub buildContent(sections as Object)
         newRows = []
         newSectionBounds = []
         y = 0
+        hadInputSections = (sections <> invalid and sections.Count() > 0)
         for each section in sections
             if section.jobs <> invalid and section.jobs.Count() > 0 then
-                newSectionBounds.push({ startY: y, section: section })
+                header = buildSectionHeader(section, y)
+                ' header kept directly on the bounds entry (not re-found by
+                ' id later) so onDeptColors() below can repaint it in place --
+                ' same direct-reference pattern highlightWarpMenuRow() already
+                ' uses for its own row backgrounds, for the same reason.
+                newSectionBounds.push({ startY: y, section: section, header: header })
 
-                newRows.push(buildSectionHeader(section, y))
+                newRows.push(header)
                 y = y + m.HEADER_HEIGHT
 
                 for each job in section.jobs
@@ -237,6 +286,22 @@ sub buildContent(sections as Object)
             end if
         end for
         newContentHeight = y
+
+        ' A non-empty response that produced zero displayable sections means
+        ' every section's `jobs` was missing/malformed -- not a legitimate
+        ' "nothing scheduled right now" (that's sections itself being empty,
+        ' which is fine and swaps in normally below). Swapping in an empty
+        ' schedule here would silently blank an otherwise-fine kiosk over a
+        ' malformed response, the same failure mode the exception-safety
+        ' above exists to prevent, just reached without throwing. Partially-
+        ' malformed responses (some sections fine, others not) still display
+        ' the valid ones -- only an all-bad response is rejected outright.
+        ' CodeRabbit catch on PR #286, fifth review pass.
+        if hadInputSections and newSectionBounds.Count() = 0 then
+            m.errorLabel.text = "Display error building schedule -- will retry next refresh."
+            m.errorBanner.visible = true
+            return
+        end if
 
         ' Everything above succeeded -- safe to actually swap the new
         ' content in now.
