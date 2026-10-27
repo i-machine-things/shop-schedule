@@ -529,7 +529,7 @@ body{{background:#07070f;color:#ddd;font-family:'Courier New',monospace;font-siz
          text-align:left;transition:background 0.15s,border-color 0.15s,color 0.15s}}
 .wc-btn.active{{background:#0d2010;border-color:#3a7a3a;color:#8f8}}
 .wc-btn:hover{{background:#1a2233;color:#ddd;border-color:#4af}}
-#view-list{{flex-shrink:0;padding:0 8px 8px;display:flex;flex-direction:column;gap:2px}}
+#view-list,#mode-list{{flex-shrink:0;padding:0 8px 8px;display:flex;flex-direction:column;gap:2px}}
 .view-btn{{padding:5px 8px;background:#0d1a2b;border:1px solid #222;color:#666;cursor:pointer;
          font-family:inherit;font-size:11px;letter-spacing:1px;text-transform:uppercase;
          text-align:left;transition:background 0.15s,border-color 0.15s,color 0.15s}}
@@ -616,6 +616,8 @@ thead th{{position:sticky;top:0;z-index:20;background:#0d0d20;color:#7799ff;font
   <div id="wc-list"></div>
   <div class="sidebar-hdr">Schedule Window</div>
   <div id="view-list"></div>
+  <div class="sidebar-hdr">Schedule Mode</div>
+  <div id="mode-list"></div>
 </div>
 <div id="wrap">
 <table>
@@ -779,32 +781,19 @@ function syncButtons(){{
 // header once none of its jobs are visible -- purely client-side filtering
 // of what the server already sent; doesn't touch the server, schedule.json,
 // or any other kiosk/browser viewing the same schedule.
-//
-// WC Dispatch is a 6th option in this same single-select menu, not a day
-// count: it shows every job currently physically sitting at each work
-// center (data-currwc === that section's own WC) regardless of schedule
-// date -- what a WC operator could actually pick up and run right now, as
-// opposed to the full queue of everything scheduled there eventually (most
-// of which hasn't arrived yet, still sitting at an earlier operation). It
-// intentionally ignores the day window entirely (days:Infinity) rather
-// than compounding with it -- a job dispatch-ready right now shouldn't be
-// hidden by an unrelated date filter.
 const VIEW_WINDOWS = [
   {{label:'Today', days:1, key:'1'}},
   {{label:'3 Days', days:3, key:'3'}},
   {{label:'1 Week', days:7, key:'7'}},
   {{label:'2 Weeks', days:14, key:'14'}},
   {{label:'All', days:Infinity, key:'all'}},
-  {{label:'WC Dispatch', days:Infinity, key:'dispatch', dispatch:true}},
 ];
 let viewDays = Infinity;
-let dispatchMode = false;
 
 function buildViewFilter(){{
   const saved = localStorage.getItem('view_window_days') || 'all';
   const active = VIEW_WINDOWS.find(w => w.key === saved) || VIEW_WINDOWS.find(w => w.key === 'all');
   viewDays = active.days;
-  dispatchMode = !!active.dispatch;
   const list = document.getElementById('view-list');
   list.innerHTML = '';
   VIEW_WINDOWS.forEach(w => {{
@@ -818,14 +807,52 @@ function buildViewFilter(){{
 
 function setViewWindow(w){{
   viewDays = w.days;
-  dispatchMode = !!w.dispatch;
   localStorage.setItem('view_window_days', w.key);
-  document.querySelectorAll('.view-btn').forEach((btn, i) => {{
+  document.querySelectorAll('#view-list .view-btn').forEach((btn, i) => {{
     btn.classList.toggle('active', VIEW_WINDOWS[i].key === w.key);
   }});
   applyFilter();
 }}
 
+// Schedule Mode -- a second, independent single-select (Standard / WC
+// Dispatch) stored under its own localStorage key. Orthogonal to the
+// Schedule Window above: both filters are ANDed together in applyFilter(),
+// so switching to WC Dispatch narrows whatever date window is already
+// selected rather than replacing it.
+const SCHEDULE_MODES = [
+  {{label:'Standard', key:'standard'}},
+  {{label:'WC Dispatch', key:'dispatch'}},
+];
+let dispatchMode = false;
+
+function buildScheduleMode(){{
+  const saved = localStorage.getItem('schedule_mode') || 'standard';
+  const active = SCHEDULE_MODES.find(m => m.key === saved) || SCHEDULE_MODES[0];
+  dispatchMode = active.key === 'dispatch';
+  const list = document.getElementById('mode-list');
+  list.innerHTML = '';
+  SCHEDULE_MODES.forEach(m => {{
+    const btn = document.createElement('button');
+    btn.className = 'view-btn' + (m.key === active.key ? ' active' : '');
+    btn.textContent = m.label;
+    btn.addEventListener('click', () => setScheduleMode(m));
+    list.appendChild(btn);
+  }});
+}}
+
+function setScheduleMode(m){{
+  dispatchMode = m.key === 'dispatch';
+  localStorage.setItem('schedule_mode', m.key);
+  document.querySelectorAll('#mode-list .view-btn').forEach((btn, i) => {{
+    btn.classList.toggle('active', SCHEDULE_MODES[i].key === m.key);
+  }});
+  applyFilter();
+}}
+
+// Schedule Window (date) and Schedule Mode (WC Dispatch) are independent,
+// ANDed filters -- WC Dispatch narrows whatever date window is already
+// selected (e.g. "1 Week" + WC Dispatch = ready-to-run jobs due within a
+// week) rather than replacing it.
 function applyFilter(){{
   if(loopReady){{
     const rows = [...document.querySelectorAll('tbody tr')];
@@ -877,6 +904,7 @@ document.getElementById('wc-all').addEventListener('click', ()=>{{
 
 buildSidebar();
 buildViewFilter();
+buildScheduleMode();
 applyFilter();
 
 // Pause/resume from kiosk shell
