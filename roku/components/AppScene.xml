@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<component name="AppScene" extends="Scene">
+    <script type="text/brightscript" uri="pkg:/components/AppScene.brs" />
+    <children>
+        <Rectangle id="background" width="1920" height="1080" color="0x07070FFF" />
+
+        <!-- We will dynamically add views here -->
+        <Group id="contentGroup" translation="[0, 0]" />
+    </children>
+</component>
