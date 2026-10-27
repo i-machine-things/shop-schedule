@@ -39,6 +39,7 @@ sub init()
     m.pauseTimer = m.top.findNode("pauseTimer")
     m.clockTimer = m.top.findNode("clockTimer")
     m.manualPauseTimer = m.top.findNode("manualPauseTimer")
+    m.ghostRetryTimer = m.top.findNode("ghostRetryTimer")
     m.ghostVideo = m.top.findNode("ghostVideo")
     m.ghostVideo.observeField("state", "onGhostVideoState")
     m.warpMenu = m.top.findNode("warpMenu")
@@ -54,6 +55,7 @@ sub init()
     m.pauseTimer.observeField("fire", "onPauseTimerFire")
     m.clockTimer.observeField("fire", "onClockTick")
     m.manualPauseTimer.observeField("fire", "onManualPauseTimerFire")
+    m.ghostRetryTimer.observeField("fire", "onGhostRetryTimerFire")
 
     m.viewportHeight = 1080 - 186
     m.contentHeight = 0
@@ -90,6 +92,26 @@ sub screenShown()
     m.refreshTimer.control = "start"
 end sub
 
+' Called by AppScene.brs's onReconfigure() before removing this screen --
+' without this, a detached-but-still-alive ScheduleScreen kept polling the
+' OLD server (refreshTimer/scheduleTask) and playing ghostVideo forever in
+' the background after the user reconfigured to a new one, since node
+' removal from contentGroup only stops rendering, not the node's own
+' timers/Task. CodeRabbit catch on PR #286, sixth review pass.
+sub teardown()
+    try
+        m.refreshTimer.control = "stop"
+        m.scrollTimer.control = "stop"
+        m.pauseTimer.control = "stop"
+        m.clockTimer.control = "stop"
+        m.manualPauseTimer.control = "stop"
+        m.scheduleTask.control = "stop"
+        m.ghostVideo.control = "stop"
+    catch e
+        print "teardown error: "; e.getMessage()
+    end try
+end sub
+
 ' See the ghostVideo node's comment in the XML. Content is a real bundled
 ' video file (media/ghost.mp4) -- Video nodes need actual content to play,
 ' even invisible/off-screen ones; there's no "fake playing" state.
@@ -109,10 +131,22 @@ sub onGhostVideoState()
     st = m.ghostVideo.state
     if st = "error" then
         print "[GHOST] errorCode="; m.ghostVideo.errorCode; " errorMsg="; m.ghostVideo.errorMsg
-    end if
-    if st = "finished" or st = "stopped" then
+        ' Retry after a delay, not immediately -- an immediate retry on a
+        ' persistent/structural failure (a corrupted asset, say) would spin
+        ' in a tight error -> retry -> error loop instead of backing off.
+        ' "error" was previously excluded from the restart branch below
+        ' entirely, so the screensaver-prevention trick this depends on
+        ' (see the ghostVideo XML comment) stayed dead for the rest of the
+        ' session once it failed once. CodeRabbit catch on PR #286, sixth
+        ' review pass.
+        m.ghostRetryTimer.control = "start"
+    else if st = "finished" or st = "stopped" then
         startGhostVideo()
     end if
+end sub
+
+sub onGhostRetryTimerFire()
+    startGhostVideo()
 end sub
 
 sub requestFetch()
@@ -551,6 +585,16 @@ sub openWarpMenu()
         m.warpMenuIdx = m.currentSectionIdx
         if m.warpMenuIdx < 0 then m.warpMenuIdx = 0
         m.warpMenuOpen = true
+        ' Stop any still-running close animation from a rapid Back-then-OK
+        ' press within its ~0.2s slide-out -- left running, it would finish
+        ' later and hide the menu just reopened here. Setting control="stop"
+        ' changes .state synchronously (same-thread/same-component
+        ' observation, unlike the cross-thread Task-field case elsewhere in
+        ' this file), so this itself fires onWarpMenuCloseAnimState() inline
+        ' -- safe because m.warpMenuOpen is already true above, and that
+        ' observer is guarded by it. CodeRabbit catch on PR #286, sixth
+        ' review pass.
+        m.warpMenuCloseAnim.control = "stop"
         ' Reset off-screen before showing/animating -- guards against a
         ' prior close animation having been interrupted mid-slide (e.g. by
         ' buildContent()'s force-close) and leaving translation.x partway in.
@@ -651,7 +695,11 @@ sub closeWarpMenu()
 end sub
 
 sub onWarpMenuCloseAnimState()
-    if m.warpMenuCloseAnim.state = "stopped" then
+    ' Guarded by warpMenuOpen -- without this, openWarpMenu() stopping a
+    ' still-running close anim (a rapid Back-then-OK press) would hide the
+    ' menu that was just reopened, since that stop fires this same observer
+    ' synchronously. CodeRabbit catch on PR #286, sixth review pass.
+    if m.warpMenuCloseAnim.state = "stopped" and not m.warpMenuOpen then
         m.warpMenu.visible = false
     end if
 end sub

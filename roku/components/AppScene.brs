@@ -62,6 +62,16 @@ sub showSchedule()
 end sub
 
 sub onReconfigure()
+    ' Stop the old screen's timers/Task/video and drop our reference before
+    ' showSetup() removes it from contentGroup -- otherwise it keeps polling
+    ' the old server and playing ghostVideo in the background indefinitely.
+    ' See ScheduleScreen.brs's teardown() comment. CodeRabbit catch on
+    ' PR #286, sixth review pass.
+    if m.scheduleView <> invalid then
+        m.scheduleView.callFunc("teardown")
+        m.scheduleView = invalid
+    end if
+
     sec = CreateObject("roRegistrySection", "ScheduleConfig")
     sec.Delete("serverUrl")
     sec.Flush()

@@ -4,6 +4,12 @@
     <interface>
         <field id="reconfigure" type="boolean" value="false" />
         <function name="screenShown" />
+        <!-- Called by AppScene.brs before tearing this screen down (e.g.
+             reconfigure to a new server). Removing this node from
+             contentGroup only stops it being RENDERED, not alive; its own
+             timers/Task/video otherwise keep running independent of the
+             render tree. CodeRabbit catch on PR #286, sixth review pass. -->
+        <function name="teardown" />
     </interface>
 
     <children>
@@ -123,5 +129,10 @@
         <Timer id="clockTimer" repeat="true" duration="1" />
         <!-- Resumes auto-scroll this long after the last manual Up/Down press -->
         <Timer id="manualPauseTimer" repeat="false" duration="10" />
+        <!-- Retry delay after ghostVideo enters "error", not an immediate
+             retry, to avoid spinning in a tight error/retry/error loop on a
+             persistent/structural failure. CodeRabbit catch on PR #286,
+             sixth review pass. -->
+        <Timer id="ghostRetryTimer" repeat="false" duration="5" />
     </children>
 </component>

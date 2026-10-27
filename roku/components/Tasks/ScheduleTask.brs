@@ -25,7 +25,19 @@ sub fetchSchedule()
         body = msg.GetString()
         if code = 200 then
             data = ParseJson(body)
-            if data <> invalid and data.sections <> invalid then
+            ' type(data) = "roAssociativeArray" check first -- ParseJson()
+            ' happily returns a roArray or a bare scalar (String/Integer/...)
+            ' for valid-but-wrong-shaped JSON (a top-level array or scalar
+            ' instead of an object), and dot-accessing .sections on either
+            ' of those is a runtime type error, not a graceful invalid.
+            ' That would throw before this Task ever publishes
+            ' scheduleData/errorMessage, so the screen's normal failure
+            ' banner never shows -- a silent failure instead of the
+            ' documented "a fetch failure must not blank the kiosk, show a
+            ' banner" behavior. Routes through the same unexpected-data path
+            ' as a malformed object instead. CodeRabbit catch on PR #286,
+            ' sixth review pass.
+            if data <> invalid and type(data) = "roAssociativeArray" and data.sections <> invalid then
                 m.top.errorMessage = ""
                 m.top.scheduleData = data
             else
