@@ -378,7 +378,7 @@ def generate_html(data, out_path, *, kiosk=False, gen_ts=None):
             start_dt = jobboss_db._parse_sched_date(j['sch_start'])
             data_start = start_dt.strftime('%Y-%m-%d') if start_dt else ''
             rows.append(f'''
-      <tr class="job" data-wc="{wc_attr}" data-start="{data_start}">
+      <tr class="job" data-wc="{wc_attr}" data-start="{data_start}" data-currwc="{je["curr_wc"]}">
         <td class="jnum">{je["job"]}</td>
         <td>{je["customer"]}</td>
         <td class="pdesc"><span class="pnum">{je["part"]}</span><br><span class="desc">{je["description"]}</span></td>
@@ -779,32 +779,49 @@ function syncButtons(){{
 // header once none of its jobs are visible -- purely client-side filtering
 // of what the server already sent; doesn't touch the server, schedule.json,
 // or any other kiosk/browser viewing the same schedule.
+//
+// WC Dispatch is a 6th option in this same single-select menu, not a day
+// count: it shows every job currently physically sitting at each work
+// center (data-currwc === that section's own WC) regardless of schedule
+// date -- what a WC operator could actually pick up and run right now, as
+// opposed to the full queue of everything scheduled there eventually (most
+// of which hasn't arrived yet, still sitting at an earlier operation). It
+// intentionally ignores the day window entirely (days:Infinity) rather
+// than compounding with it -- a job dispatch-ready right now shouldn't be
+// hidden by an unrelated date filter.
 const VIEW_WINDOWS = [
-  {{label:'Today', days:1}}, {{label:'3 Days', days:3}}, {{label:'1 Week', days:7}},
-  {{label:'2 Weeks', days:14}}, {{label:'All', days:Infinity}},
+  {{label:'Today', days:1, key:'1'}},
+  {{label:'3 Days', days:3, key:'3'}},
+  {{label:'1 Week', days:7, key:'7'}},
+  {{label:'2 Weeks', days:14, key:'14'}},
+  {{label:'All', days:Infinity, key:'all'}},
+  {{label:'WC Dispatch', days:Infinity, key:'dispatch', dispatch:true}},
 ];
 let viewDays = Infinity;
+let dispatchMode = false;
 
 function buildViewFilter(){{
-  const saved = localStorage.getItem('view_window_days');
-  const savedDays = saved === 'all' ? Infinity : parseInt(saved, 10);
-  viewDays = VIEW_WINDOWS.some(w => w.days === savedDays) ? savedDays : Infinity;
+  const saved = localStorage.getItem('view_window_days') || 'all';
+  const active = VIEW_WINDOWS.find(w => w.key === saved) || VIEW_WINDOWS.find(w => w.key === 'all');
+  viewDays = active.days;
+  dispatchMode = !!active.dispatch;
   const list = document.getElementById('view-list');
   list.innerHTML = '';
   VIEW_WINDOWS.forEach(w => {{
     const btn = document.createElement('button');
-    btn.className = 'view-btn' + (w.days === viewDays ? ' active' : '');
+    btn.className = 'view-btn' + (w.key === active.key ? ' active' : '');
     btn.textContent = w.label;
-    btn.addEventListener('click', () => setViewWindow(w.days));
+    btn.addEventListener('click', () => setViewWindow(w));
     list.appendChild(btn);
   }});
 }}
 
-function setViewWindow(days){{
-  viewDays = days;
-  localStorage.setItem('view_window_days', days === Infinity ? 'all' : String(days));
+function setViewWindow(w){{
+  viewDays = w.days;
+  dispatchMode = !!w.dispatch;
+  localStorage.setItem('view_window_days', w.key);
   document.querySelectorAll('.view-btn').forEach((btn, i) => {{
-    btn.classList.toggle('active', VIEW_WINDOWS[i].days === days);
+    btn.classList.toggle('active', VIEW_WINDOWS[i].key === w.key);
   }});
   applyFilter();
 }}
@@ -826,7 +843,8 @@ function applyFilter(){{
   document.querySelectorAll('tbody tr.job').forEach(tr => {{
     const wcOk = activeWCs.has(tr.dataset.wc);
     const dateOk = !cutoff || !tr.dataset.start || new Date(tr.dataset.start + 'T00:00:00') < cutoff;
-    const visible = wcOk && dateOk;
+    const dispatchOk = !dispatchMode || tr.dataset.currwc === tr.dataset.wc;
+    const visible = wcOk && dateOk && dispatchOk;
     tr.style.display = visible ? '' : 'none';
     if(visible) wcHasVisibleJob.add(tr.dataset.wc);
   }});
