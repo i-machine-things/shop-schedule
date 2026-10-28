@@ -92,6 +92,8 @@ This note was created based on issues encountered with PyInstaller executables r
 
 **PR audits enforce an 80% docstring-coverage threshold on changed files.** Add a concise one-line docstring to every function touched by a PR, public or private.
 
+**Bandit's B608 (`hardcoded_sql_expressions`) regex-matches SQL keywords (`select`/`update`/`delete`/...) anywhere inside an f-string, including inside `//`-comments embedded in the generated JS/HTML.** `generate_html()`'s template is one giant f-string, so plain-English wording like "single-**select**" in a code comment trips `ci.yml`'s `bandit --severity-level medium` gate even though there's no SQL anywhere near it (CWE-89, Confidence: Low — the giveaway). Verified by diffing bandit's output between `master` and the branch that introduced the word. Fix is just wording, not a `# nosec`: reword to avoid the bare keyword (e.g. "exclusive-choice" instead of "single-select").
+
 ## Shell Scripting & Installers
 
 **Chromium cache-size flags need `=1`, not `=0`.** Chromium treats `--disk-cache-size=0`/`--media-cache-size=0` as "use default," not zero bytes; use `=1` to force an effectively empty cache.

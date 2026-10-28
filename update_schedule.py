@@ -814,8 +814,8 @@ function setViewWindow(w){{
   applyFilter();
 }}
 
-// Schedule Mode -- a second, independent single-select (Standard / WC
-// Dispatch) stored under its own localStorage key. Orthogonal to the
+// Schedule Mode -- a second, independent exclusive-choice control (Standard /
+// WC Dispatch) stored under its own localStorage key. Orthogonal to the
 // Schedule Window above: both filters are ANDed together in applyFilter(),
 // so switching to WC Dispatch narrows whatever date window is already
 // selected rather than replacing it.
