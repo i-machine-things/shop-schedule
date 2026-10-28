@@ -144,6 +144,8 @@ This note was created based on issues encountered with PyInstaller executables r
 
 **`pytds.connect()` is plaintext unless `cafile` is passed — confirmed in source (`tds.py`'s prelogin handling).** Without `cafile`, `login.enc_flag` is `ENCRYPT_NOT_SUP` and the whole session (not just login) is cleartext if the server doesn't force encryption. `cafile` set + `enc_login_only=False` (default) requests full-session TLS; requires `pyOpenSSL`. CodeRabbit Major finding on `jobboss_db.py`; added as opt-in `JOBBOSS_DB_CAFILE` rather than forced, since forcing it would break the already-deployed Pi until a DBA exports the cert.
 
+**Audited `jobboss_db.py` for SQL injection (e.g. a `DROP TABLE ...` payload as a "username") — no vulnerability found, and the attack has no path to exist here.** Both queries are static string literals with exactly one bound value (`cutoff`, a real `datetime` object passed via pytds's `%s`/`cursor.execute(query, (params,))` placeholder, never string-concatenated or f-string-built into the SQL text). `DB_USER`/`DB_HOST`/`DB_NAME`/`DB_PASS` come from `.env` and are passed to `pytds.connect()` as TDS-protocol connection/auth fields, not SQL text — so even a hostile value there can only fail authentication, never reach a query. Repo-wide grep confirms `jobboss_db.py` is the only file that executes SQL at all. Keep any future query change to this same pattern: static query text, values bound only via `cursor.execute(query, (params,))`, never built with `%`/`.format()`/f-strings.
+
 ## Concurrency & File I/O
 
 **Include microseconds in timestamp-based filenames.** `strftime('%Y%m%d_%H%M%S')` collides when two files are processed within the same second, silently overwriting the earlier one; add `%f`.
