@@ -22,7 +22,7 @@ jobs:
     steps:
       - name: Parse wait, delete rate-limit comment and subsequent CR comments
         id: setup
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
@@ -85,7 +85,7 @@ jobs:
         run: sleep ${{ steps.setup.outputs.wait_secs }}
 
       - name: Trigger CodeRabbit
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         env:
           CR_COMMAND: ${{ steps.setup.outputs.command }}
           PR_NUMBER: ${{ steps.setup.outputs.pr_number }}
