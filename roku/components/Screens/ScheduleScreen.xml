@@ -1,0 +1,138 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<component name="ScheduleScreen" extends="Group">
+    <script type="text/brightscript" uri="pkg:/components/Screens/ScheduleScreen.brs" />
+    <interface>
+        <field id="reconfigure" type="boolean" value="false" />
+        <function name="screenShown" />
+        <!-- Called by AppScene.brs before tearing this screen down (e.g.
+             reconfigure to a new server). Removing this node from
+             contentGroup only stops it being RENDERED, not alive; its own
+             timers/Task/video otherwise keep running independent of the
+             render tree. CodeRabbit catch on PR #286, sixth review pass. -->
+        <function name="teardown" />
+    </interface>
+
+    <children>
+        <Rectangle width="1920" height="1080" color="0x07070FFF" />
+
+        <!-- App header. metaLabel/clockLabel need real vertical separation --
+             font:SmallSystemFont renders taller than a 22px gap allows; the
+             first version had the clock overlapping the report/thru date line. -->
+        <Rectangle id="header" width="1920" height="92" color="0x0B0B18FF">
+            <Label id="titleLabel" text="SHOP SCHEDULE" translation="[30, 30]" font="font:MediumBoldSystemFont" color="0xFFFFFFFF" />
+            <Label id="metaLabel" text="" translation="[1020, 12]" horizAlign="right" width="870" font="font:SmallSystemFont" color="0x888888FF" />
+            <Label id="clockLabel" text="" translation="[1020, 50]" horizAlign="right" width="870" font="font:SmallSystemFont" color="0x4AAFFFFF" />
+        </Rectangle>
+
+        <!-- Column labels -- fixed, matches the web kiosk's <thead> row. x offsets
+             must stay in sync with m.COLS in ScheduleScreen.brs. -->
+        <Rectangle id="columnHeaderRow" width="1920" height="38" translation="[0, 92]" color="0x0D0D20FF">
+            <Label text="JOB"         translation="[40, 10]"   font="font:SmallBoldSystemFont" color="0x7799FFFF" />
+            <Label text="CUSTOMER"    translation="[240, 10]"  font="font:SmallBoldSystemFont" color="0x7799FFFF" />
+            <Label text="DESCRIPTION" translation="[580, 10]"  font="font:SmallBoldSystemFont" color="0x7799FFFF" />
+            <Label text="OPER"        translation="[1450, 10]" font="font:SmallBoldSystemFont" color="0x7799FFFF" />
+            <Label text="CURR WC"     translation="[1620, 10]" font="font:SmallBoldSystemFont" color="0x7799FFFF" />
+        </Rectangle>
+
+        <!-- Sticky work-center header -- always visible, always shows whichever
+             section's rows currently occupy the top of the viewport. Kept
+             deliberately simple (no visibility toggling based on scroll
+             position) after two real-hardware bugs from timing-based show/hide
+             logic -- see CODING_NOTES.md "Sticky header v2". -->
+        <Group id="stickyHeader" translation="[0, 130]">
+            <Rectangle id="stickyHeaderBg" width="1920" height="56" color="0x1A1A1AFF" />
+            <Rectangle id="stickyAccent" width="6" height="56" color="0x666666FF" />
+            <Label id="stickyWcLabel" text="" translation="[30, 14]" font="font:LargeBoldSystemFont" color="0xFFFFFFFF" />
+            <Label id="stickyDeptLabel" text="" translation="[360, 20]" font="font:SmallSystemFont" color="0x999999FF" />
+            <!-- translation set dynamically in updateStickyHeader() via
+                 positionAfter() -- department/group text length varies per
+                 shop, so a fixed x here would be stale as soon as this
+                 component renders. -->
+            <Label id="stickyBacklogLabel" text="" font="font:SmallSystemFont" color="0x4AAFFFFF" />
+        </Group>
+
+        <!-- Scroll viewport: below the app header, column labels, AND the sticky
+             WC header. clippingRect is required -- without it, scrolled rows
+             render on top of/behind the headers above instead of staying
+             confined below them. -->
+        <Group id="viewport" translation="[0, 186]" clippingRect="[0, 0, 1920, 894]">
+            <Group id="scrollContent" translation="[0, 0]" />
+        </Group>
+
+        <!-- Connection-lost banner -- overlays without wiping the last good schedule -->
+        <Rectangle id="errorBanner" width="1920" height="40" translation="[0, 1040]" color="0x2B0D0DFF" visible="false">
+            <Label id="errorLabel" text="" translation="[30, 8]" font="font:SmallSystemFont" color="0xFF8888FF" />
+        </Rectangle>
+
+        <Label id="loadingLabel" text="Loading schedule..." translation="[760, 520]" font="font:LargeSystemFont" color="0x4AAFFFFF" />
+
+        <!-- Work-center warp menu (OK key) -- matches the web kiosk's
+             existing left sidebar work-center filter (see shop-schedule's
+             options.html): a 320px panel docked to the left edge, uniform
+             green cells, slides in/out rather than a centered dim-overlay
+             dialog. Rows built fresh in BRS from m.sectionBounds each time
+             it opens, not kept live while hidden. The whole warpMenu group
+             (panel bg + list together) is what animates -- its own
+             translation.x is the slide, not a position on warpMenuList.
+             clippingRect on warpMenuViewport (local coords, same
+             requirement as the main viewport above) confines the row list
+             to the panel; selection scrolls warpMenuList by snapping its
+             translation, not animating -- that part is discrete keyboard
+             selection, not auto-scroll, unlike the panel's own slide. -->
+        <Group id="warpMenu" visible="false" translation="[-320, 0]">
+            <Rectangle id="warpMenuPanelBg" width="320" height="1080" color="0x0B0B18FF" />
+            <Label id="warpMenuTitle" text="WORK CENTERS" translation="[16, 20]" font="font:SmallBoldSystemFont" color="0x999999FF" />
+            <Group id="warpMenuViewport" translation="[0, 56]" clippingRect="[0, 0, 320, 1024]">
+                <Group id="warpMenuList" translation="[0, 0]" />
+            </Group>
+        </Group>
+        <Animation id="warpMenuOpenAnim" duration="0.25" easeFunction="outCubic">
+            <Vector2DFieldInterpolator key="[0.0, 1.0]" keyValue="[[-320.0, 0.0], [0.0, 0.0]]" fieldToInterp="warpMenu.translation" />
+        </Animation>
+        <Animation id="warpMenuCloseAnim" duration="0.2" easeFunction="inCubic">
+            <Vector2DFieldInterpolator key="[0.0, 1.0]" keyValue="[[0.0, 0.0], [-320.0, 0.0]]" fieldToInterp="warpMenu.translation" />
+        </Animation>
+
+        <ScheduleTask id="scheduleTask" />
+        <!-- "Ghost video" screensaver prevention: Video.enableScreenSaverWhilePlaying
+             defaults to false, which blocks Roku's screensaver while ANY video is
+             playing, regardless of size or visibility (an ECP-keypress "heartbeat"
+             was tried first and confirmed NOT to work on real hardware -- see
+             CODING_NOTES.md). CONFIRMED via telnet on real hardware: state goes
+             none -> buffering -> playing and stays playing (previously stuck in
+             "buffering" forever -- root cause was media/ghost.mp4 being 16x16px
+             at 5fps, below what the hardware decoder validates for; re-encoded
+             at 128x128/24fps/H.264 Constrained Baseline with -movflags
+             +faststart). Back off-canvas (translation far outside 1920x1080)
+             after two on-canvas problems that off-canvas sidesteps entirely:
+             `opacity` does not blend a Video node's decoded frame on real
+             hardware (confirmed by extracting ghost.mp4's frames -- solid
+             color, nothing baked in -- while it still rendered as a hard-
+             edged, fully-opaque square), and Video's own default playback
+             chrome (EnableUI, trick-play/buffering bar) and loop-restart both
+             produced visible flashing even with the frame color matched to
+             the header background. An EARLIER off-canvas attempt
+             (translation="[-100,-100]") produced zero state-change events and
+             was blamed on off-canvas placement never getting a decode
+             pipeline allocated -- but that attempt used the same broken
+             16x16/5fps clip that was separately proven to stall in
+             "buffering" even on-canvas, so the real cause was confounded.
+             CONFIRMED via telnet with the fixed clip: off-canvas still goes
+             none -> buffering -> playing normally -- the old "no decode
+             pipeline off-canvas" theory was wrong; it was the clip all along.
+             Real video node, not a Task -- video playback isn't subject to
+             the MAIN|TASK-thread restriction roUrlTransfer has. -->
+        <Video id="ghostVideo" width="80" height="80" translation="[-300, -300]" enableScreenSaverWhilePlaying="false" EnableUI="false" loop="true" />
+        <Timer id="refreshTimer" repeat="true" duration="60" />
+        <Timer id="scrollTimer" repeat="true" duration="0.03" />
+        <Timer id="pauseTimer" repeat="false" />
+        <Timer id="clockTimer" repeat="true" duration="1" />
+        <!-- Resumes auto-scroll this long after the last manual Up/Down press -->
+        <Timer id="manualPauseTimer" repeat="false" duration="10" />
+        <!-- Retry delay after ghostVideo enters "error", not an immediate
+             retry, to avoid spinning in a tight error/retry/error loop on a
+             persistent/structural failure. CodeRabbit catch on PR #286,
+             sixth review pass. -->
+        <Timer id="ghostRetryTimer" repeat="false" duration="5" />
+    </children>
+</component>

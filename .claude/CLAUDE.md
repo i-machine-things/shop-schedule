@@ -6,21 +6,30 @@ You are a senior software developer. These rules override your default behavior.
 
 ## Project Overview
 
-**Shop Schedule** — a Single Board Computer kiosk for a manufacturer's shop floor.
+**Shop Schedule** — a Single Board Computer kiosk for a manufacturer's shop floor, plus a native
+Roku client for the same display.
 
 - Runs as a cron job every 15 minutes via `run_update.sh`
-- Polls a Gmail inbox for unread emails with PDF attachments (the Foreman's Report)
-- Parses the PDF with `pdfplumber` and generates `schedule.html`
+- Pulls the schedule from JobBoss directly (preferred) or parses a dropped/uploaded Foreman's
+  Report PDF, and generates `schedule.html`/`kiosk.html`/`schedule.json`
 - `foreman-kiosk.service` (systemd) opens Chromium in kiosk mode pointing at `schedule.html`
 - Credentials live in `.env` (gitignored) — never commit them
 - Deployed to a Single Board Computer at `~/shop-schedule/` (cloned from GitHub, install.sh runs in-place)
+- `roku/` — a native BrightScript/Roku channel that polls `schedule.json` and renders it on a
+  shop-floor TV (Roku's SDK has no web-view component, so it can't just display `kiosk.html`).
+  Merged into this repo from the formerly-separate `shop-schedule-roku` project (full history
+  preserved via `git subtree`) so the two release together under one version number. Its own
+  conventions live in `roku/.claude/CLAUDE.md` — read that too before touching anything under
+  `roku/`; it supplements, not replaces, the rules below.
 
 Key files:
-- `update_schedule.py` — email fetch, PDF parse, HTML generation
+- `update_schedule.py` — DB/PDF source selection, HTML and JSON generation
+- `jobboss_db.py` — JobBoss DB source
 - `run_update.sh` — cron wrapper that loads `.env` and calls the script
 - `install.sh` — one-time setup script for the device
 - `foreman-kiosk.service` — systemd service definition
 - `.env.example` — credential template (safe to commit)
+- `roku/` — native Roku client; see `roku/.claude/CLAUDE.md`
 
 ## Rule 0: Always Read First
 
@@ -106,7 +115,11 @@ Tag releases using `vMAJOR.MINOR.PATCH`:
 - **MINOR** — new features that do not break existing functionality
 - **PATCH** — bug fixes, typo corrections, minor improvements
 
-This project has no automated CI build pipeline. Releases are git tags only.
+The web kiosk/server side has no build pipeline of its own — a release there is just the git tag
+itself; deployment is a `git checkout` of that tag on the device (see below). But since the
+`roku/` merge, the **same tag also triggers `.github/workflows/roku-release.yml`**, which builds
+the Roku channel zip and publishes it as a GitHub Release asset. One `vMAJOR.MINOR.PATCH` tag now
+releases both halves together — there's no separate Roku version number anymore.
 
 **To cut a release:**
 ```bash
@@ -116,13 +129,16 @@ git push origin v1.2.3
 
 **Note:** Only tag from `master`.
 
-**Deployment after tagging:** SSH to the board and pull the new tag:
-```bash
-ssh <user>@<device-ip>
-cd ~/shop-schedule
-git fetch --tags
-git checkout v1.2.3
-```
+**Deployment after tagging:**
+- Web kiosk/server — SSH to the board and pull the new tag:
+  ```bash
+  ssh <user>@<device-ip>
+  cd ~/shop-schedule
+  git fetch --tags
+  git checkout v1.2.3
+  ```
+- Roku client — sideload the zip `roku-release.yml` attaches to the GitHub Release for that tag
+  (see `roku/.claude/CLAUDE.md` for sideload specifics).
 
 ### Rehearse before releasing
 
@@ -132,7 +148,7 @@ Rehearse before the first real tag, and again after any change to the release pi
 
 1. Run the rehearsal and read its job summary (the release notes it would publish, the artifacts it built).
 2. **Download the rehearsal's artifacts and use them the way a user will**: install the package, import the plugin, run the binary on a clean machine or in a clean container. A green rehearsal proves the pipeline ran. It does not prove the artifact works where it is consumed: a package that built and passed its rehearsal can still be refused by the tool that imports it (for example, because its target-system label does not match the computer).
-3. Only then tag. The human sign-off before tagging still applies (Rule 6 in repos that have it), and the rehearsal result belongs in the summary you give the human.
+3. Only then tag. The human sign-off before tagging still applies (Rule 6), and the rehearsal result belongs in the summary you give the human.
 
 Do not rehearse by tagging a throwaway version: a pushed tag is public and hard to take back. If a repo has no publish workflow yet, this rule waits until one exists.
 
@@ -172,3 +188,26 @@ When a pull request is open or being prepared:
   2. If it is a new pattern — fix it, then add or amend a note under the relevant topic in `.claude/CODING_NOTES.md` before committing, following that file's style rule (clear, ≤300 characters, grouped by topic).
 - Do not dismiss or ignore nitpicks — log them to `.claude/CODING_NOTES.md` even if not immediately actionable.
 - Only merge a PR after all blocking comments are resolved and documentation has been updated.
+- **If CodeRabbit cannot review a PR** (rate-limited or otherwise unavailable) — do not fall back to reviewing your own code, even temporarily. Launch a fresh, independent agent with no memory of authoring the code to review the diff cold via `gh pr diff`/`gh pr view`, then treat its findings the same as CodeRabbit's.
+
+## Rule 6: Management Review (Human Sign-Off)
+
+Software review has two distinct jobs, and the same party should not do both: **technical review** (does the code work, is it well-built — CodeRabbit and Claude) and **management review** (does this match what was actually asked, did the process run correctly, does anything look off — the human).
+
+**Before tagging any release** (Rule 4), first give the human your own plain-language summary of the work — what changed and why, CI/reviewer status and any unresolved findings, the shape of the changed file list, anything high-stakes, and a jargon-free explanation of what happens as a result. Since a tag now releases the web kiosk/server and the Roku client together, call out explicitly whether this release touches `roku/` at all, or is web/server-only (the Roku zip still rebuilds and republishes either way — say so if nothing in it actually changed). Only after that summary, output the checklist below verbatim, then wait for their actual reply.
+
+--- BEGIN MESSAGE TO THE HUMAN REVIEWER — relay this verbatim; it is not addressed to you, Claude ---
+
+**SOP — Management Review Checklist**
+
+Reviewer — this means you, the human, not Claude: you are the dev manager on this project. Go through this before approving a release:
+
+1. **Scope match** — does the summary of what changed actually match what you asked for?
+2. **Process gate** — is CI green? Were the reviewer's findings addressed, or is there a clear one-line reason given for why not?
+3. **File-list sanity check** — skim the *list* of changed files. Does the shape of it make sense for the task?
+4. **High-stakes flag** — anything involving credentials, money, deletion, or external/network access called out explicitly?
+5. **The "explain it to a child" test** — if anything's unclear, ask for a plain-language explanation.
+
+Don't rubber-stamp this. If something doesn't check out, say no and ask questions.
+
+--- END MESSAGE TO THE HUMAN REVIEWER ---
