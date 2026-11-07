@@ -39,7 +39,6 @@ DB_PASS = os.environ.get('JOBBOSS_DB_PASS', '')
 # No" setting, so no new exposure vs. today's Excel/Power Query access -- but
 # set this whenever a DBA can provide the cert). See README.md.
 DB_CAFILE = os.environ.get('JOBBOSS_DB_CAFILE', '').strip()
-DAYS_AHEAD = int(os.environ.get('JOBBOSS_DAYS_AHEAD', '').strip() or 14)
 
 # Current operation per job = earliest non-complete Sequence. Rem_Hrs/NumOps_Ahead
 # are the sum/count of everything queued ahead of *this row's* operation, not the
@@ -47,6 +46,16 @@ DAYS_AHEAD = int(os.environ.get('JOBBOSS_DAYS_AHEAD', '').strip() or 14)
 # the same job appears once per open operation with those two values changing
 # per appearance while Curr_WC stays constant. See PR description for the worked
 # example (job 30180, 5 appearances, 5 matching Rem_Hrs/#Ops pairs).
+#
+# No Sched_Start cutoff -- this pulls every open, released job-operation
+# regardless of how far out it's scheduled (same row scope as the backlog
+# query below). Previously capped to JOBBOSS_DAYS_AHEAD so the kiosk's
+# scrolling display stayed near-term, but that's now the Schedule Window
+# control's job (public/*.html, client-side, per-browser) -- the server
+# sends the whole open schedule and each viewer locally decides how much
+# of it to actually show. Trade-off: the CROSS APPLY below now runs per
+# row across the full backlog, not just the next ~14 days, on every
+# refresh -- a real cost on a shop with a large number of open operations.
 _QUERY = """
 SELECT
     wc.Department,
@@ -77,20 +86,14 @@ CROSS APPLY (
 ) cur
 WHERE jo.Status <> 'C'
   AND j.Released_Date IS NOT NULL
-  AND jo.Sched_Start <= %s
 ORDER BY wc.Department, COALESCE(wc.Parent_ID, wc.Work_Center), jo.Work_Center, j.Job, jo.Sequence
 """
 
-# Separate, unbounded query for work-center backlog only -- no Sched_Start
-# cutoff and no per-row CROSS APPLY (don't need Rem_Hrs/NumOps_Ahead/Curr_WC
-# here, just the schedule window). The main query above is intentionally
-# limited to JOBBOSS_DAYS_AHEAD so the scrolling kiosk display stays
-# near-term, but reusing that same limited row set for the backlog stat
-# silently capped it at ~days_ahead too -- defeating the point, since sales
-# needs to see real backlog depth beyond what's on screen. Cheaper than
-# widening the main query's cutoff would be: no CROSS APPLY means this
-# doesn't pay the correlated-subquery cost per row across a much larger date
-# range on every 60s refresh.
+# Separate query for work-center backlog only -- same row scope as the main
+# query above (no Sched_Start cutoff on either, now), but no per-row CROSS
+# APPLY since the backlog calc only needs sch_start/sch_end, not
+# Rem_Hrs/NumOps_Ahead/Curr_WC -- avoids paying that correlated-subquery
+# cost twice for the same rows on every refresh.
 _BACKLOG_QUERY = """
 SELECT
     wc.Department,
@@ -202,7 +205,6 @@ def _work_center_backlog_days(jobs, now):
 
 def fetch_from_db():
     """Query JobBoss directly; return {report_date, thru_date, sections}, or None on failure."""
-    cutoff = datetime.now() + timedelta(days=DAYS_AHEAD)
     # Only pass port= when explicitly configured -- otherwise let pytds resolve
     # a named instance (e.g. "SMI-APP02\JBSQL") via the SQL Browser service,
     # same as the ODBC driver does for Excel/Power Query against this server.
@@ -226,7 +228,7 @@ def fetch_from_db():
             connect_kwargs['cafile'] = DB_CAFILE
         with pytds.connect(dsn, **connect_kwargs) as conn:
             with conn.cursor() as cur:
-                cur.execute(_QUERY, (cutoff,))
+                cur.execute(_QUERY)
                 rows = cur.fetchall()
                 cur.execute(_BACKLOG_QUERY)
                 backlog_rows = cur.fetchall()
@@ -266,10 +268,10 @@ def fetch_from_db():
             'description': r['Description'] or '',
         })
 
-    # Group the unbounded backlog-query rows by the same (department,
-    # wc_group, wc) key as sections above, and compute backlog_days/
-    # gap_days from that full set -- not from sec['jobs'], which is
-    # intentionally truncated to JOBBOSS_DAYS_AHEAD for display.
+    # Group the backlog-query rows by the same (department, wc_group, wc)
+    # key as sections above, and compute backlog_days/gap_days from that --
+    # a plain query with no CROSS APPLY, cheaper than reusing sec['jobs']
+    # (which already carries Curr_WC/Rem_Hrs/NumOps_Ahead this calc doesn't need).
     backlog_jobs_by_wc = {}
     for r in backlog_rows:
         key = (r['Department'] or '', r['WC_Group'] or '', r['WC'] or '')
@@ -284,8 +286,14 @@ def fetch_from_db():
         sec['backlog_days'] = backlog_days
         sec['gap_days'] = gap_days
 
+    # No fixed cutoff anymore (the query is unbounded) -- report the real
+    # extent of what's actually in this data instead of a contrived date,
+    # so "Thru:" on the header stays honest.
+    thru_dt = max((r['Sched_End'] for r in rows if r['Sched_End']), default=None)
+    thru_date = thru_dt.strftime('%m/%d/%Y') if thru_dt else ''
+
     return {
         'report_date': datetime.now().strftime('%d-%b-%y %I:%M%p'),
-        'thru_date': cutoff.strftime('%m/%d/%Y'),
+        'thru_date': thru_date,
         'sections': list(sections.values()),
     }

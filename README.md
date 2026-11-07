@@ -14,12 +14,14 @@ Kiosk display for a machine shop floor — runs on a Linux Single Board Computer
 
 1. `run_update.sh` (Linux, via cron) or `run_update.ps1` (Windows, via Task Scheduler) runs every 15 minutes
 2. It loads credentials from `.env` and runs `update_schedule.py`
-3. If `JOBBOSS_DB_HOST` is set, it queries JobBoss directly for open operations scheduled within `JOBBOSS_DAYS_AHEAD` days; otherwise it parses whatever PDF is sitting at `PDF_PATH`, dropped into `incoming/` or uploaded via `options.html` (see [PDF source](#pdf-source))
+3. If `JOBBOSS_DB_HOST` is set, it queries JobBoss directly for the entire open, released schedule; otherwise it parses whatever PDF is sitting at `PDF_PATH`, dropped into `incoming/` or uploaded via `options.html` (see [PDF source](#pdf-source))
 4. `schedule.html` is regenerated and picked up live by Chromium in kiosk mode
 
 ## JobBoss DB source
 
 Queries `Job`, `Job_Operation`, and `Work_Center` directly — no export/email step needed. Only the columns needed for display are selected (no pricing, cost, or margin fields).
+
+Pulls the entire open, released schedule — no day-ahead cutoff. How much of it any one viewer actually sees is a local, per-browser choice (see [Schedule window](#schedule-window) below), not something configured here. On a shop with a large number of open job-operations, note that the per-row current-work-center/remaining-hours lookup now runs across the whole backlog on every refresh, not just a near-term slice.
 
 **Use a dedicated read-only login**, not an existing admin/user account — if this device or its `.env` is ever compromised, a read-only login scoped to three tables is a much smaller exposure than whatever broader access an existing login has. Run as a JobBoss DB admin:
 
@@ -40,7 +42,6 @@ JOBBOSS_DB_PORT=
 JOBBOSS_DB_NAME=<your_jobboss_database>
 JOBBOSS_DB_USER=shop_schedule_ro
 JOBBOSS_DB_PASS=<the-password-from-above>
-JOBBOSS_DAYS_AHEAD=14
 ```
 
 Use the exact `Server` value from your SQL Server ODBC DSN (Windows: ODBC Data Sources → System DSN → your DSN → Configure) for `JOBBOSS_DB_HOST` — for a named instance like `SMI-APP02\JBSQL`, leave `JOBBOSS_DB_PORT` blank and it resolves the real port automatically via the SQL Browser service, the same way the ODBC driver does it for Excel/Power Query. Only set `JOBBOSS_DB_PORT` if that resolution isn't available (e.g. the browser service/UDP 1434 is firewalled) and a DBA has given you a static port instead.
@@ -169,6 +170,14 @@ Uploaded display PDFs are stored in `public/raw/` and their entries are managed 
 ## Work center filter
 
 The schedule page has a fixed sidebar listing every work center in the current report. Tapping a WC solos it (first tap); subsequent taps toggle additional WCs in or out. Tapping the sole active WC resets to showing all. The **All** button at the top also resets to the full view.
+
+## Schedule window
+
+Below the work center filter, two independent controls narrow what's displayed — both are local, per-browser display preferences, stored in `localStorage` like the theme toggle, with no effect on the server, `schedule.json`, or any other kiosk/browser viewing the same schedule.
+
+**Schedule Window** (Today / 3 Days / 1 Week / 2 Weeks / All) limits the view to jobs starting within that many days. A section's header hides too once none of its jobs are visible. **All** shows everything the server sent — what "everything" means depends on the data source: with [JobBoss DB source](#jobboss-db-source), the server always queries and sends the entire open schedule, no day cap; with [PDF source](#pdf-source), "everything" is whatever job rows the Foreman's Report PDF itself contained — the server has no way to pull more than the PDF supplied.
+
+**Schedule Mode** (Standard / WC Dispatch) is a separate toggle, not another day count. In **WC Dispatch**, within each work center's own section, only jobs whose *current* operation (JobBoss's `Curr_WC`) is actually sitting at that work center right now are shown — i.e. `wc == curr_wc` — rather than every job scheduled to eventually pass through it. It combines with whatever Schedule Window is selected rather than replacing it (e.g. "1 Week" + WC Dispatch shows only ready-to-run jobs due within a week). Useful for an operator who wants "what can I pick up at my station right now" instead of "what's in my station's future queue."
 
 ## Page rotation
 
