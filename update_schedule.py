@@ -710,7 +710,7 @@ thead th{{position:sticky;top:0;z-index:20;background:#0d0d20;color:#7799ff;font
   <div id="print-list"></div>
   <label id="print-pagebreak-opt" class="print-opt">
     <input type="checkbox" id="print-pagebreak">
-    Page break per WC
+    One page per workcenter
   </label>
   <button id="print-btn" disabled>Print</button>
 </div>
