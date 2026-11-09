@@ -198,6 +198,8 @@ This note was created based on issues encountered with PyInstaller executables r
 
 **Add `.catch` and a fallback for `navigator.clipboard.writeText`.** It fails silently in browsers with restricted clipboard access or non-HTTPS contexts; fall back to `document.execCommand('copy')`.
 
+**Flagged, not fixed (CodeRabbit, PR #290): `scheduleMidnightRefresh()`'s `setTimeout` is computed once from the local date/time at call time, so a timezone change on the device wouldn't retrigger it early.** Not fixing: these are fixed, stationary kiosk/server devices (no travel, no timezone reconfiguration in normal operation) — the scenario this guards against doesn't occur for this deployment model. Revisit if that assumption changes (e.g. a portable/VM-hosted deployment where the host clock's timezone could change under the running page).
+
 ## Server & HTTP
 
 **Guard `int(Content-Length)` parsing with try/except; return 400 on failure or negative values.** Malformed requests otherwise raise an unhandled `ValueError` and produce a 500.
@@ -220,9 +222,9 @@ This note was created based on issues encountered with PyInstaller executables r
 
 **Work center backlog stops at the first gap of ≥1 week between jobs, rather than reporting the furthest-out job's end date.** Walk `[sch_start, sch_end]` intervals in start order; a gap here is real idle time at that work center, which sales needs visible to fill — reporting the far job's date instead would hide it. See `_work_center_backlog_days()`.
 
-**`_work_center_backlog_days()` returns `(backlog_days, gap_days)`, not just `backlog_days`.** A bare "when it opens" without the gap's *size* could schedule a 2-week job into a 1-week hole. `gap_days` is `None` for an open-ended queue (nothing scheduled after it), a number for a bounded gap.
+**`_work_center_backlog_days()` returns `(backlog_days, gap_days)`, not just `backlog_days`.** A bare "when it opens" without the gap's *size* could schedule a 2-week job into a 1-week hole. `gap_days` is `None` when no gap of at least one week is found among jobs with parseable start and end dates; otherwise, it gives the first gap's size.
 
-**`jobboss_db.py` runs two unbounded queries for one reason: avoid paying `CROSS APPLY`'s cost twice.** The main query (with `CROSS APPLY` for `Rem_Hrs`/`NumOps_Ahead`/`Curr_WC`) and `_BACKLOG_QUERY` (no `CROSS APPLY`, backlog calc only) are both grouped by `(department, wc_group, wc)` and attach `backlog_days`/`gap_days` per section. `JOBBOSS_DAYS_AHEAD` (the old display-day cutoff that this split originally worked around) is gone — the Schedule Window PR moved that limiting client-side.
+**`jobboss_db.py` runs two unbounded queries for one reason: avoid paying `CROSS APPLY`'s cost twice.** The main query uses `CROSS APPLY` for `Rem_Hrs`/`NumOps_Ahead`/`Curr_WC`; `_BACKLOG_QUERY` omits it. `fetch_from_db()` groups both result sets by `(department, wc_group, wc)`, then calculates `backlog_days`/`gap_days` from the backlog rows and attaches them to each section. `JOBBOSS_DAYS_AHEAD` (the old display-day cutoff that this split originally worked around) is gone — the Schedule Window PR moved that limiting client-side.
 
 **Unverified risk (CodeRabbit, PR #285): the main query's `CROSS APPLY` (`Rem_Hrs`/`NumOps_Ahead`) now runs over the entire open backlog every 15-minute update cycle, not a ~14-day slice.** Cost scales with total open-job-operation count; depends on whether `Job_Operation` indexes let SQL Server seek instead of scan per row — not measurable without a real JobBoss SQL Server. Needs a timing run against real backlog size before closing out; not rewritten speculatively without one.
 

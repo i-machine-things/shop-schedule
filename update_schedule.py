@@ -525,7 +525,7 @@ body{{background:#07070f;color:#ddd;font-family:'Courier New',monospace;font-siz
          color:#4af;cursor:pointer;font-family:inherit;font-size:11px;
          letter-spacing:1px;text-transform:uppercase}}
 #wc-all:hover{{background:#1a2a44}}
-#wc-list{{flex:1 1 auto;min-height:0;overflow-y:auto;padding:0 8px 8px;display:flex;flex-direction:column;gap:2px}}
+#wc-list{{flex:1 1 auto;min-height:80px;overflow-y:auto;padding:0 8px 8px;display:flex;flex-direction:column;gap:2px}}
 .wc-btn{{padding:5px 8px;background:#0d1a2b;border:1px solid #222;color:#666;cursor:pointer;
          font-family:inherit;font-size:11px;letter-spacing:1px;text-transform:uppercase;
          text-align:left;transition:background 0.15s,border-color 0.15s,color 0.15s}}
@@ -594,7 +594,7 @@ thead th{{position:sticky;top:0;z-index:20;background:#0d0d20;color:#7799ff;font
 [data-theme="light"] .overdue{{color:#cc0000}}
 {kiosk_css}
 </style>
-<script>if(localStorage.getItem('theme')==='light')document.documentElement.setAttribute('data-theme','light');</script>
+<script>try{{if(localStorage.getItem('theme')==='light')document.documentElement.setAttribute('data-theme','light');}}catch(e){{}}</script>
 </head>
 <body data-gen="{gen_ts}">
 <div id="hdr">
@@ -640,14 +640,14 @@ thead th{{position:sticky;top:0;z-index:20;background:#0d0d20;color:#7799ff;font
 <script>
 // Theme
 (function(){{
-  const t=localStorage.getItem('theme');
+  let t; try {{ t=localStorage.getItem('theme'); }} catch(e) {{}}
   const btn=document.getElementById('theme-btn');
   btn.textContent=t==='light'?'☾':'☀';
   btn.addEventListener('click',function(){{
     const next=document.documentElement.getAttribute('data-theme')==='light'?'dark':'light';
     if(next==='light') document.documentElement.setAttribute('data-theme','light');
     else document.documentElement.removeAttribute('data-theme');
-    localStorage.setItem('theme',next);
+    try {{ localStorage.setItem('theme',next); }} catch(e) {{}}
     btn.textContent=next==='light'?'☾':'☀';
   }});
 }})();
@@ -742,7 +742,7 @@ function step(ts){{
 
 // scroll_resume_s is a local (per-device) setting stored in localStorage
 (function(){{
-  const raw = parseInt(localStorage.getItem('scroll_resume_s'), 10);
+  let raw = NaN; try {{ raw = parseInt(localStorage.getItem('scroll_resume_s'), 10); }} catch(e) {{}}
   PAUSE_RESUME_MS = (Number.isNaN(raw) ? 10 : Math.max(1, Math.min(raw, 300))) * 1000;
 }})();
 fetch('/api/pages').then(r => r.json()).then(cfg => {{
@@ -793,7 +793,8 @@ const VIEW_WINDOWS = [
 let viewDays = Infinity;
 
 function buildViewFilter(){{
-  const saved = localStorage.getItem('view_window_days') || 'all';
+  let saved; try {{ saved = localStorage.getItem('view_window_days'); }} catch(e) {{}}
+  saved = saved || 'all';
   const active = VIEW_WINDOWS.find(w => w.key === saved) || VIEW_WINDOWS.find(w => w.key === 'all');
   viewDays = active.days;
   const list = document.getElementById('view-list');
@@ -828,7 +829,8 @@ const SCHEDULE_MODES = [
 let dispatchMode = false;
 
 function buildScheduleMode(){{
-  const saved = localStorage.getItem('schedule_mode') || 'standard';
+  let saved; try {{ saved = localStorage.getItem('schedule_mode'); }} catch(e) {{}}
+  saved = saved || 'standard';
   const active = SCHEDULE_MODES.find(m => m.key === saved) || SCHEDULE_MODES[0];
   dispatchMode = active.key === 'dispatch';
   const list = document.getElementById('mode-list');
@@ -868,6 +870,11 @@ function applyFilter(){{
     cutoff.setHours(0, 0, 0, 0);
     cutoff.setDate(cutoff.getDate() + viewDays);
   }}
+  // A hot content swap (applyPendingUpdate, via a stale served page mid-rollback)
+  // could in principle deliver rows without data-sec. Falling back to data-wc
+  // keeps those rows grouped by their own work center instead of every such
+  // row colliding on the same `undefined` key and toggling every legacy
+  // section header together.
   const sectionHasVisibleJob = new Set();
   document.querySelectorAll('tbody tr.job').forEach(tr => {{
     const wcOk = activeWCs.has(tr.dataset.wc);
@@ -875,10 +882,10 @@ function applyFilter(){{
     const dispatchOk = !dispatchMode || tr.dataset.currwc === tr.dataset.wc;
     const visible = wcOk && dateOk && dispatchOk;
     tr.style.display = visible ? '' : 'none';
-    if(visible) sectionHasVisibleJob.add(tr.dataset.sec);
+    if(visible) sectionHasVisibleJob.add(tr.dataset.sec || tr.dataset.wc);
   }});
   document.querySelectorAll('tbody tr.section-hdr').forEach(tr => {{
-    tr.style.display = (activeWCs.has(tr.dataset.wc) && sectionHasVisibleJob.has(tr.dataset.sec)) ? '' : 'none';
+    tr.style.display = (activeWCs.has(tr.dataset.wc) && sectionHasVisibleJob.has(tr.dataset.sec || tr.dataset.wc)) ? '' : 'none';
   }});
   pos = 0;
   wrap.scrollTop = 0;
@@ -914,7 +921,9 @@ applyFilter();
 function scheduleMidnightRefresh(){{
   const now = new Date();
   const next = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 5);
-  setTimeout(() => {{ applyFilter(); scheduleMidnightRefresh(); }}, next - now);
+  // "All" has no date cutoff, so there's nothing for midnight to change --
+  // skip the needless scroll-position reset, but still keep scheduling.
+  setTimeout(() => {{ if(viewDays !== Infinity) applyFilter(); scheduleMidnightRefresh(); }}, next - now);
 }}
 scheduleMidnightRefresh();
 
