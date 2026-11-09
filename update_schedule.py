@@ -235,12 +235,11 @@ def _save_dept_colors(colors):
 def apply_work_center_backlogs(sections):
     """Attach backlog_days/gap_days to any section that doesn't already have
     them. The DB path (jobboss_db.fetch_from_db()) computes these itself
-    from a separate, unbounded query and attaches them before this ever
-    runs -- sec['jobs'] here is intentionally truncated to JOBBOSS_DAYS_AHEAD
-    for display, and using it for the backlog calc silently capped the
-    backlog stat at ~days_ahead too, which defeated the point. This only fills the
-    gap for the PDF path, which has no such wider query available and keeps
-    the existing (narrower) behavior as a reasonable fallback.
+    from a separate query (no CROSS APPLY, cheaper) and attaches them before
+    this ever runs. This only fills the gap for the PDF path, which has no
+    such query available -- it falls back to deriving backlog from
+    sec['jobs'] (whatever's in the uploaded PDF) as a reasonable, if
+    narrower, approximation.
 
     _work_center_backlog_days() lives in jobboss_db.py, not here -- that
     module doesn't import this one, so it's the only side that can be
@@ -373,8 +372,13 @@ def generate_html(data, out_path, *, kiosk=False, gen_ts=None):
                 except Exception:
                     pass
             je = {k: _html.escape(str(v)) for k, v in j.items()}
+            # ISO so the client's Schedule Window filter can Date()-parse it
+            # directly -- blank (unparseable sch_start) means the row is
+            # never hidden by that filter, only by the WC one.
+            start_dt = jobboss_db._parse_sched_date(j['sch_start'])
+            data_start = start_dt.strftime('%Y-%m-%d') if start_dt else ''
             rows.append(f'''
-      <tr class="job" data-wc="{wc_attr}">
+      <tr class="job" data-wc="{wc_attr}" data-start="{data_start}" data-currwc="{je["curr_wc"]}">
         <td class="jnum">{je["job"]}</td>
         <td>{je["customer"]}</td>
         <td class="pdesc"><span class="pnum">{je["part"]}</span><br><span class="desc">{je["description"]}</span></td>
@@ -513,18 +517,24 @@ body{{background:#07070f;color:#ddd;font-family:'Courier New',monospace;font-siz
 #clock{{font-size:24px;color:#4af;font-weight:bold}}
 #sidebar{{position:fixed;top:50px;left:0;bottom:0;width:160px;background:#0b0b18;
           border-right:1px solid #222;z-index:50;display:flex;flex-direction:column;overflow:hidden}}
-#sidebar-hdr{{padding:8px 10px 4px;font-size:10px;color:#555;
+.sidebar-hdr{{padding:8px 10px 4px;font-size:10px;color:#555;
               letter-spacing:2px;text-transform:uppercase;flex-shrink:0}}
 #wc-all{{margin:2px 8px 6px;padding:5px 4px;background:transparent;border:1px solid #4af;
          color:#4af;cursor:pointer;font-family:inherit;font-size:11px;
          letter-spacing:1px;text-transform:uppercase}}
 #wc-all:hover{{background:#1a2a44}}
-#wc-list{{flex:1;overflow-y:auto;padding:0 8px 8px;display:flex;flex-direction:column;gap:2px}}
+#wc-list{{flex:1 1 auto;min-height:0;overflow-y:auto;padding:0 8px 8px;display:flex;flex-direction:column;gap:2px}}
 .wc-btn{{padding:5px 8px;background:#0d1a2b;border:1px solid #222;color:#666;cursor:pointer;
          font-family:inherit;font-size:11px;letter-spacing:1px;text-transform:uppercase;
          text-align:left;transition:background 0.15s,border-color 0.15s,color 0.15s}}
 .wc-btn.active{{background:#0d2010;border-color:#3a7a3a;color:#8f8}}
 .wc-btn:hover{{background:#1a2233;color:#ddd;border-color:#4af}}
+#view-list,#mode-list{{flex-shrink:0;padding:0 8px 8px;display:flex;flex-direction:column;gap:2px}}
+.view-btn{{padding:5px 8px;background:#0d1a2b;border:1px solid #222;color:#666;cursor:pointer;
+         font-family:inherit;font-size:11px;letter-spacing:1px;text-transform:uppercase;
+         text-align:left;transition:background 0.15s,border-color 0.15s,color 0.15s}}
+.view-btn.active{{background:#0d1a2b;border-color:#4af;color:#4af}}
+.view-btn:hover{{background:#1a2233;color:#ddd;border-color:#4af}}
 #wrap{{position:fixed;top:50px;bottom:0;left:160px;right:0;overflow-y:scroll}}
 table{{width:100%;border-collapse:separate;border-spacing:0}}
 thead th{{position:sticky;top:0;z-index:20;background:#0d0d20;color:#7799ff;font-size:11px;
@@ -558,12 +568,15 @@ thead th{{position:sticky;top:0;z-index:20;background:#0d0d20;color:#7799ff;font
 [data-theme="light"] #theme-btn{{border-color:#0066cc;color:#0066cc}}
 [data-theme="light"] #theme-btn:hover{{background:#c0d8f0}}
 [data-theme="light"] #sidebar{{background:#e8e8f0;border-right-color:#ccc}}
-[data-theme="light"] #sidebar-hdr{{color:#888}}
+[data-theme="light"] .sidebar-hdr{{color:#888}}
 [data-theme="light"] #wc-all{{border-color:#0066cc;color:#0066cc}}
 [data-theme="light"] #wc-all:hover{{background:#c0d8f0}}
 [data-theme="light"] .wc-btn{{background:#dde4f0;border-color:#ccc;color:#555}}
 [data-theme="light"] .wc-btn.active{{background:#d0f0d8;border-color:#3a7a3a;color:#1a6020}}
 [data-theme="light"] .wc-btn:hover{{background:#c8d8f0;color:#111;border-color:#0066cc}}
+[data-theme="light"] .view-btn{{background:#dde4f0;border-color:#ccc;color:#555}}
+[data-theme="light"] .view-btn.active{{background:#dde4f0;border-color:#0066cc;color:#0066cc}}
+[data-theme="light"] .view-btn:hover{{background:#c8d8f0;color:#111;border-color:#0066cc}}
 [data-theme="light"] thead th{{background:#d8dcf0;color:#224499;border-bottom-color:#ccc}}
 [data-theme="light"] .section-hdr td{{background:#eaecf8!important;border-bottom-color:#ccc}}
 [data-theme="light"] .wc-name{{color:#111}}
@@ -598,9 +611,13 @@ thead th{{position:sticky;top:0;z-index:20;background:#0d0d20;color:#7799ff;font
 </div>
 
 <div id="sidebar">
-  <div id="sidebar-hdr">Work Centers</div>
+  <div class="sidebar-hdr">Work Centers</div>
   <button id="wc-all">All</button>
   <div id="wc-list"></div>
+  <div class="sidebar-hdr">Schedule Window</div>
+  <div id="view-list"></div>
+  <div class="sidebar-hdr">Schedule Mode</div>
+  <div id="mode-list"></div>
 </div>
 <div id="wrap">
 <table>
@@ -694,7 +711,7 @@ function applyPendingUpdate() {{
   document.querySelector('tbody').innerHTML = newTbody.innerHTML;
   loopReady = false;
   buildSidebar();
-  setupLoop();
+  applyFilter();
   wrap.scrollTop = 0;
   pos = 0;
 }}
@@ -758,6 +775,84 @@ function syncButtons(){{
   }});
 }}
 
+// Schedule Window -- local (per-device) setting stored in localStorage,
+// same pattern as theme/scroll_resume_s above. Hides job rows whose
+// sch_start falls beyond the chosen window, and in turn hides a section's
+// header once none of its jobs are visible -- purely client-side filtering
+// of what the server already sent; doesn't touch the server, schedule.json,
+// or any other kiosk/browser viewing the same schedule.
+const VIEW_WINDOWS = [
+  {{label:'Today', days:1, key:'1'}},
+  {{label:'3 Days', days:3, key:'3'}},
+  {{label:'1 Week', days:7, key:'7'}},
+  {{label:'2 Weeks', days:14, key:'14'}},
+  {{label:'All', days:Infinity, key:'all'}},
+];
+let viewDays = Infinity;
+
+function buildViewFilter(){{
+  const saved = localStorage.getItem('view_window_days') || 'all';
+  const active = VIEW_WINDOWS.find(w => w.key === saved) || VIEW_WINDOWS.find(w => w.key === 'all');
+  viewDays = active.days;
+  const list = document.getElementById('view-list');
+  list.innerHTML = '';
+  VIEW_WINDOWS.forEach(w => {{
+    const btn = document.createElement('button');
+    btn.className = 'view-btn' + (w.key === active.key ? ' active' : '');
+    btn.textContent = w.label;
+    btn.addEventListener('click', () => setViewWindow(w));
+    list.appendChild(btn);
+  }});
+}}
+
+function setViewWindow(w){{
+  viewDays = w.days;
+  localStorage.setItem('view_window_days', w.key);
+  document.querySelectorAll('#view-list .view-btn').forEach((btn, i) => {{
+    btn.classList.toggle('active', VIEW_WINDOWS[i].key === w.key);
+  }});
+  applyFilter();
+}}
+
+// Schedule Mode -- a second, independent exclusive-choice control (Standard /
+// WC Dispatch) stored under its own localStorage key. Orthogonal to the
+// Schedule Window above: both filters are ANDed together in applyFilter(),
+// so switching to WC Dispatch narrows whatever date window is already
+// selected rather than replacing it.
+const SCHEDULE_MODES = [
+  {{label:'Standard', key:'standard'}},
+  {{label:'WC Dispatch', key:'dispatch'}},
+];
+let dispatchMode = false;
+
+function buildScheduleMode(){{
+  const saved = localStorage.getItem('schedule_mode') || 'standard';
+  const active = SCHEDULE_MODES.find(m => m.key === saved) || SCHEDULE_MODES[0];
+  dispatchMode = active.key === 'dispatch';
+  const list = document.getElementById('mode-list');
+  list.innerHTML = '';
+  SCHEDULE_MODES.forEach(m => {{
+    const btn = document.createElement('button');
+    btn.className = 'view-btn' + (m.key === active.key ? ' active' : '');
+    btn.textContent = m.label;
+    btn.addEventListener('click', () => setScheduleMode(m));
+    list.appendChild(btn);
+  }});
+}}
+
+function setScheduleMode(m){{
+  dispatchMode = m.key === 'dispatch';
+  localStorage.setItem('schedule_mode', m.key);
+  document.querySelectorAll('#mode-list .view-btn').forEach((btn, i) => {{
+    btn.classList.toggle('active', SCHEDULE_MODES[i].key === m.key);
+  }});
+  applyFilter();
+}}
+
+// Schedule Window (date) and Schedule Mode (WC Dispatch) are independent,
+// ANDed filters -- WC Dispatch narrows whatever date window is already
+// selected (e.g. "1 Week" + WC Dispatch = ready-to-run jobs due within a
+// week) rather than replacing it.
 function applyFilter(){{
   if(loopReady){{
     const rows = [...document.querySelectorAll('tbody tr')];
@@ -765,8 +860,23 @@ function applyFilter(){{
     rows.slice(half).forEach(r => r.remove());
     loopReady = false;
   }}
-  document.querySelectorAll('tbody tr').forEach(tr => {{
-    tr.style.display = activeWCs.has(tr.dataset.wc) ? '' : 'none';
+  let cutoff = null;
+  if(viewDays !== Infinity){{
+    cutoff = new Date();
+    cutoff.setHours(0, 0, 0, 0);
+    cutoff.setDate(cutoff.getDate() + viewDays);
+  }}
+  const wcHasVisibleJob = new Set();
+  document.querySelectorAll('tbody tr.job').forEach(tr => {{
+    const wcOk = activeWCs.has(tr.dataset.wc);
+    const dateOk = !cutoff || !tr.dataset.start || new Date(tr.dataset.start + 'T00:00:00') < cutoff;
+    const dispatchOk = !dispatchMode || tr.dataset.currwc === tr.dataset.wc;
+    const visible = wcOk && dateOk && dispatchOk;
+    tr.style.display = visible ? '' : 'none';
+    if(visible) wcHasVisibleJob.add(tr.dataset.wc);
+  }});
+  document.querySelectorAll('tbody tr.section-hdr').forEach(tr => {{
+    tr.style.display = (activeWCs.has(tr.dataset.wc) && wcHasVisibleJob.has(tr.dataset.wc)) ? '' : 'none';
   }});
   pos = 0;
   wrap.scrollTop = 0;
@@ -793,6 +903,9 @@ document.getElementById('wc-all').addEventListener('click', ()=>{{
 }});
 
 buildSidebar();
+buildViewFilter();
+buildScheduleMode();
+applyFilter();
 
 // Pause/resume from kiosk shell
 window.addEventListener('message', e => {{
