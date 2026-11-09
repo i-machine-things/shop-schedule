@@ -928,7 +928,7 @@ document.getElementById('print-btn').addEventListener('click', () => {{
     }});
     sec.classList.toggle('hidden-section', !anyVisible);
     const totalEl = sec.querySelector('.print-total');
-    if(totalEl) totalEl.textContent = anyVisible ? ('Total: ' + total.toFixed(2)) : '';
+    if(totalEl) totalEl.textContent = anyVisible ? ('Total Rem Hrs: ' + total.toFixed(2)) : '';
   }});
   window.print();
 }});
