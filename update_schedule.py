@@ -1205,7 +1205,8 @@ function applyFilter(){{
     if(visible) sectionHasVisibleJob.add(tr.dataset.sec || tr.dataset.wc);
   }});
   document.querySelectorAll('#wrap tbody tr.section-hdr').forEach(tr => {{
-    tr.style.display = (activeWCs.has(tr.dataset.wc) && sectionHasVisibleJob.has(tr.dataset.sec || tr.dataset.wc)) ? '' : 'none';
+    const secKey = tr.dataset.sec || tr.dataset.wc;
+    tr.style.display = (activeWCs.has(tr.dataset.wc) && sectionHasVisibleJob.has(secKey)) ? '' : 'none';
   }});
   pos = 0;
   wrap.scrollTop = 0;
