@@ -316,9 +316,11 @@ def generate_html(data, out_path, *, kiosk=False, gen_ts=None):
     colors_dirty = False
 
     rows = []
+    sec_idx = 0
     for sec in sections:
         if not sec['jobs']:
             continue
+        sec_idx += 1
         dept = sec['department']
         dl = dept.lower()
         if dl not in colors:
@@ -347,7 +349,7 @@ def generate_html(data, out_path, *, kiosk=False, gen_ts=None):
         if gap_days is not None:
             backlog_text += f" ({_format_weeks_days(gap_days)} gap)"
         rows.append(f'''
-      <tr class="section-hdr" data-wc="{wc_attr}">
+      <tr class="section-hdr" data-wc="{wc_attr}" data-sec="{sec_idx}">
         <td colspan="12" style="background:{bg};border-left:4px solid {accent}">
           <span class="wc-name">{wc_attr}</span>
           <span class="dept-name">{dept_e} &thinsp;&middot;&thinsp; {wcg_e}</span>
@@ -378,7 +380,7 @@ def generate_html(data, out_path, *, kiosk=False, gen_ts=None):
             start_dt = jobboss_db._parse_sched_date(j['sch_start'])
             data_start = start_dt.strftime('%Y-%m-%d') if start_dt else ''
             rows.append(f'''
-      <tr class="job" data-wc="{wc_attr}" data-start="{data_start}" data-currwc="{je["curr_wc"]}">
+      <tr class="job" data-wc="{wc_attr}" data-sec="{sec_idx}" data-start="{data_start}" data-currwc="{je["curr_wc"]}">
         <td class="jnum">{je["job"]}</td>
         <td>{je["customer"]}</td>
         <td class="pdesc"><span class="pnum">{je["part"]}</span><br><span class="desc">{je["description"]}</span></td>
@@ -866,17 +868,17 @@ function applyFilter(){{
     cutoff.setHours(0, 0, 0, 0);
     cutoff.setDate(cutoff.getDate() + viewDays);
   }}
-  const wcHasVisibleJob = new Set();
+  const sectionHasVisibleJob = new Set();
   document.querySelectorAll('tbody tr.job').forEach(tr => {{
     const wcOk = activeWCs.has(tr.dataset.wc);
     const dateOk = !cutoff || !tr.dataset.start || new Date(tr.dataset.start + 'T00:00:00') < cutoff;
     const dispatchOk = !dispatchMode || tr.dataset.currwc === tr.dataset.wc;
     const visible = wcOk && dateOk && dispatchOk;
     tr.style.display = visible ? '' : 'none';
-    if(visible) wcHasVisibleJob.add(tr.dataset.wc);
+    if(visible) sectionHasVisibleJob.add(tr.dataset.sec);
   }});
   document.querySelectorAll('tbody tr.section-hdr').forEach(tr => {{
-    tr.style.display = (activeWCs.has(tr.dataset.wc) && wcHasVisibleJob.has(tr.dataset.wc)) ? '' : 'none';
+    tr.style.display = (activeWCs.has(tr.dataset.wc) && sectionHasVisibleJob.has(tr.dataset.sec)) ? '' : 'none';
   }});
   pos = 0;
   wrap.scrollTop = 0;
