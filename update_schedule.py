@@ -440,7 +440,27 @@ def generate_html(data, out_path, *, kiosk=False, gen_ts=None):
         _save_dept_colors(colors)
 
     body = '\n'.join(rows)
-    print_body = '\n'.join(print_rows)
+    # Mirrors the real Foreman's Report's header (date/time + company at
+    # left, title centered, "by Work Center..."/"Released Jobs Only" at
+    # right) -- shop_name comes from SHOP_NAME (.env), never hardcoded.
+    # Only rendered once at the top of the printout, not repeated per page
+    # like the original: Chromium's print engine doesn't support CSS Paged
+    # Media's @page margin boxes, so there's no reliable way to repeat an
+    # arbitrary block (or render "Page X of Y") on every printed page --
+    # only a real <thead> repeats, which this isn't.
+    print_header = f'''
+    <div class="print-hdr">
+      <div class="print-hdr-left">
+        <div>{generated}</div>
+        <div class="print-hdr-company">{shop_name}</div>
+      </div>
+      <div class="print-hdr-title">Shop Schedule Report</div>
+      <div class="print-hdr-right">
+        <div>by Work Center - Scheduled Start Date</div>
+        <div class="print-hdr-sub">Released Jobs Only</div>
+      </div>
+    </div>'''
+    print_body = print_header + '\n' + '\n'.join(print_rows)
 
     home_btn = '' if kiosk else '<a href="index.html" id="home-btn" title="Home">&#8962;</a>\n    '
 
@@ -665,6 +685,13 @@ thead th{{position:sticky;top:0;z-index:20;background:#0d0d20;color:#7799ff;font
   body {{ overflow:visible; height:auto; background:#fff; color:#000 }}
   #print-output {{ display:block }}
   #print-output.pagebreak-per-wc .print-section {{ break-before:page }}
+  .print-hdr {{ display:flex; justify-content:space-between; align-items:flex-start;
+                border-bottom:2px solid #000; padding-bottom:8px; margin-bottom:10px }}
+  .print-hdr-left {{ font-size:10px }}
+  .print-hdr-company {{ font-weight:bold; font-size:13px; margin-top:2px }}
+  .print-hdr-title {{ font-weight:bold; font-size:16px; align-self:center }}
+  .print-hdr-right {{ font-size:10px; text-align:right }}
+  .print-hdr-sub {{ margin-top:2px }}
   .print-sec-hdr {{ font-weight:bold; font-size:11px; border-bottom:1px solid #000; padding:4px 0; margin-top:4px }}
   .print-table {{ width:100%; border-collapse:collapse; font-size:10px; color:#000 }}
   .print-table th {{ text-align:left; font-size:9px; border-bottom:1px solid #000; padding:3px 4px;
