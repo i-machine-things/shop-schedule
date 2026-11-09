@@ -907,6 +907,15 @@ buildViewFilter();
 buildScheduleMode();
 applyFilter();
 
+// Keep the "Today" window's cutoff current if the page is left open across
+// midnight without a new schedule generation arriving to re-trigger applyFilter().
+function scheduleMidnightRefresh(){{
+  const now = new Date();
+  const next = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 5);
+  setTimeout(() => {{ applyFilter(); scheduleMidnightRefresh(); }}, next - now);
+}}
+scheduleMidnightRefresh();
+
 // Pause/resume from kiosk shell
 window.addEventListener('message', e => {{
   if(e.data?.type === 'pause') {{ clearTimeout(pauseTimer); paused = true; }}
