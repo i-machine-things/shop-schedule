@@ -780,9 +780,16 @@ thead th{{position:sticky;top:0;z-index:20;background:#0d0d20;color:#7799ff;font
 // Persisted per section like the theme toggle, since this is a standing
 // display preference rather than a one-off choice.
 (function(){{
+  // Print Report starts collapsed by default (a shop can have dozens of work
+  // centers, making it by far the tallest section) -- everything else starts
+  // expanded. Only applies on a first visit with nothing stored yet; once the
+  // user has toggled anything, their own choice always wins.
+  const DEFAULT_COLLAPSED = ['print-list,print-pagebreak-opt,print-btn'];
   let collapsed;
-  try {{ collapsed = new Set(JSON.parse(localStorage.getItem('sidebar_collapsed') || '[]')); }}
-  catch(e) {{ collapsed = new Set(); }}
+  try {{
+    const stored = localStorage.getItem('sidebar_collapsed');
+    collapsed = new Set(stored !== null ? JSON.parse(stored) : DEFAULT_COLLAPSED);
+  }} catch(e) {{ collapsed = new Set(DEFAULT_COLLAPSED); }}
   function persist(){{
     try {{ localStorage.setItem('sidebar_collapsed', JSON.stringify([...collapsed])); }} catch(e) {{}}
   }}
