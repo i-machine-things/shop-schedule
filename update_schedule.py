@@ -400,7 +400,8 @@ def generate_html(data, out_path, *, kiosk=False, gen_ts=None):
             print_job_rows.append(f'''
       <tr class="print-row" data-wc="{wc_attr}" data-sec="{sec_idx}" data-start="{data_start}" data-currwc="{je["curr_wc"]}" data-remhrs="{je["rem_hrs"]}">
         <td><span class="p-job">{je["job"]}</span><br>{je["customer"]}<br>{je["part"]}<br><span class="p-desc">{je["description"]}</span></td>
-        <td>{je["rev"]} {je["oper"]}<br><span class="p-desc">{je["oper_desc"]}</span></td>
+        <td>{je["rev"]} {je["oper"]}</td>
+        <td class="p-desc">{je["oper_desc"]}</td>
         <td class="c">{je["make_qty"]}</td>
         <td class="c">{je["sch_start"]}<br>{je["sch_end"]}</td>
         <td class="c">{je["curr_wc"]}<br>{je["rem_hrs"]}</td>
@@ -416,6 +417,7 @@ def generate_html(data, out_path, *, kiosk=False, gen_ts=None):
           <tr>
             <th>Job / Customer / Part</th>
             <th>Rev / Oper</th>
+            <th>Oper Desc</th>
             <th>Make Qty</th>
             <th>Sch Start / End</th>
             <th>Curr WC / Rem Hrs</th>
@@ -428,7 +430,7 @@ def generate_html(data, out_path, *, kiosk=False, gen_ts=None):
         </tbody>
         <tfoot>
           <tr class="print-total-row">
-            <td colspan="4">Total Rem Hrs:</td>
+            <td colspan="5">Total Rem Hrs:</td>
             <td class="c print-total-val"></td>
             <td colspan="2"></td>
           </tr>
