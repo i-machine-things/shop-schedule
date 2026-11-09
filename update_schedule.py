@@ -316,6 +316,7 @@ def generate_html(data, out_path, *, kiosk=False, gen_ts=None):
     colors_dirty = False
 
     rows = []
+    print_rows = []
     sec_idx = 0
     for sec in sections:
         if not sec['jobs']:
@@ -365,6 +366,7 @@ def generate_html(data, out_path, *, kiosk=False, gen_ts=None):
             sec['jobs'],
             key=lambda j: jobboss_db._parse_sched_date(j['sch_start']) or datetime.max,
         )
+        print_job_rows = []
         for j in sec_jobs:
             overdue = ''
             if j['promised']:
@@ -395,10 +397,44 @@ def generate_html(data, out_path, *, kiosk=False, gen_ts=None):
         <td class="c {overdue}">{je["promised"]}</td>
       </tr>''')
 
+            print_job_rows.append(f'''
+      <tr class="print-row" data-wc="{wc_attr}" data-sec="{sec_idx}" data-start="{data_start}" data-currwc="{je["curr_wc"]}" data-remhrs="{je["rem_hrs"]}">
+        <td><span class="p-job">{je["job"]}</span><br>{je["customer"]}<br>{je["part"]}<br><span class="p-desc">{je["description"]}</span></td>
+        <td>{je["rev"]} {je["oper"]}<br><span class="p-desc">{je["oper_desc"]}</span></td>
+        <td class="c">{je["make_qty"]}</td>
+        <td class="c">{je["sch_start"]}<br>{je["sch_end"]}</td>
+        <td class="c">{je["curr_wc"]}<br>{je["rem_hrs"]}</td>
+        <td class="c">{je["ship_qty"]}</td>
+        <td class="c {overdue}">{je["promised"]}</td>
+      </tr>''')
+
+        print_rows.append(f'''
+    <div class="print-section" data-wc="{wc_attr}" data-sec="{sec_idx}">
+      <div class="print-sec-hdr">Department&nbsp;&nbsp;{dept_e}&nbsp;&nbsp;&nbsp;&nbsp;WC Group:&nbsp;&nbsp;{wcg_e}&nbsp;&nbsp;&nbsp;&nbsp;WC:&nbsp;{wc_attr}</div>
+      <table class="print-table">
+        <thead>
+          <tr>
+            <th>Job / Customer / Part</th>
+            <th>Rev / Oper</th>
+            <th>Make Qty</th>
+            <th>Sch Start / End</th>
+            <th>Curr WC / Rem Hrs</th>
+            <th>Ship Qty</th>
+            <th>Promised</th>
+          </tr>
+        </thead>
+        <tbody>
+{"".join(print_job_rows)}
+        </tbody>
+      </table>
+      <div class="print-total"></div>
+    </div>''')
+
     if colors_dirty:
         _save_dept_colors(colors)
 
     body = '\n'.join(rows)
+    print_body = '\n'.join(print_rows)
 
     home_btn = '' if kiosk else '<a href="index.html" id="home-btn" title="Home">&#8962;</a>\n    '
 
@@ -549,6 +585,7 @@ body{{background:#07070f;color:#ddd;font-family:'Courier New',monospace;font-siz
 #print-btn:disabled{{opacity:0.3;cursor:not-allowed}}
 #print-btn:disabled:hover{{background:transparent}}
 #wrap{{position:fixed;top:50px;bottom:0;left:160px;right:0;overflow-y:scroll}}
+#print-output{{display:none}}
 table{{width:100%;border-collapse:separate;border-spacing:0}}
 thead th{{position:sticky;top:0;z-index:20;background:#0d0d20;color:#7799ff;font-size:11px;
           text-transform:uppercase;letter-spacing:1px;padding:6px 8px;border-bottom:2px solid #333}}
@@ -614,17 +651,21 @@ thead th{{position:sticky;top:0;z-index:20;background:#0d0d20;color:#7799ff;font
    any long table. Position:fixed/sticky are reset to static since fixed
    positioning clips print output to a single page in Chrome. */
 @media print {{
-  #hdr, #sidebar {{ display:none }}
+  #hdr, #sidebar, #wrap {{ display:none }}
   body {{ overflow:visible; height:auto; background:#fff; color:#000 }}
-  #wrap {{ position:static; overflow:visible; top:auto; bottom:auto; left:auto; right:auto }}
-  table {{ width:100%; color:#000 }}
-  thead th {{ position:static; background:#eee; color:#000 }}
-  .section-hdr td {{ position:static; color:#000; background:#eee!important }}
-  .wc-name, .dept-name, .wc-backlog, .jnum, .pnum, .desc, .odesc, .sub {{ color:#000 }}
-  .overdue {{ color:#c00 }}
-  .section-hdr {{ break-before:page; break-inside:avoid }}
-  .job {{ break-inside:avoid }}
-  tbody tr:not(.print-include) {{ display:none }}
+  #print-output {{ display:block }}
+  .print-section {{ break-before:page }}
+  .print-sec-hdr {{ font-weight:bold; font-size:11px; border-bottom:1px solid #000; padding:4px 0; margin-top:4px }}
+  .print-table {{ width:100%; border-collapse:collapse; font-size:10px; color:#000 }}
+  .print-table th {{ text-align:left; font-size:9px; border-bottom:1px solid #000; padding:3px 4px;
+                      background:#fff; color:#000; position:static }}
+  .print-table td {{ padding:3px 4px; border-bottom:1px solid #ccc; vertical-align:top }}
+  .print-table td.c {{ text-align:center }}
+  .print-row {{ break-inside:avoid }}
+  .p-job {{ font-weight:bold }}
+  .p-desc {{ color:#444; font-size:9px }}
+  .print-table .overdue {{ color:#c00; font-weight:bold }}
+  .print-total {{ text-align:right; font-size:10px; font-weight:bold; padding:4px 0 10px }}
 }}
 {kiosk_css}
 </style>
@@ -672,6 +713,9 @@ thead th{{position:sticky;top:0;z-index:20;background:#0d0d20;color:#7799ff;font
 {body}
   </tbody>
 </table>
+</div>
+<div id="print-output">
+{print_body}
 </div>
 {overlay_div}
 <script>
@@ -742,7 +786,7 @@ let singleHeight = 0;
 let loopReady = false;
 
 function setupLoop(){{
-  const tbody = document.querySelector('tbody');
+  const tbody = document.querySelector('#wrap tbody');
   singleHeight = tbody.offsetHeight;
   if(!loopReady && singleHeight > wrap.clientHeight){{
     tbody.innerHTML += tbody.innerHTML;
@@ -773,11 +817,13 @@ function applyPendingUpdate() {{
   currentGen = m[1];
   const newDoc = new DOMParser().parseFromString(pendingHTML, 'text/html');
   const newMeta = newDoc.querySelector('.meta-info');
-  const newTbody = newDoc.querySelector('tbody');
+  const newTbody = newDoc.querySelector('#wrap tbody');
+  const newPrintOutput = newDoc.querySelector('#print-output');
   pendingHTML = null;
   if (!newMeta || !newTbody) return;
   document.querySelector('.meta-info').innerHTML = newMeta.innerHTML;
-  document.querySelector('tbody').innerHTML = newTbody.innerHTML;
+  document.querySelector('#wrap tbody').innerHTML = newTbody.innerHTML;
+  if (newPrintOutput) document.querySelector('#print-output').innerHTML = newPrintOutput.innerHTML;
   loopReady = false;
   buildSidebar();
   buildPrintList();
@@ -823,7 +869,7 @@ let allWCs = [];
 
 function buildSidebar(){{
   allWCs = [...new Set(
-    [...document.querySelectorAll('tbody .section-hdr')].map(tr => tr.dataset.wc).filter(Boolean)
+    [...document.querySelectorAll('#wrap tbody .section-hdr')].map(tr => tr.dataset.wc).filter(Boolean)
   )];
   activeWCs.clear();
   allWCs.forEach(wc => activeWCs.add(wc));
@@ -869,14 +915,20 @@ function syncPrintButton(){{
 }}
 
 document.getElementById('print-btn').addEventListener('click', () => {{
-  const sectionsWithPrintedJob = new Set();
-  document.querySelectorAll('tbody tr.job').forEach(tr => {{
-    const include = tr.style.display !== 'none' && printWCs.has(tr.dataset.wc);
-    tr.classList.toggle('print-include', include);
-    if(include) sectionsWithPrintedJob.add(tr.dataset.sec);
-  }});
-  document.querySelectorAll('tbody tr.section-hdr').forEach(tr => {{
-    tr.classList.toggle('print-include', sectionsWithPrintedJob.has(tr.dataset.sec));
+  document.querySelectorAll('#print-output .print-section').forEach(sec => {{
+    let total = 0;
+    let anyVisible = false;
+    sec.querySelectorAll('.print-row').forEach(tr => {{
+      const visible = printWCs.has(tr.dataset.wc) && isVisible(tr.dataset.wc, tr.dataset.start, tr.dataset.currwc);
+      tr.classList.toggle('hidden-section', !visible);
+      if(visible){{
+        anyVisible = true;
+        total += parseFloat(tr.dataset.remhrs) || 0;
+      }}
+    }});
+    sec.classList.toggle('hidden-section', !anyVisible);
+    const totalEl = sec.querySelector('.print-total');
+    if(totalEl) totalEl.textContent = anyVisible ? ('Total: ' + total.toFixed(2)) : '';
   }});
   window.print();
 }});
@@ -965,29 +1017,35 @@ function setScheduleMode(m){{
 // ANDed filters -- WC Dispatch narrows whatever date window is already
 // selected (e.g. "1 Week" + WC Dispatch = ready-to-run jobs due within a
 // week) rather than replacing it.
+// Shared by applyFilter() (the on-screen table) and the Print Report handler
+// (the separate #print-output layout) so "mirror the screen" can't drift
+// out of sync with what applyFilter() actually shows.
+function isVisible(wc, startStr, currWc){{
+  if(!activeWCs.has(wc)) return false;
+  if(viewDays !== Infinity){{
+    const cutoff = new Date();
+    cutoff.setHours(0, 0, 0, 0);
+    cutoff.setDate(cutoff.getDate() + viewDays);
+    if(startStr && new Date(startStr + 'T00:00:00') >= cutoff) return false;
+  }}
+  if(dispatchMode && currWc !== wc) return false;
+  return true;
+}}
+
 function applyFilter(){{
   if(loopReady){{
-    const rows = [...document.querySelectorAll('tbody tr')];
+    const rows = [...document.querySelectorAll('#wrap tbody tr')];
     const half = rows.length / 2;
     rows.slice(half).forEach(r => r.remove());
     loopReady = false;
   }}
-  let cutoff = null;
-  if(viewDays !== Infinity){{
-    cutoff = new Date();
-    cutoff.setHours(0, 0, 0, 0);
-    cutoff.setDate(cutoff.getDate() + viewDays);
-  }}
   const sectionHasVisibleJob = new Set();
-  document.querySelectorAll('tbody tr.job').forEach(tr => {{
-    const wcOk = activeWCs.has(tr.dataset.wc);
-    const dateOk = !cutoff || !tr.dataset.start || new Date(tr.dataset.start + 'T00:00:00') < cutoff;
-    const dispatchOk = !dispatchMode || tr.dataset.currwc === tr.dataset.wc;
-    const visible = wcOk && dateOk && dispatchOk;
+  document.querySelectorAll('#wrap tbody tr.job').forEach(tr => {{
+    const visible = isVisible(tr.dataset.wc, tr.dataset.start, tr.dataset.currwc);
     tr.style.display = visible ? '' : 'none';
     if(visible) sectionHasVisibleJob.add(tr.dataset.sec);
   }});
-  document.querySelectorAll('tbody tr.section-hdr').forEach(tr => {{
+  document.querySelectorAll('#wrap tbody tr.section-hdr').forEach(tr => {{
     tr.style.display = (activeWCs.has(tr.dataset.wc) && sectionHasVisibleJob.has(tr.dataset.sec)) ? '' : 'none';
   }});
   pos = 0;
