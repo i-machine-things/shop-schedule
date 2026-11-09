@@ -513,24 +513,19 @@ body{{background:#07070f;color:#ddd;font-family:'Courier New',monospace;font-siz
            width:32px;height:32px;color:#4af;border:1px solid #4af;
            text-decoration:none;font-size:16px;opacity:0.7;transition:opacity 0.2s}}
 #home-btn:hover{{opacity:1;background:#1a2a44}}
-#menu-btn{{display:flex;align-items:center;justify-content:center;flex-shrink:0;
-           width:32px;height:32px;color:#4af;border:1px solid #4af;background:transparent;
-           cursor:pointer;font-size:16px;font-family:inherit;opacity:0.7;transition:opacity 0.2s}}
-#menu-btn:hover{{opacity:1;background:#1a2a44}}
-#menu-btn.active{{opacity:1;background:#1a2a44}}
 #hdr .meta{{display:flex;align-items:center;gap:20px;flex-shrink:0;white-space:nowrap}}
 .meta-info{{font-size:12px;color:#888;text-align:right;line-height:1.4}}
 .url-line{{font-size:10px;color:#4af;opacity:0.8}}
 #clock{{font-size:24px;color:#4af;font-weight:bold}}
-#sidebar-backdrop{{position:fixed;top:50px;left:0;right:0;bottom:0;background:rgba(0,0,0,0.4);
-                    z-index:49;display:none}}
-#sidebar-backdrop.open{{display:block}}
 #sidebar{{position:fixed;top:50px;left:0;bottom:0;width:160px;background:#0b0b18;
-          border-right:1px solid #222;z-index:50;display:flex;flex-direction:column;overflow-y:auto;
-          transform:translateX(-100%);transition:transform 0.2s ease;box-shadow:2px 0 12px rgba(0,0,0,0.5)}}
-#sidebar.open{{transform:translateX(0)}}
-.sidebar-hdr{{padding:8px 10px 4px;font-size:10px;color:#555;
-              letter-spacing:2px;text-transform:uppercase;flex-shrink:0}}
+          border-right:1px solid #222;z-index:50;display:flex;flex-direction:column;overflow-y:auto}}
+.sidebar-hdr{{padding:8px 10px 4px;font-size:10px;color:#555;letter-spacing:2px;text-transform:uppercase;
+              flex-shrink:0;cursor:pointer;display:flex;align-items:center;justify-content:space-between;
+              user-select:none}}
+.sidebar-hdr:hover{{color:#888}}
+.sidebar-hdr .chev{{font-size:9px;transition:transform 0.15s}}
+.sidebar-hdr.collapsed .chev{{transform:rotate(-90deg)}}
+.hidden-section{{display:none!important}}
 #wc-all{{margin:2px 8px 6px;padding:5px 4px;background:transparent;border:1px solid #4af;
          color:#4af;cursor:pointer;font-family:inherit;font-size:11px;
          letter-spacing:1px;text-transform:uppercase}}
@@ -553,7 +548,7 @@ body{{background:#07070f;color:#ddd;font-family:'Courier New',monospace;font-siz
 #print-btn:hover{{background:#1a2a44}}
 #print-btn:disabled{{opacity:0.3;cursor:not-allowed}}
 #print-btn:disabled:hover{{background:transparent}}
-#wrap{{position:fixed;top:50px;bottom:0;left:0;right:0;overflow-y:scroll}}
+#wrap{{position:fixed;top:50px;bottom:0;left:160px;right:0;overflow-y:scroll}}
 table{{width:100%;border-collapse:separate;border-spacing:0}}
 thead th{{position:sticky;top:0;z-index:20;background:#0d0d20;color:#7799ff;font-size:11px;
           text-transform:uppercase;letter-spacing:1px;padding:6px 8px;border-bottom:2px solid #333}}
@@ -580,8 +575,6 @@ thead th{{position:sticky;top:0;z-index:20;background:#0d0d20;color:#7799ff;font
 [data-theme="light"] #hdr h1{{color:#111}}
 [data-theme="light"] #home-btn{{color:#0066cc;border-color:#0066cc}}
 [data-theme="light"] #home-btn:hover{{background:#c0d8f0}}
-[data-theme="light"] #menu-btn{{color:#0066cc;border-color:#0066cc}}
-[data-theme="light"] #menu-btn:hover, [data-theme="light"] #menu-btn.active{{background:#c0d8f0}}
 [data-theme="light"] .meta-info{{color:#555}}
 [data-theme="light"] .url-line{{color:#0066cc}}
 [data-theme="light"] #clock{{color:#0066cc}}
@@ -621,7 +614,7 @@ thead th{{position:sticky;top:0;z-index:20;background:#0d0d20;color:#7799ff;font
    any long table. Position:fixed/sticky are reset to static since fixed
    positioning clips print output to a single page in Chrome. */
 @media print {{
-  #hdr, #sidebar, #sidebar-backdrop {{ display:none }}
+  #hdr, #sidebar {{ display:none }}
   body {{ overflow:visible; height:auto; background:#fff; color:#000 }}
   #wrap {{ position:static; overflow:visible; top:auto; bottom:auto; left:auto; right:auto }}
   table {{ width:100%; color:#000 }}
@@ -640,7 +633,6 @@ thead th{{position:sticky;top:0;z-index:20;background:#0d0d20;color:#7799ff;font
 <body data-gen="{gen_ts}">
 <div id="hdr">
   <div id="hdr-left">
-    <button id="menu-btn" aria-label="Toggle menu" aria-expanded="false">&#9776;</button>
     {home_btn}<h1>{shop_name} &mdash; Shop Schedule</h1>
   </div>
   <div class="meta">
@@ -654,16 +646,15 @@ thead th{{position:sticky;top:0;z-index:20;background:#0d0d20;color:#7799ff;font
   </div>
 </div>
 
-<div id="sidebar-backdrop"></div>
 <div id="sidebar">
-  <div class="sidebar-hdr">Work Centers</div>
+  <div class="sidebar-hdr" data-toggle="wc-all,wc-list">Work Centers<span class="chev">&#9662;</span></div>
   <button id="wc-all">All</button>
   <div id="wc-list"></div>
-  <div class="sidebar-hdr">Schedule Window</div>
+  <div class="sidebar-hdr" data-toggle="view-list">Schedule Window<span class="chev">&#9662;</span></div>
   <div id="view-list"></div>
-  <div class="sidebar-hdr">Schedule Mode</div>
+  <div class="sidebar-hdr" data-toggle="mode-list">Schedule Mode<span class="chev">&#9662;</span></div>
   <div id="mode-list"></div>
-  <div class="sidebar-hdr">Print Report</div>
+  <div class="sidebar-hdr" data-toggle="print-list,print-btn">Print Report<span class="chev">&#9662;</span></div>
   <div id="print-list"></div>
   <button id="print-btn" disabled>Print</button>
 </div>
@@ -684,23 +675,34 @@ thead th{{position:sticky;top:0;z-index:20;background:#0d0d20;color:#7799ff;font
 </div>
 {overlay_div}
 <script>
-// Sidebar menu -- collapsed by default (not persisted; a transient UI
-// state, not a display preference). Opens as an overlay above the table
-// rather than pushing it over, closes on the toggle button, backdrop
-// click, or Escape.
+// Sidebar sections -- the sidebar itself always stays visible; each
+// section (Work Centers / Schedule Window / Schedule Mode / Print
+// Report) collapses independently via its own header, so a short
+// viewport or a crowded sidebar doesn't lose access to the ones below.
+// Persisted per section like the theme toggle, since this is a standing
+// display preference rather than a one-off choice.
 (function(){{
-  const menuBtn = document.getElementById('menu-btn');
-  const sidebarEl = document.getElementById('sidebar');
-  const backdrop = document.getElementById('sidebar-backdrop');
-  function setMenuOpen(open){{
-    sidebarEl.classList.toggle('open', open);
-    backdrop.classList.toggle('open', open);
-    menuBtn.classList.toggle('active', open);
-    menuBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+  let collapsed;
+  try {{ collapsed = new Set(JSON.parse(localStorage.getItem('sidebar_collapsed') || '[]')); }}
+  catch(e) {{ collapsed = new Set(); }}
+  function persist(){{
+    try {{ localStorage.setItem('sidebar_collapsed', JSON.stringify([...collapsed])); }} catch(e) {{}}
   }}
-  menuBtn.addEventListener('click', () => setMenuOpen(!sidebarEl.classList.contains('open')));
-  backdrop.addEventListener('click', () => setMenuOpen(false));
-  document.addEventListener('keydown', e => {{ if(e.key === 'Escape') setMenuOpen(false); }});
+  document.querySelectorAll('.sidebar-hdr[data-toggle]').forEach(hdr => {{
+    const key = hdr.dataset.toggle;
+    const targets = key.split(',').map(id => document.getElementById(id));
+    function apply(){{
+      const isCollapsed = collapsed.has(key);
+      hdr.classList.toggle('collapsed', isCollapsed);
+      targets.forEach(el => {{ if(el) el.classList.toggle('hidden-section', isCollapsed); }});
+    }}
+    apply();
+    hdr.addEventListener('click', () => {{
+      if(collapsed.has(key)) collapsed.delete(key); else collapsed.add(key);
+      apply();
+      persist();
+    }});
+  }});
 }})();
 
 // Theme
