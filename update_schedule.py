@@ -807,7 +807,7 @@ function buildViewFilter(){{
 
 function setViewWindow(w){{
   viewDays = w.days;
-  localStorage.setItem('view_window_days', w.key);
+  try {{ localStorage.setItem('view_window_days', w.key); }} catch(e) {{}}
   document.querySelectorAll('#view-list .view-btn').forEach((btn, i) => {{
     btn.classList.toggle('active', VIEW_WINDOWS[i].key === w.key);
   }});
@@ -842,7 +842,7 @@ function buildScheduleMode(){{
 
 function setScheduleMode(m){{
   dispatchMode = m.key === 'dispatch';
-  localStorage.setItem('schedule_mode', m.key);
+  try {{ localStorage.setItem('schedule_mode', m.key); }} catch(e) {{}}
   document.querySelectorAll('#mode-list .view-btn').forEach((btn, i) => {{
     btn.classList.toggle('active', SCHEDULE_MODES[i].key === m.key);
   }});
