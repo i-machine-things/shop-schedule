@@ -426,8 +426,14 @@ def generate_html(data, out_path, *, kiosk=False, gen_ts=None):
         <tbody>
 {"".join(print_job_rows)}
         </tbody>
+        <tfoot>
+          <tr class="print-total-row">
+            <td colspan="4">Total Rem Hrs:</td>
+            <td class="c print-total-val"></td>
+            <td colspan="2"></td>
+          </tr>
+        </tfoot>
       </table>
-      <div class="print-total"></div>
     </div>''')
 
     if colors_dirty:
@@ -665,7 +671,8 @@ thead th{{position:sticky;top:0;z-index:20;background:#0d0d20;color:#7799ff;font
   .p-job {{ font-weight:bold }}
   .p-desc {{ color:#444; font-size:9px }}
   .print-table .overdue {{ color:#c00; font-weight:bold }}
-  .print-total {{ text-align:right; font-size:10px; font-weight:bold; padding:4px 0 10px }}
+  .print-total-row td {{ border-top:2px solid #000; border-bottom:none; font-weight:bold;
+                          text-align:right; padding-top:6px }}
 }}
 {kiosk_css}
 </style>
@@ -927,8 +934,8 @@ document.getElementById('print-btn').addEventListener('click', () => {{
       }}
     }});
     sec.classList.toggle('hidden-section', !anyVisible);
-    const totalEl = sec.querySelector('.print-total');
-    if(totalEl) totalEl.textContent = anyVisible ? ('Total Rem Hrs: ' + total.toFixed(2)) : '';
+    const totalEl = sec.querySelector('.print-total-val');
+    if(totalEl) totalEl.textContent = anyVisible ? total.toFixed(2) : '';
   }});
   window.print();
 }});
