@@ -315,6 +315,34 @@ def generate_html(data, out_path, *, kiosk=False, gen_ts=None):
     colors = _load_dept_colors()
     colors_dirty = False
 
+    # Mirrors the real Foreman's Report's header (date/time + company at
+    # left, title centered, "by Work Center..."/"Released Jobs Only" at
+    # right) -- shop_name comes from SHOP_NAME (.env), never hardcoded.
+    #
+    # "Released Jobs Only" is only claimed for DB-sourced data, where
+    # jobboss_db.py's query unconditionally filters Released_Date IS NOT
+    # NULL. For the PDF path it's whichever checkbox state JobBoss's own
+    # Foreman's Report screen was in when someone generated the PDF we're
+    # parsing -- not something we enforce, so not something we can claim.
+    released_line = (
+        '<div class="print-hdr-sub">Released Jobs Only</div>'
+        if data.get('db_source') else ''
+    )
+
+    def _print_hdr(extra_class):
+        return f'''
+    <div class="print-hdr {extra_class}">
+      <div class="print-hdr-left">
+        <div>{generated}</div>
+        <div class="print-hdr-company">{shop_name}</div>
+      </div>
+      <div class="print-hdr-title">Shop Schedule Report</div>
+      <div class="print-hdr-right">
+        <div>by Work Center - Scheduled Start Date</div>
+        {released_line}
+      </div>
+    </div>'''
+
     rows = []
     print_rows = []
     sec_idx = 0
@@ -411,6 +439,7 @@ def generate_html(data, out_path, *, kiosk=False, gen_ts=None):
 
         print_rows.append(f'''
     <div class="print-section" data-wc="{wc_attr}" data-sec="{sec_idx}" data-dept="{dept_e}">
+      {_print_hdr('print-hdr-section')}
       <div class="print-sec-hdr">Department&nbsp;&nbsp;{dept_e}&nbsp;&nbsp;&nbsp;&nbsp;WC Group:&nbsp;&nbsp;{wcg_e}&nbsp;&nbsp;&nbsp;&nbsp;WC:&nbsp;{wc_attr}</div>
       <table class="print-table">
         <thead>
@@ -442,37 +471,16 @@ def generate_html(data, out_path, *, kiosk=False, gen_ts=None):
         _save_dept_colors(colors)
 
     body = '\n'.join(rows)
-    # Mirrors the real Foreman's Report's header (date/time + company at
-    # left, title centered, "by Work Center..."/"Released Jobs Only" at
-    # right) -- shop_name comes from SHOP_NAME (.env), never hardcoded.
-    # Only rendered once at the top of the printout, not repeated per page
-    # like the original: Chromium's print engine doesn't support CSS Paged
-    # Media's @page margin boxes, so there's no reliable way to repeat an
-    # arbitrary block (or render "Page X of Y") on every printed page --
-    # only a real <thead> repeats, which this isn't.
-    #
-    # "Released Jobs Only" is only claimed for DB-sourced data, where
-    # jobboss_db.py's query unconditionally filters Released_Date IS NOT
-    # NULL. For the PDF path it's whichever checkbox state JobBoss's own
-    # Foreman's Report screen was in when someone generated the PDF we're
-    # parsing -- not something we enforce, so not something we can claim.
-    released_line = (
-        '<div class="print-hdr-sub">Released Jobs Only</div>'
-        if data.get('db_source') else ''
-    )
-    print_header = f'''
-    <div class="print-hdr">
-      <div class="print-hdr-left">
-        <div>{generated}</div>
-        <div class="print-hdr-company">{shop_name}</div>
-      </div>
-      <div class="print-hdr-title">Shop Schedule Report</div>
-      <div class="print-hdr-right">
-        <div>by Work Center - Scheduled Start Date</div>
-        {released_line}
-      </div>
-    </div>'''
-    print_body = print_header + '\n' + '\n'.join(print_rows)
+    # A standalone copy at the top for the default (continuous-flow) mode,
+    # plus one baked into each section for "one page per workcenter" mode --
+    # CSS shows exactly one of the two depending on that checkbox (see
+    # print-hdr-main/print-hdr-section in the @media print block). Chromium's
+    # print engine doesn't support CSS Paged Media's @page margin boxes, so
+    # there's no way to repeat an arbitrary block on every *naturally*
+    # overflowing page (or render "Page X of Y") the way the original
+    # report's own generator can -- this only covers the case where we
+    # already know where each page starts, because we forced the break.
+    print_body = _print_hdr('print-hdr-main') + '\n' + '\n'.join(print_rows)
 
     home_btn = '' if kiosk else '<a href="index.html" id="home-btn" title="Home">&#8962;</a>\n    '
 
@@ -714,6 +722,9 @@ thead th{{position:sticky;top:0;z-index:20;background:#0d0d20;color:#7799ff;font
   .print-hdr-title {{ font-weight:bold; font-size:16px; align-self:center }}
   .print-hdr-right {{ font-size:10px; text-align:right }}
   .print-hdr-sub {{ margin-top:2px }}
+  .print-hdr-section {{ display:none }}
+  #print-output.pagebreak-per-wc .print-hdr-main {{ display:none }}
+  #print-output.pagebreak-per-wc .print-hdr-section {{ display:flex }}
   .print-sec-hdr {{ font-weight:bold; font-size:11px; border-bottom:1px solid #000; padding:4px 0; margin-top:4px }}
   .print-table {{ width:100%; border-collapse:collapse; font-size:10px; color:#000 }}
   .print-table th {{ text-align:left; font-size:9px; border-bottom:1px solid #000; padding:3px 4px;
