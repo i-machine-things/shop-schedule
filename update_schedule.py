@@ -516,7 +516,7 @@ body{{background:#07070f;color:#ddd;font-family:'Courier New',monospace;font-siz
 .url-line{{font-size:10px;color:#4af;opacity:0.8}}
 #clock{{font-size:24px;color:#4af;font-weight:bold}}
 #sidebar{{position:fixed;top:50px;left:0;bottom:0;width:160px;background:#0b0b18;
-          border-right:1px solid #222;z-index:50;display:flex;flex-direction:column;overflow:hidden}}
+          border-right:1px solid #222;z-index:50;display:flex;flex-direction:column;overflow-y:auto}}
 .sidebar-hdr{{padding:8px 10px 4px;font-size:10px;color:#555;
               letter-spacing:2px;text-transform:uppercase;flex-shrink:0}}
 #wc-all{{margin:2px 8px 6px;padding:5px 4px;background:transparent;border:1px solid #4af;
