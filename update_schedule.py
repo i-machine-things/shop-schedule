@@ -634,6 +634,8 @@ body{{background:#07070f;color:#ddd;font-family:'Courier New',monospace;font-siz
 #print-select-all:hover,#print-deselect-all:hover{{background:#1a2a44}}
 #print-select-dept{{flex:1 1 auto;min-width:0;background:#0d1a2b;border:1px solid #222;
                      color:#888;font-family:inherit;font-size:10px;padding:4px;cursor:pointer}}
+#print-list{{display:flex;flex-direction:column;gap:2px;padding:0 8px 8px;
+             max-height:240px;overflow-y:auto}}
 #print-btn{{margin:2px 8px 8px;padding:5px 4px;background:transparent;border:1px solid #4af;
          color:#4af;cursor:pointer;font-family:inherit;font-size:11px;
          letter-spacing:1px;text-transform:uppercase}}
