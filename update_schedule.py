@@ -410,7 +410,7 @@ def generate_html(data, out_path, *, kiosk=False, gen_ts=None):
       </tr>''')
 
         print_rows.append(f'''
-    <div class="print-section" data-wc="{wc_attr}" data-sec="{sec_idx}">
+    <div class="print-section" data-wc="{wc_attr}" data-sec="{sec_idx}" data-dept="{dept_e}">
       <div class="print-sec-hdr">Department&nbsp;&nbsp;{dept_e}&nbsp;&nbsp;&nbsp;&nbsp;WC Group:&nbsp;&nbsp;{wcg_e}&nbsp;&nbsp;&nbsp;&nbsp;WC:&nbsp;{wc_attr}</div>
       <table class="print-table">
         <thead>
@@ -619,6 +619,13 @@ body{{background:#07070f;color:#ddd;font-family:'Courier New',monospace;font-siz
 .print-opt{{display:flex;align-items:center;gap:6px;margin:2px 8px 6px;padding:0 4px;
             font-size:10px;color:#888;letter-spacing:1px;text-transform:uppercase;cursor:pointer}}
 .print-opt input{{cursor:pointer}}
+#print-select-row{{display:flex;gap:4px;margin:2px 8px 6px}}
+#print-select-all{{flex:0 0 auto;padding:4px 8px;background:transparent;border:1px solid #4af;
+                    color:#4af;cursor:pointer;font-family:inherit;font-size:10px;
+                    letter-spacing:1px;text-transform:uppercase}}
+#print-select-all:hover{{background:#1a2a44}}
+#print-select-dept{{flex:1 1 auto;min-width:0;background:#0d1a2b;border:1px solid #222;
+                     color:#888;font-family:inherit;font-size:10px;padding:4px;cursor:pointer}}
 #print-btn{{margin:2px 8px 8px;padding:5px 4px;background:transparent;border:1px solid #4af;
          color:#4af;cursor:pointer;font-family:inherit;font-size:11px;
          letter-spacing:1px;text-transform:uppercase}}
@@ -669,6 +676,9 @@ thead th{{position:sticky;top:0;z-index:20;background:#0d0d20;color:#7799ff;font
 [data-theme="light"] .view-btn.active{{background:#dde4f0;border-color:#0066cc;color:#0066cc}}
 [data-theme="light"] .view-btn:hover{{background:#c8d8f0;color:#111;border-color:#0066cc}}
 [data-theme="light"] .print-opt{{color:#555}}
+[data-theme="light"] #print-select-all{{border-color:#0066cc;color:#0066cc}}
+[data-theme="light"] #print-select-all:hover{{background:#c0d8f0}}
+[data-theme="light"] #print-select-dept{{background:#dde4f0;border-color:#ccc;color:#555}}
 [data-theme="light"] #print-btn{{border-color:#0066cc;color:#0066cc}}
 [data-theme="light"] #print-btn:hover{{background:#c0d8f0}}
 [data-theme="light"] #print-btn:disabled:hover{{background:transparent}}
@@ -745,7 +755,11 @@ thead th{{position:sticky;top:0;z-index:20;background:#0d0d20;color:#7799ff;font
   <div id="view-list"></div>
   <div class="sidebar-hdr" data-toggle="mode-list">Schedule Mode<span class="chev">&#9662;</span></div>
   <div id="mode-list"></div>
-  <div class="sidebar-hdr" data-toggle="print-list,print-pagebreak-opt,print-btn">Print Report<span class="chev">&#9662;</span></div>
+  <div class="sidebar-hdr" data-toggle="print-select-row,print-list,print-pagebreak-opt,print-btn">Print Report<span class="chev">&#9662;</span></div>
+  <div id="print-select-row">
+    <button id="print-select-all">All</button>
+    <select id="print-select-dept"><option value="">Dept&hellip;</option></select>
+  </div>
   <div id="print-list"></div>
   <label id="print-pagebreak-opt" class="print-opt">
     <input type="checkbox" id="print-pagebreak">
@@ -784,7 +798,7 @@ thead th{{position:sticky;top:0;z-index:20;background:#0d0d20;color:#7799ff;font
   // centers, making it by far the tallest section) -- everything else starts
   // expanded. Only applies on a first visit with nothing stored yet; once the
   // user has toggled anything, their own choice always wins.
-  const DEFAULT_COLLAPSED = ['print-list,print-pagebreak-opt,print-btn'];
+  const DEFAULT_COLLAPSED = ['print-select-row,print-list,print-pagebreak-opt,print-btn'];
   let collapsed;
   try {{
     const stored = localStorage.getItem('sidebar_collapsed');
@@ -969,7 +983,44 @@ function buildPrintList(){{
     list.appendChild(btn);
   }});
   syncPrintButton();
+
+  // Department -> its work centers, straight off the print-output sections
+  // (same source the print selection itself reads), so "select dept" always
+  // matches whatever work centers are actually on the page right now.
+  const deptToWCs = new Map();
+  document.querySelectorAll('#print-output .print-section').forEach(sec => {{
+    const dept = sec.dataset.dept;
+    if(!dept) return;
+    if(!deptToWCs.has(dept)) deptToWCs.set(dept, new Set());
+    deptToWCs.get(dept).add(sec.dataset.wc);
+  }});
+  const deptSelect = document.getElementById('print-select-dept');
+  deptSelect.innerHTML = '<option value="">Dept&hellip;</option>';
+  [...deptToWCs.keys()].sort().forEach(dept => {{
+    const opt = document.createElement('option');
+    opt.value = dept;
+    opt.textContent = dept;
+    deptSelect.appendChild(opt);
+  }});
+  deptSelect.onchange = () => {{
+    const wcs = deptToWCs.get(deptSelect.value);
+    if(wcs) wcs.forEach(wc => printWCs.add(wc));
+    deptSelect.value = '';
+    syncPrintListButtons();
+  }};
 }}
+
+function syncPrintListButtons(){{
+  document.querySelectorAll('#print-list .view-btn').forEach(btn => {{
+    btn.classList.toggle('active', printWCs.has(btn.textContent));
+  }});
+  syncPrintButton();
+}}
+
+document.getElementById('print-select-all').addEventListener('click', () => {{
+  allWCs.forEach(wc => printWCs.add(wc));
+  syncPrintListButtons();
+}});
 
 function syncPrintButton(){{
   document.getElementById('print-btn').disabled = printWCs.size === 0;
