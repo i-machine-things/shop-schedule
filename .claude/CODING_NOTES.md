@@ -152,6 +152,8 @@ This note was created based on issues encountered with PyInstaller executables r
 
 **`DB_USER`/`DB_HOST`/`DB_NAME`/`DB_PASS` (from `.env`) are passed to `pytds.connect()` as TDS-protocol connection fields, not SQL text.** A hostile value (e.g. a "username" containing `DROP TABLE`) can only fail authentication -- it never reaches a query.
 
+**Bandit B608 on `update_schedule.py`'s `html = f"""..."""` template is a confirmed false positive, not a real SQL-injection risk.** Its regex is `select\s.*from\s` with `re.DOTALL`, scanned across the *entire* f-string's literal text joined together -- it matches `<select id="print-select-dept">` against an unrelated `// Pause/resume from kiosk shell` comment thousands of lines later; no query is built anywhere in this file (see the audit above -- `jobboss_db.py` is the only file that executes SQL). Suppressed with a same-line `# nosec B608`, which requires wrapping the f-string in `html = (f"""..."""` / `""")  # nosec B608` -- a bare `# nosec` can't attach to any line *inside* the literal (every line is string content, not a comment token), so the trailing comment has to land on the physical line holding the closing `"""`.
+
 ## Concurrency & File I/O
 
 **Include microseconds in timestamp-based filenames.** `strftime('%Y%m%d_%H%M%S')` collides when two files are processed within the same second, silently overwriting the earlier one; add `%f`.

@@ -425,9 +425,12 @@ def generate_html(data, out_path, *, kiosk=False, gen_ts=None):
         <td class="c {overdue}">{je["promised"]}</td>
       </tr>''')
 
-            print_job_rows.append(f'''
-      <tr class="print-row" data-wc="{wc_attr}" data-sec="{sec_idx}" data-start="{data_start}" data-currwc="{je["curr_wc"]}" data-remhrs="{je["rem_hrs"]}">
-        <td><span class="p-job">{je["job"]}</span><br>{je["customer"]}<br>{je["part"]}<br><span class="p-desc">{je["description"]}</span></td>
+            print_job_rows.append(
+                f'''
+      <tr class="print-row" data-wc="{wc_attr}" data-sec="{sec_idx}" data-start="{data_start}" '''
+                f'''data-currwc="{je["curr_wc"]}" data-remhrs="{je["rem_hrs"]}">
+        <td><span class="p-job">{je["job"]}</span><br>{je["customer"]}<br>'''
+                f'''{je["part"]}<br><span class="p-desc">{je["description"]}</span></td>
         <td>{je["rev"]} {je["oper"]}</td>
         <td class="p-desc">{je["oper_desc"]}</td>
         <td class="c">{je["make_qty"]}</td>
@@ -435,12 +438,15 @@ def generate_html(data, out_path, *, kiosk=False, gen_ts=None):
         <td class="c">{je["curr_wc"]}<br>{je["rem_hrs"]}</td>
         <td class="c">{je["ship_qty"]}</td>
         <td class="c {overdue}">{je["promised"]}</td>
-      </tr>''')
+      </tr>'''
+            )
 
-        print_rows.append(f'''
+        print_rows.append(
+            f'''
     <div class="print-section" data-wc="{wc_attr}" data-sec="{sec_idx}" data-dept="{dept_e}">
       {_print_hdr('print-hdr-section')}
-      <div class="print-sec-hdr">Department&nbsp;&nbsp;{dept_e}&nbsp;&nbsp;&nbsp;&nbsp;WC Group:&nbsp;&nbsp;{wcg_e}&nbsp;&nbsp;&nbsp;&nbsp;WC:&nbsp;{wc_attr}</div>
+      <div class="print-sec-hdr">Department&nbsp;&nbsp;{dept_e}&nbsp;&nbsp;&nbsp;&nbsp;'''
+            f'''WC Group:&nbsp;&nbsp;{wcg_e}&nbsp;&nbsp;&nbsp;&nbsp;WC:&nbsp;{wc_attr}</div>
       <table class="print-table">
         <thead>
           <tr>
@@ -578,7 +584,7 @@ window.addEventListener('beforeunload', e => { e.preventDefault(); e.returnValue
   setInterval(() => fetch('/api/pages').then(r => r.json()).then(applyKioskConfig).catch(() => {}), 60000);
 })();''' if kiosk else ''
 
-    html = f"""<!DOCTYPE html>
+    html = (f"""<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -768,7 +774,8 @@ thead th{{position:sticky;top:0;z-index:20;background:#0d0d20;color:#7799ff;font
   <div id="view-list"></div>
   <div class="sidebar-hdr" data-toggle="mode-list">Schedule Mode<span class="chev">&#9662;</span></div>
   <div id="mode-list"></div>
-  <div class="sidebar-hdr" data-toggle="print-select-row,print-list,print-pagebreak-opt,print-btn">Print Report<span class="chev">&#9662;</span></div>
+  <div class="sidebar-hdr" data-toggle="print-select-row,print-list,print-pagebreak-opt,print-btn">"""
+        f"""Print Report<span class="chev">&#9662;</span></div>
   <div id="print-select-row">
     <button id="print-select-all">All</button>
     <button id="print-deselect-all">None</button>
@@ -1268,7 +1275,9 @@ setInterval(async () => {{
 {kiosk_js}
 </script>
 </body>
-</html>"""
+</html>""")  # nosec B608 -- static HTML/JS template, no DB query built here;
+    # bandit's DOTALL regex matches "select" (an HTML <select>) ... "from" (English
+    # prose in a JS comment) across this whole literal. See CODING_NOTES.md.
 
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
     with open(out_path, 'w', encoding='utf-8') as f:
