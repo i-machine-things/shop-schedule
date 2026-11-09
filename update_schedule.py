@@ -537,6 +537,12 @@ body{{background:#07070f;color:#ddd;font-family:'Courier New',monospace;font-siz
          text-align:left;transition:background 0.15s,border-color 0.15s,color 0.15s}}
 .view-btn.active{{background:#0d1a2b;border-color:#4af;color:#4af}}
 .view-btn:hover{{background:#1a2233;color:#ddd;border-color:#4af}}
+#print-btn{{margin:2px 8px 8px;padding:5px 4px;background:transparent;border:1px solid #4af;
+         color:#4af;cursor:pointer;font-family:inherit;font-size:11px;
+         letter-spacing:1px;text-transform:uppercase}}
+#print-btn:hover{{background:#1a2a44}}
+#print-btn:disabled{{opacity:0.3;cursor:not-allowed}}
+#print-btn:disabled:hover{{background:transparent}}
 #wrap{{position:fixed;top:50px;bottom:0;left:160px;right:0;overflow-y:scroll}}
 table{{width:100%;border-collapse:separate;border-spacing:0}}
 thead th{{position:sticky;top:0;z-index:20;background:#0d0d20;color:#7799ff;font-size:11px;
@@ -579,6 +585,9 @@ thead th{{position:sticky;top:0;z-index:20;background:#0d0d20;color:#7799ff;font
 [data-theme="light"] .view-btn{{background:#dde4f0;border-color:#ccc;color:#555}}
 [data-theme="light"] .view-btn.active{{background:#dde4f0;border-color:#0066cc;color:#0066cc}}
 [data-theme="light"] .view-btn:hover{{background:#c8d8f0;color:#111;border-color:#0066cc}}
+[data-theme="light"] #print-btn{{border-color:#0066cc;color:#0066cc}}
+[data-theme="light"] #print-btn:hover{{background:#c0d8f0}}
+[data-theme="light"] #print-btn:disabled:hover{{background:transparent}}
 [data-theme="light"] thead th{{background:#d8dcf0;color:#224499;border-bottom-color:#ccc}}
 [data-theme="light"] .section-hdr td{{background:#eaecf8!important;border-bottom-color:#ccc}}
 [data-theme="light"] .wc-name{{color:#111}}
@@ -592,6 +601,26 @@ thead th{{position:sticky;top:0;z-index:20;background:#0d0d20;color:#7799ff;font
 [data-theme="light"] .odesc{{color:#555}}
 [data-theme="light"] .sub{{color:#666}}
 [data-theme="light"] .overdue{{color:#cc0000}}
+
+/* Print Report -- "mirror the screen": only rows already visible under the
+   current Schedule Window/Mode filter AND belonging to a selected work
+   center print. Each printed section starts on its own page (break-before);
+   a section whose jobs don't fit on one page continues onto more, same as
+   any long table. Position:fixed/sticky are reset to static since fixed
+   positioning clips print output to a single page in Chrome. */
+@media print {{
+  #hdr, #sidebar {{ display:none }}
+  body {{ overflow:visible; height:auto; background:#fff; color:#000 }}
+  #wrap {{ position:static; overflow:visible; top:auto; bottom:auto; left:auto; right:auto }}
+  table {{ width:100%; color:#000 }}
+  thead th {{ position:static; background:#eee; color:#000 }}
+  .section-hdr td {{ position:static; color:#000; background:#eee!important }}
+  .wc-name, .dept-name, .wc-backlog, .jnum, .pnum, .desc, .odesc, .sub {{ color:#000 }}
+  .overdue {{ color:#c00 }}
+  .section-hdr {{ break-before:page; break-inside:avoid }}
+  .job {{ break-inside:avoid }}
+  tbody tr:not(.print-include) {{ display:none }}
+}}
 {kiosk_css}
 </style>
 <script>if(localStorage.getItem('theme')==='light')document.documentElement.setAttribute('data-theme','light');</script>
@@ -620,6 +649,9 @@ thead th{{position:sticky;top:0;z-index:20;background:#0d0d20;color:#7799ff;font
   <div id="view-list"></div>
   <div class="sidebar-hdr">Schedule Mode</div>
   <div id="mode-list"></div>
+  <div class="sidebar-hdr">Print Report</div>
+  <div id="print-list"></div>
+  <button id="print-btn" disabled>Print</button>
 </div>
 <div id="wrap">
 <table>
@@ -713,6 +745,7 @@ function applyPendingUpdate() {{
   document.querySelector('tbody').innerHTML = newTbody.innerHTML;
   loopReady = false;
   buildSidebar();
+  buildPrintList();
   applyFilter();
   wrap.scrollTop = 0;
   pos = 0;
@@ -770,6 +803,48 @@ function buildSidebar(){{
     list.appendChild(btn);
   }});
 }}
+
+// Print Report -- "mirror the screen": prints only rows already visible
+// under the current Schedule Window/Mode filter, restricted to the work
+// centers selected here. Independent multi-select; not persisted, since
+// it's a deliberate per-print choice rather than a display preference
+// like the other sidebar controls.
+const printWCs = new Set();
+
+function buildPrintList(){{
+  for (const wc of [...printWCs]) if (!allWCs.includes(wc)) printWCs.delete(wc);
+  const list = document.getElementById('print-list');
+  list.innerHTML = '';
+  allWCs.forEach(wc => {{
+    const btn = document.createElement('button');
+    btn.className = 'view-btn' + (printWCs.has(wc) ? ' active' : '');
+    btn.textContent = wc;
+    btn.addEventListener('click', () => {{
+      if(printWCs.has(wc)) printWCs.delete(wc); else printWCs.add(wc);
+      btn.classList.toggle('active', printWCs.has(wc));
+      syncPrintButton();
+    }});
+    list.appendChild(btn);
+  }});
+  syncPrintButton();
+}}
+
+function syncPrintButton(){{
+  document.getElementById('print-btn').disabled = printWCs.size === 0;
+}}
+
+document.getElementById('print-btn').addEventListener('click', () => {{
+  const sectionsWithPrintedJob = new Set();
+  document.querySelectorAll('tbody tr.job').forEach(tr => {{
+    const include = tr.style.display !== 'none' && printWCs.has(tr.dataset.wc);
+    tr.classList.toggle('print-include', include);
+    if(include) sectionsWithPrintedJob.add(tr.dataset.sec);
+  }});
+  document.querySelectorAll('tbody tr.section-hdr').forEach(tr => {{
+    tr.classList.toggle('print-include', sectionsWithPrintedJob.has(tr.dataset.sec));
+  }});
+  window.print();
+}});
 
 function syncButtons(){{
   document.querySelectorAll('.wc-btn').forEach(btn => {{
@@ -905,6 +980,7 @@ document.getElementById('wc-all').addEventListener('click', ()=>{{
 }});
 
 buildSidebar();
+buildPrintList();
 buildViewFilter();
 buildScheduleMode();
 applyFilter();
