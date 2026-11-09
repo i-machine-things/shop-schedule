@@ -185,7 +185,7 @@ Below Schedule Mode, **Print Report** lets you pick one or more work centers and
 
 Tapping a work center toggles it in or out of the print selection (independent of the Work Center filter above it); **Print** opens the browser's print dialog once at least one is selected. The selection isn't saved across reloads — it's a one-off choice, not a display preference like the other sidebar controls.
 
-What prints mirrors what's currently on screen: the Schedule Window and Schedule Mode filters still apply, so printing "1 Week" + WC Dispatch prints only the jobs that filter leaves visible. Each selected work center starts on its own page; if its job list doesn't fit on one page, it continues onto as many more as it needs before the next work center starts fresh.
+What prints mirrors what's currently on screen: the Schedule Window and Schedule Mode filters still apply, so printing "1 Week" + WC Dispatch prints only the jobs that filter leaves visible. By default, work centers flow continuously and a page break occurs only where content overflows. Enable **One page per workcenter** (saved per browser) to start each selected work center on its own page. In that mode, the report header repeats on every work center's first page.
 
 ## Page rotation
 

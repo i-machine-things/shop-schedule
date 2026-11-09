@@ -1078,7 +1078,8 @@ document.getElementById('print-btn').addEventListener('click', () => {{
     let total = 0;
     let anyVisible = false;
     sec.querySelectorAll('.print-row').forEach(tr => {{
-      const visible = printWCs.has(tr.dataset.wc) && isVisible(tr.dataset.wc, tr.dataset.start, tr.dataset.currwc);
+      const visible = printWCs.has(tr.dataset.wc) &&
+        matchesWindowAndMode(tr.dataset.wc, tr.dataset.start, tr.dataset.currwc);
       tr.classList.toggle('hidden-section', !visible);
       if(visible){{
         anyVisible = true;
@@ -1178,11 +1179,14 @@ function setScheduleMode(m){{
 // ANDed filters -- WC Dispatch narrows whatever date window is already
 // selected (e.g. "1 Week" + WC Dispatch = ready-to-run jobs due within a
 // week) rather than replacing it.
-// Shared by applyFilter() (the on-screen table) and the Print Report handler
-// (the separate #print-output layout) so "mirror the screen" can't drift
-// out of sync with what applyFilter() actually shows.
-function isVisible(wc, startStr, currWc){{
-  if(!activeWCs.has(wc)) return false;
+// matchesWindowAndMode() is shared by applyFilter() (the on-screen table) and
+// the Print Report handler (the separate #print-output layout) so the
+// Schedule Window/Mode half of "mirror the screen" can't drift out of sync.
+// The Work Center filter is deliberately NOT part of that shared check --
+// Print Report has its own independent work-center selection (printWCs), so
+// isVisible() (on-screen only) layers activeWCs on top, while the print
+// handler layers printWCs on top instead.
+function matchesWindowAndMode(wc, startStr, currWc){{
   if(viewDays !== Infinity){{
     const cutoff = new Date();
     cutoff.setHours(0, 0, 0, 0);
@@ -1191,6 +1195,9 @@ function isVisible(wc, startStr, currWc){{
   }}
   if(dispatchMode && currWc !== wc) return false;
   return true;
+}}
+function isVisible(wc, startStr, currWc){{
+  return activeWCs.has(wc) && matchesWindowAndMode(wc, startStr, currWc);
 }}
 
 function applyFilter(){{
