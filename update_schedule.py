@@ -450,6 +450,16 @@ def generate_html(data, out_path, *, kiosk=False, gen_ts=None):
     # Media's @page margin boxes, so there's no reliable way to repeat an
     # arbitrary block (or render "Page X of Y") on every printed page --
     # only a real <thead> repeats, which this isn't.
+    #
+    # "Released Jobs Only" is only claimed for DB-sourced data, where
+    # jobboss_db.py's query unconditionally filters Released_Date IS NOT
+    # NULL. For the PDF path it's whichever checkbox state JobBoss's own
+    # Foreman's Report screen was in when someone generated the PDF we're
+    # parsing -- not something we enforce, so not something we can claim.
+    released_line = (
+        '<div class="print-hdr-sub">Released Jobs Only</div>'
+        if data.get('db_source') else ''
+    )
     print_header = f'''
     <div class="print-hdr">
       <div class="print-hdr-left">
@@ -459,7 +469,7 @@ def generate_html(data, out_path, *, kiosk=False, gen_ts=None):
       <div class="print-hdr-title">Shop Schedule Report</div>
       <div class="print-hdr-right">
         <div>by Work Center - Scheduled Start Date</div>
-        <div class="print-hdr-sub">Released Jobs Only</div>
+        {released_line}
       </div>
     </div>'''
     print_body = print_header + '\n' + '\n'.join(print_rows)
@@ -1186,6 +1196,12 @@ def main():
             # stale PDF parse that could silently disagree with the DB going forward.
             print("DB fetch failed; keeping last displayed schedule.", file=sys.stderr)
             return
+        # Our own query always filters Released_Date IS NOT NULL (jobboss_db.py)
+        # -- unlike the PDF path, where "released jobs only" is just whichever
+        # checkbox state JobBoss's own Foreman's Report screen happened to be
+        # in when someone generated the PDF we're parsing, not something we
+        # enforce ourselves. Only claim it on the print report for this path.
+        data['db_source'] = True
         total_jobs = sum(len(s['jobs']) for s in data['sections'])
         print(f"[{datetime.now():%Y-%m-%d %H:%M}] DB fetch OK: "
               f"{len(data['sections'])} sections, {total_jobs} job rows. Display refreshed.")
@@ -1196,6 +1212,7 @@ def main():
                   file=sys.stderr)
             return
         data = parse_pdf(PDF_PATH)
+        data['db_source'] = False
         print(f"[{datetime.now():%Y-%m-%d %H:%M}] Parsed {PDF_PATH}. Display refreshed.")
 
     apply_work_center_backlogs(data['sections'])
