@@ -1053,7 +1053,18 @@ pagebreakCb.addEventListener('change', () => {{
 }});
 
 document.getElementById('print-btn').addEventListener('click', () => {{
-  document.getElementById('print-output').classList.toggle('pagebreak-per-wc', pagebreakCb.checked);
+  const useBreaks = pagebreakCb.checked;
+  const printOutput = document.getElementById('print-output');
+  printOutput.classList.toggle('pagebreak-per-wc', useBreaks);
+  // display:none isn't enough to rule out: pull print-hdr-main out of the DOM
+  // entirely in this mode rather than trust that a hidden sibling can't
+  // affect where break-before:page lands on the first section. Reinserted
+  // after printing so unchecking the box later still has a header to show.
+  const mainHdr = printOutput.querySelector(':scope > .print-hdr-main');
+  if(useBreaks && mainHdr){{
+    mainHdr.remove();
+    window.addEventListener('afterprint', () => {{ printOutput.prepend(mainHdr); }}, {{ once:true }});
+  }}
   document.querySelectorAll('#print-output .print-section').forEach(sec => {{
     let total = 0;
     let anyVisible = false;
