@@ -620,10 +620,10 @@ body{{background:#07070f;color:#ddd;font-family:'Courier New',monospace;font-siz
             font-size:10px;color:#888;letter-spacing:1px;text-transform:uppercase;cursor:pointer}}
 .print-opt input{{cursor:pointer}}
 #print-select-row{{display:flex;gap:4px;margin:2px 8px 6px}}
-#print-select-all{{flex:0 0 auto;padding:4px 8px;background:transparent;border:1px solid #4af;
-                    color:#4af;cursor:pointer;font-family:inherit;font-size:10px;
-                    letter-spacing:1px;text-transform:uppercase}}
-#print-select-all:hover{{background:#1a2a44}}
+#print-select-all,#print-deselect-all{{flex:0 0 auto;padding:4px 8px;background:transparent;
+                    border:1px solid #4af;color:#4af;cursor:pointer;font-family:inherit;
+                    font-size:10px;letter-spacing:1px;text-transform:uppercase}}
+#print-select-all:hover,#print-deselect-all:hover{{background:#1a2a44}}
 #print-select-dept{{flex:1 1 auto;min-width:0;background:#0d1a2b;border:1px solid #222;
                      color:#888;font-family:inherit;font-size:10px;padding:4px;cursor:pointer}}
 #print-btn{{margin:2px 8px 8px;padding:5px 4px;background:transparent;border:1px solid #4af;
@@ -676,8 +676,8 @@ thead th{{position:sticky;top:0;z-index:20;background:#0d0d20;color:#7799ff;font
 [data-theme="light"] .view-btn.active{{background:#dde4f0;border-color:#0066cc;color:#0066cc}}
 [data-theme="light"] .view-btn:hover{{background:#c8d8f0;color:#111;border-color:#0066cc}}
 [data-theme="light"] .print-opt{{color:#555}}
-[data-theme="light"] #print-select-all{{border-color:#0066cc;color:#0066cc}}
-[data-theme="light"] #print-select-all:hover{{background:#c0d8f0}}
+[data-theme="light"] #print-select-all,[data-theme="light"] #print-deselect-all{{border-color:#0066cc;color:#0066cc}}
+[data-theme="light"] #print-select-all:hover,[data-theme="light"] #print-deselect-all:hover{{background:#c0d8f0}}
 [data-theme="light"] #print-select-dept{{background:#dde4f0;border-color:#ccc;color:#555}}
 [data-theme="light"] #print-btn{{border-color:#0066cc;color:#0066cc}}
 [data-theme="light"] #print-btn:hover{{background:#c0d8f0}}
@@ -758,6 +758,7 @@ thead th{{position:sticky;top:0;z-index:20;background:#0d0d20;color:#7799ff;font
   <div class="sidebar-hdr" data-toggle="print-select-row,print-list,print-pagebreak-opt,print-btn">Print Report<span class="chev">&#9662;</span></div>
   <div id="print-select-row">
     <button id="print-select-all">All</button>
+    <button id="print-deselect-all">None</button>
     <select id="print-select-dept"><option value="">Dept&hellip;</option></select>
   </div>
   <div id="print-list"></div>
@@ -1019,6 +1020,11 @@ function syncPrintListButtons(){{
 
 document.getElementById('print-select-all').addEventListener('click', () => {{
   allWCs.forEach(wc => printWCs.add(wc));
+  syncPrintListButtons();
+}});
+
+document.getElementById('print-deselect-all').addEventListener('click', () => {{
+  printWCs.clear();
   syncPrintListButtons();
 }});
 
