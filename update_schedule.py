@@ -584,6 +584,9 @@ body{{background:#07070f;color:#ddd;font-family:'Courier New',monospace;font-siz
          text-align:left;transition:background 0.15s,border-color 0.15s,color 0.15s}}
 .view-btn.active{{background:#0d1a2b;border-color:#4af;color:#4af}}
 .view-btn:hover{{background:#1a2233;color:#ddd;border-color:#4af}}
+.print-opt{{display:flex;align-items:center;gap:6px;margin:2px 8px 6px;padding:0 4px;
+            font-size:10px;color:#888;letter-spacing:1px;text-transform:uppercase;cursor:pointer}}
+.print-opt input{{cursor:pointer}}
 #print-btn{{margin:2px 8px 8px;padding:5px 4px;background:transparent;border:1px solid #4af;
          color:#4af;cursor:pointer;font-family:inherit;font-size:11px;
          letter-spacing:1px;text-transform:uppercase}}
@@ -633,6 +636,7 @@ thead th{{position:sticky;top:0;z-index:20;background:#0d0d20;color:#7799ff;font
 [data-theme="light"] .view-btn{{background:#dde4f0;border-color:#ccc;color:#555}}
 [data-theme="light"] .view-btn.active{{background:#dde4f0;border-color:#0066cc;color:#0066cc}}
 [data-theme="light"] .view-btn:hover{{background:#c8d8f0;color:#111;border-color:#0066cc}}
+[data-theme="light"] .print-opt{{color:#555}}
 [data-theme="light"] #print-btn{{border-color:#0066cc;color:#0066cc}}
 [data-theme="light"] #print-btn:hover{{background:#c0d8f0}}
 [data-theme="light"] #print-btn:disabled:hover{{background:transparent}}
@@ -660,7 +664,7 @@ thead th{{position:sticky;top:0;z-index:20;background:#0d0d20;color:#7799ff;font
   #hdr, #sidebar, #wrap {{ display:none }}
   body {{ overflow:visible; height:auto; background:#fff; color:#000 }}
   #print-output {{ display:block }}
-  .print-section {{ break-before:page }}
+  #print-output.pagebreak-per-wc .print-section {{ break-before:page }}
   .print-sec-hdr {{ font-weight:bold; font-size:11px; border-bottom:1px solid #000; padding:4px 0; margin-top:4px }}
   .print-table {{ width:100%; border-collapse:collapse; font-size:10px; color:#000 }}
   .print-table th {{ text-align:left; font-size:9px; border-bottom:1px solid #000; padding:3px 4px;
@@ -702,8 +706,12 @@ thead th{{position:sticky;top:0;z-index:20;background:#0d0d20;color:#7799ff;font
   <div id="view-list"></div>
   <div class="sidebar-hdr" data-toggle="mode-list">Schedule Mode<span class="chev">&#9662;</span></div>
   <div id="mode-list"></div>
-  <div class="sidebar-hdr" data-toggle="print-list,print-btn">Print Report<span class="chev">&#9662;</span></div>
+  <div class="sidebar-hdr" data-toggle="print-list,print-pagebreak-opt,print-btn">Print Report<span class="chev">&#9662;</span></div>
   <div id="print-list"></div>
+  <label id="print-pagebreak-opt" class="print-opt">
+    <input type="checkbox" id="print-pagebreak">
+    Page break per WC
+  </label>
   <button id="print-btn" disabled>Print</button>
 </div>
 <div id="wrap">
@@ -921,7 +929,17 @@ function syncPrintButton(){{
   document.getElementById('print-btn').disabled = printWCs.size === 0;
 }}
 
+// Off by default: the real Foreman's Report lets work centers flow
+// continuously, only breaking pages where content happens to overflow.
+// Forcing a fresh page per WC is opt-in, persisted like the theme toggle.
+const pagebreakCb = document.getElementById('print-pagebreak');
+try {{ pagebreakCb.checked = localStorage.getItem('print_pagebreak') === '1'; }} catch(e) {{}}
+pagebreakCb.addEventListener('change', () => {{
+  try {{ localStorage.setItem('print_pagebreak', pagebreakCb.checked ? '1' : '0'); }} catch(e) {{}}
+}});
+
 document.getElementById('print-btn').addEventListener('click', () => {{
+  document.getElementById('print-output').classList.toggle('pagebreak-per-wc', pagebreakCb.checked);
   document.querySelectorAll('#print-output .print-section').forEach(sec => {{
     let total = 0;
     let anyVisible = false;
