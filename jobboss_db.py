@@ -64,7 +64,7 @@ SELECT
     j.Job, j.Rev, j.Customer, j.Part_Number, j.Description,
     j.Make_Quantity, j.Priority,
     jo.Operation_Service                    AS Oper,
-    jo.Job_OperationKey                     AS Op_Key,
+    jo.Job_Operation                         AS Op_Key,
     jo.Description                          AS Oper_Desc,
     jo.Sched_Start, jo.Sched_End,
     cur.Curr_WC,
@@ -260,11 +260,14 @@ def fetch_from_db():
             'promised': '',
             'customer': r['Customer'] or '',
             'oper': r['Oper'] or '',
-            # JobBoss's own internal numeric key for this operation row (what
-            # a shop-floor scanner should actually read, per direct JobBoss
-            # schema reference in jobboss-tables.xlsx) -- distinct from
-            # Operation_Service above, which is just the human-facing label
-            # (e.g. "OP1") and isn't guaranteed unique across jobs.
+            # Job_Operation.Job_Operation -- yes, a column named the same as
+            # its own table -- is the real "Operation Key" JobBoss's own UI
+            # shows, confirmed against jobboss-tables.xlsx's schema dump and
+            # live data for a real job; the table also has a *different*
+            # column, Job_OperationKey, which looked like the obvious match
+            # by name but is NOT it. Distinct from Operation_Service above
+            # (the human-facing "OP1"-style label), which isn't guaranteed
+            # unique across jobs.
             'op_key': str(r['Op_Key']) if r['Op_Key'] is not None else '',
             'oper_desc': r['Oper_Desc'] or '',
             'sch_end': _fmt_date(r['Sched_End']),
