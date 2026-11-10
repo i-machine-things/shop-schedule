@@ -17,6 +17,11 @@ an install only updates itself to a version someone deliberately cut and
 reviewed. Fails safe throughout: any error (network, git, permissions) is
 logged to auto_update.log and the install is left exactly as it was, never
 on a half-updated checkout.
+
+Off by default -- this changes a production kiosk's running code
+unattended, with no one necessarily watching. Requires explicit opt-in via
+AUTO_UPDATE_ENABLED=1 in .env; the daily cron/task entry is installed either
+way, but this script no-ops immediately unless that's set.
 """
 
 import json
@@ -29,11 +34,34 @@ import urllib.request
 REPO = "i-machine-things/shop-schedule"
 INSTALL_DIR = os.path.dirname(os.path.abspath(__file__))
 LOG_PATH = os.path.join(INSTALL_DIR, 'auto_update.log')
+ENV_PATH = os.path.join(INSTALL_DIR, '.env')
 
 logging.basicConfig(
     filename=LOG_PATH, level=logging.INFO,
     format='%(asctime)s %(levelname)s %(message)s',
 )
+
+
+def _read_env_flag(key, env_path=ENV_PATH):
+    """A single KEY=value line read straight from .env, without needing a
+    shell to source it first -- unlike update_schedule.py (always invoked
+    through run_update.sh/.ps1, which already load .env), this script is
+    invoked directly from cron/Task Scheduler. Good enough for this one
+    plain flag (strips quotes, skips comments/blank lines); not a general
+    .env parser -- install.sh's own _get_env does the equivalent in bash.
+    """
+    try:
+        with open(env_path, encoding='utf-8') as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith('#') or '=' not in line:
+                    continue
+                k, _, v = line.partition('=')
+                if k.strip() == key:
+                    return v.strip().strip('"').strip("'")
+    except FileNotFoundError:
+        pass
+    return ''
 
 
 def _run(cmd):
@@ -95,6 +123,10 @@ def restart_server():
 
 
 def main():
+    if _read_env_flag('AUTO_UPDATE_ENABLED', ENV_PATH) != '1':
+        logging.info("AUTO_UPDATE_ENABLED is not set to 1 in .env -- skipping (off by default).")
+        return
+
     try:
         latest = latest_release_tag()
     except Exception as exc:
