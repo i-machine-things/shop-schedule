@@ -1058,7 +1058,7 @@ function renderBarcodes(){{
     // je["oper"] (and in principle je["job"]) can be a blank string -- remove
     // the placeholder entirely rather than leaving an empty display:block
     // span with its own margin sitting in the row.
-    if (el.dataset.code) el.outerHTML = code128Svg(el.dataset.code, 2, 22);
+    if (el.dataset.code) el.outerHTML = code128Svg(el.dataset.code, 1, 10);
     else el.remove();
   }});
 }}
