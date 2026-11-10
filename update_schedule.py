@@ -432,7 +432,8 @@ def generate_html(data, out_path, *, kiosk=False, gen_ts=None):
         <td><span class="p-job">{je["job"]}</span>'''
                 f'''<span class="p-barcode" data-code="{je["job"]}"></span>{je["customer"]}<br>'''
                 f'''{je["part"]}<br><span class="p-desc">{je["description"]}</span></td>
-        <td>{je["rev"]} {je["oper"]}<span class="p-barcode" data-code="{je["op_key"]}"></span></td>
+        <td>{je["rev"]}</td>
+        <td>{je["oper"]}<span class="p-barcode" data-code="{je["op_key"]}"></span></td>
         <td class="p-desc">{je["oper_desc"]}</td>
         <td class="c">{je["make_qty"]}</td>
         <td class="c">{je["sch_start"]}<br>{je["sch_end"]}</td>
@@ -452,7 +453,8 @@ def generate_html(data, out_path, *, kiosk=False, gen_ts=None):
         <thead>
           <tr>
             <th>Job / Customer / Part</th>
-            <th>Rev / Oper</th>
+            <th>Rev</th>
+            <th>Oper</th>
             <th>Oper Desc</th>
             <th>Make Qty</th>
             <th>Sch Start / End</th>
@@ -466,7 +468,7 @@ def generate_html(data, out_path, *, kiosk=False, gen_ts=None):
         </tbody>
         <tfoot>
           <tr class="print-total-row">
-            <td colspan="5">Total Rem Hrs:</td>
+            <td colspan="6">Total Rem Hrs:</td>
             <td class="c print-total-val"></td>
             <td colspan="2"></td>
           </tr>
