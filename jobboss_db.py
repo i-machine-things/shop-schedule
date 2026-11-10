@@ -64,6 +64,7 @@ SELECT
     j.Job, j.Rev, j.Customer, j.Part_Number, j.Description,
     j.Make_Quantity, j.Priority,
     jo.Operation_Service                    AS Oper,
+    jo.Job_OperationKey                     AS Op_Key,
     jo.Description                          AS Oper_Desc,
     jo.Sched_Start, jo.Sched_End,
     cur.Curr_WC,
@@ -259,6 +260,12 @@ def fetch_from_db():
             'promised': '',
             'customer': r['Customer'] or '',
             'oper': r['Oper'] or '',
+            # JobBoss's own internal numeric key for this operation row (what
+            # a shop-floor scanner should actually read, per direct JobBoss
+            # schema reference in jobboss-tables.xlsx) -- distinct from
+            # Operation_Service above, which is just the human-facing label
+            # (e.g. "OP1") and isn't guaranteed unique across jobs.
+            'op_key': str(r['Op_Key']) if r['Op_Key'] is not None else '',
             'oper_desc': r['Oper_Desc'] or '',
             'sch_end': _fmt_date(r['Sched_End']),
             'num_ops': str(r['NumOps_Ahead']) if r['NumOps_Ahead'] is not None else '',
