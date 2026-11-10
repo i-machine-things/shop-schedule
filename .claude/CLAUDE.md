@@ -8,7 +8,7 @@ You are a senior software developer. These rules override your default behavior.
 
 **Shop Schedule** — a kiosk display for a manufacturer's shop floor, running on a Linux Single Board Computer or a Windows PC.
 
-- `update_schedule.py` runs every 15 minutes (cron on Linux, Task Scheduler on Windows) and either queries JobBoss directly (preferred — `jobboss_db.py`) or parses a Foreman's Report PDF (Gmail poll, manual drop into `incoming/`, or web upload via `options.html`)
+- `update_schedule.py` runs every 15 minutes (cron on Linux, Task Scheduler on Windows) and either queries JobBoss directly (preferred — `jobboss_db.py`) or parses a Foreman's Report PDF already sitting at `PDF_PATH` (manual drop into `incoming/`, or web upload via `options.html`)
 - Generates `public/schedule.html` (static view) and `public/kiosk.html` (auto-scrolling, with page rotation) from the same data, plus `public/schedule.json` for non-browser clients
 - Both generated pages share one template with a sidebar: Work Center filter, Schedule Window (date range), Schedule Mode (Standard/WC Dispatch), and a Print Report tool (pick work centers, print a dedicated plain-print layout, independent of both the on-screen Work Center filter and the JobBoss Foreman's Report's own print layout) — all client-side, no server round-trip. Schedule Window, Schedule Mode, and sidebar collapse state persist via `localStorage`; the Work Center filter and Print Report's own work-center selection are one-off choices that reset on reload or schedule refresh. This template is the thing most PRs touch; re-check this overview after any PR that changes it materially.
 - `server.py` serves `public/` plus a small upload/config API (`/api/upload/*`, `/api/pages`, `/api/dept-colors`) — not just a static file server
@@ -93,10 +93,10 @@ Rules:
 
 Before pushing any commit that touches `update_schedule.py`, `run_update.sh`, or HTML generation:
 
-1. Run the script against a real or sample PDF to verify parsing succeeds:
+1. Run the script against a real or sample PDF to verify parsing succeeds (with `JOBBOSS_DB_*` unset/not configured, so it takes the PDF-parsing path):
    ```bash
-   GMAIL_USER='' python3 update_schedule.py
-   # (skips email fetch; regenerates schedule.html from last_report.pdf if present)
+   python3 update_schedule.py
+   # regenerates schedule.html from whatever PDF already sits at PDF_PATH (e.g. last_report.pdf)
    ```
 2. Open `schedule.html` in a browser and confirm the table renders correctly — departments, job rows, overdue highlighting.
 3. If you changed cron/service config, verify the syntax is valid before committing.
