@@ -21,6 +21,7 @@ Key files (see `README.md`'s Files table for the complete list):
 - `jobboss_db.py` — JobBoss DB source
 - `server.py` — HTTP server and upload/config API
 - `process_drop.py` — drop-dir PDF ingestion
+- `auto_update.py` — daily check for a new tagged release; updates the checkout and restarts `server.py` if one exists
 - `run_update.sh` / `run_update.ps1` — cron/Task Scheduler wrapper, loads `.env`
 - `install.sh` / `install.ps1` — one-time device setup
 - `foreman-kiosk.service` / `kiosk-launch.ps1` — kiosk display launch

@@ -161,6 +161,18 @@ Register-ScheduledTask -TaskName 'ShopScheduleUpdate' -Action $UpdateAction -Tri
     -User 'SYSTEM' -RunLevel Highest -Force | Out-Null
 Start-ScheduledTask -TaskName 'ShopScheduleUpdate'
 
+# --- Release auto-updater: scheduled task, daily at 03:00 -------------------
+# Runs as SYSTEM (like ShopScheduleServer/Update above), which is what lets
+# auto_update.py freely Stop-ScheduledTask/Start-ScheduledTask on
+# ShopScheduleServer after updating -- no separate privilege setup needed,
+# unlike install.sh's sudoers rule for the same restart on Linux.
+
+$AutoUpdateAction = New-ScheduledTaskAction -Execute $VenvPython `
+    -Argument "`"$(Join-Path $InstallDir 'auto_update.py')`"" -WorkingDirectory $InstallDir
+$AutoUpdateTrigger = New-ScheduledTaskTrigger -Daily -At '3:00am'
+Register-ScheduledTask -TaskName 'ShopScheduleAutoUpdate' -Action $AutoUpdateAction -Trigger $AutoUpdateTrigger `
+    -User 'SYSTEM' -RunLevel Highest -Force | Out-Null
+
 # --- Local kiosk display: scheduled task, at logon -------------------------
 
 $ChromePaths = @(
