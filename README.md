@@ -179,6 +179,16 @@ Below the work center filter, two independent controls narrow what's displayed �
 
 **Schedule Mode** (Standard / WC Dispatch) is a separate toggle, not another day count. In **WC Dispatch**, within each work center's own section, only jobs whose *current* operation (JobBoss's `Curr_WC`) is actually sitting at that work center right now are shown — i.e. `wc == curr_wc` — rather than every job scheduled to eventually pass through it. It combines with whatever Schedule Window is selected rather than replacing it (e.g. "1 Week" + WC Dispatch shows only ready-to-run jobs due within a week). Useful for an operator who wants "what can I pick up at my station right now" instead of "what's in my station's future queue."
 
+## Print report
+
+Below Schedule Mode, **Print Report** lets you pick one or more work centers and print a physical copy — a run list to hand to a station rather than something read off the screen.
+
+Tapping a work center toggles it in or out of the print selection (independent of the Work Center filter above it); **Print** opens the browser's print dialog once at least one is selected. The selection isn't saved across reloads — it's a one-off choice, not a display preference like the other sidebar controls.
+
+What prints mirrors what's currently on screen: the Schedule Window and Schedule Mode filters still apply, so printing "1 Week" + WC Dispatch prints only the jobs that filter leaves visible. By default, work centers flow continuously and a page break occurs only where content overflows. Enable **One page per workcenter** (saved per browser) to start each selected work center on its own page. In that mode, the report header repeats on every work center's first page.
+
+Each job row also prints a Code128 barcode under the job number, and another under the Rev/Oper cell — the second one encodes JobBoss's own internal Operation Key (a numeric ID, not the "OP1"-style label shown as text), so scanning it identifies the exact operation row rather than an op label that isn't guaranteed unique across jobs. DB-sourced only: a PDF-parsed report has no access to that internal key, so that barcode is simply omitted there. Both barcodes are generated client-side (no server round-trip, no third-party JS) and render once at page load and again whenever the schedule refreshes.
+
 ## Page rotation
 
 The kiosk can rotate through additional web pages between schedule views. After the schedule has scrolled a configurable number of times, it fades to the next page, holds it, then fades back.
