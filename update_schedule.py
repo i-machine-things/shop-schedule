@@ -1055,7 +1055,11 @@ function code128Svg(text, moduleWidth, height){{
 // #print-output's innerHTML with freshly-generated (unrendered) markup.
 function renderBarcodes(){{
   document.querySelectorAll('#print-output .p-barcode[data-code]').forEach(el => {{
+    // je["oper"] (and in principle je["job"]) can be a blank string -- remove
+    // the placeholder entirely rather than leaving an empty display:block
+    // span with its own margin sitting in the row.
     if (el.dataset.code) el.outerHTML = code128Svg(el.dataset.code, 2, 22);
+    else el.remove();
   }});
 }}
 
