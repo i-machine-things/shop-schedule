@@ -110,7 +110,9 @@ Tag releases using `vMAJOR.MINOR.PATCH`:
 - **MINOR** — new features that do not break existing functionality
 - **PATCH** — bug fixes, typo corrections, minor improvements
 
-This project has no automated CI build pipeline. Releases are git tags only.
+### Release Workflow
+
+Pushing a `v*` tag to `master` automatically triggers `.github/workflows/release.yml`, which verifies the tag is descended from `master`, then creates a GitHub Release for that tag with auto-generated notes (`gh release create --generate-notes`). No build artifacts -- the device deploys by pulling the tag directly (see "Deployment after tagging" below) -- so the release exists for changelog/visibility, not distribution.
 
 **To cut a release:**
 ```bash

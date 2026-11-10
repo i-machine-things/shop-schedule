@@ -1,0 +1,67 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to rehearse release notes for (rehearsal only -- does not publish)'
+        required: true
+
+jobs:
+  # Only meaningful for a real tag push -- a workflow_dispatch rehearsal has
+  # no tag ref to check, so this step just no-ops for that event instead.
+  verify-master-ancestry:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Verify tag is descended from master
+        if: github.event_name == 'push'
+        run: |
+          git fetch origin master
+          if ! git merge-base --is-ancestor origin/master "$GITHUB_SHA"; then
+            echo "ERROR: Tag $GITHUB_REF_NAME is not descended from master. Only tag from master."
+            exit 1
+          fi
+          echo "OK: $GITHUB_REF_NAME is descended from master"
+
+  create-release:
+    needs: verify-master-ancestry
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Resolve tag
+        id: tag
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "tag=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      # Rehearsal: prove the release-notes generation works without creating
+      # a real release -- a pushed tag is public and hard to take back.
+      - name: Rehearsal -- preview release notes only, publish nothing
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api "repos/${{ github.repository }}/releases/generate-notes" \
+            -f tag_name="${{ steps.tag.outputs.tag }}" \
+            --jq .body >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Publish release
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "${{ steps.tag.outputs.tag }}" --title "${{ steps.tag.outputs.tag }}" --generate-notes
