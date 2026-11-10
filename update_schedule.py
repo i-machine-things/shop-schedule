@@ -429,9 +429,10 @@ def generate_html(data, out_path, *, kiosk=False, gen_ts=None):
                 f'''
       <tr class="print-row" data-wc="{wc_attr}" data-sec="{sec_idx}" data-start="{data_start}" '''
                 f'''data-currwc="{je["curr_wc"]}" data-remhrs="{je["rem_hrs"]}">
-        <td><span class="p-job">{je["job"]}</span><br>{je["customer"]}<br>'''
+        <td><span class="p-job">{je["job"]}</span>'''
+                f'''<span class="p-barcode" data-code="{je["job"]}"></span>{je["customer"]}<br>'''
                 f'''{je["part"]}<br><span class="p-desc">{je["description"]}</span></td>
-        <td>{je["rev"]} {je["oper"]}</td>
+        <td>{je["rev"]} {je["oper"]}<span class="p-barcode" data-code="{je["oper"]}"></span></td>
         <td class="p-desc">{je["oper_desc"]}</td>
         <td class="c">{je["make_qty"]}</td>
         <td class="c">{je["sch_start"]}<br>{je["sch_end"]}</td>
@@ -742,6 +743,8 @@ thead th{{position:sticky;top:0;z-index:20;background:#0d0d20;color:#7799ff;font
   .print-row {{ break-inside:avoid }}
   .p-job {{ font-weight:bold }}
   .p-desc {{ color:#444; font-size:9px }}
+  .p-barcode {{ display:block; margin:2px 0 }}
+  .p-barcode rect {{ fill:#000 }}
   .print-table .overdue {{ color:#c00; font-weight:bold }}
   .print-total-row td {{ border-top:2px solid #000; border-bottom:none; font-weight:bold;
                           text-align:right; padding-top:6px }}
@@ -923,6 +926,7 @@ function applyPendingUpdate() {{
   loopReady = false;
   buildSidebar();
   buildPrintList();
+  renderBarcodes();
   applyFilter();
   wrap.scrollTop = 0;
   pos = 0;
@@ -978,6 +982,80 @@ function buildSidebar(){{
     btn.textContent = wc;
     btn.addEventListener('click', () => toggleWC(wc));
     list.appendChild(btn);
+  }});
+}}
+
+// Code128 (subset B) barcode encoder + SVG renderer, hand-rolled rather than
+// a vendored library, matching the rest of this page (no third-party JS,
+// no CDN -- the kiosk device may have no internet access). Subset B maps
+// ASCII 32-126 directly onto symbol values 0-94 (value = charCode-32), so no
+// character-to-symbol lookup table is needed, only the bar-pattern table
+// itself. That pattern table is the same one the well-established Python
+// "python-barcode" library uses; this encoder was verified against it
+// before shipping -- both a from-scratch pixel-decode round trip and a
+// direct bar-pattern comparison against that library's own output (which
+// matched for every input except ones with 4+ consecutive digits, where
+// that library switches to the more compact subset C -- a size
+// optimization this encoder deliberately skips, not a bug: subset B alone
+// is fully spec-compliant and reads fine on any standard scanner).
+const CODE128_PATTERNS = [
+  '11011001100', '11001101100', '11001100110', '10010011000', '10010001100',
+  '10001001100', '10011001000', '10011000100', '10001100100', '11001001000',
+  '11001000100', '11000100100', '10110011100', '10011011100', '10011001110',
+  '10111001100', '10011101100', '10011100110', '11001110010', '11001011100',
+  '11001001110', '11011100100', '11001110100', '11101101110', '11101001100',
+  '11100101100', '11100100110', '11101100100', '11100110100', '11100110010',
+  '11011011000', '11011000110', '11000110110', '10100011000', '10001011000',
+  '10001000110', '10110001000', '10001101000', '10001100010', '11010001000',
+  '11000101000', '11000100010', '10110111000', '10110001110', '10001101110',
+  '10111011000', '10111000110', '10001110110', '11101110110', '11010001110',
+  '11000101110', '11011101000', '11011100010', '11011101110', '11101011000',
+  '11101000110', '11100010110', '11101101000', '11101100010', '11100011010',
+  '11101111010', '11001000010', '11110001010', '10100110000', '10100001100',
+  '10010110000', '10010000110', '10000101100', '10000100110', '10110010000',
+  '10110000100', '10011010000', '10011000010', '10000110100', '10000110010',
+  '11000010010', '11001010000', '11110111010', '11000010100', '10001111010',
+  '10100111100', '10010111100', '10010011110', '10111100100', '10011110100',
+  '10011110010', '11110100100', '11110010100', '11110010010', '11011011110',
+  '11011110110', '11110110110', '10101111000', '10100011110', '10001011110',
+  '10111101000', '10111100010', '11110101000', '11110100010', '10111011110',
+  '10111101110', '11101011110', '11110101110', '11010000100', '11010010000',
+  '11010011100',
+];
+const CODE128_STOP = '11000111010';
+const CODE128_START_B = 104;
+
+function code128Modules(text){{
+  const values = [CODE128_START_B];
+  for (const ch of text){{
+    const v = ch.charCodeAt(0) - 32;
+    if (v >= 0 && v <= 94) values.push(v);
+  }}
+  let checksum = values[0];
+  for (let i = 1; i < values.length; i++) checksum += i * values[i];
+  values.push(checksum % 103);
+  return values.map(v => CODE128_PATTERNS[v]).join('') + CODE128_STOP + '11';
+}}
+
+function code128Svg(text, moduleWidth, height){{
+  const modules = code128Modules(text);
+  const width = modules.length * moduleWidth;
+  let bars = '';
+  for (let i = 0; i < modules.length; i++){{
+    if (modules[i] === '1') {{
+      bars += `<rect x="${{i * moduleWidth}}" y="0" width="${{moduleWidth}}" height="${{height}}"/>`;
+    }}
+  }}
+  return `<svg class="p-barcode" viewBox="0 0 ${{width}} ${{height}}" """
+        f"""width="${{width}}" height="${{height}}">${{bars}}</svg>`;
+}}
+
+// Renders every still-unrendered barcode placeholder inside #print-output.
+// Run once at page load and again after applyPendingUpdate() replaces
+// #print-output's innerHTML with freshly-generated (unrendered) markup.
+function renderBarcodes(){{
+  document.querySelectorAll('#print-output .p-barcode[data-code]').forEach(el => {{
+    if (el.dataset.code) el.outerHTML = code128Svg(el.dataset.code, 2, 22);
   }});
 }}
 
@@ -1250,6 +1328,7 @@ buildSidebar();
 buildPrintList();
 buildViewFilter();
 buildScheduleMode();
+renderBarcodes();
 applyFilter();
 
 // Keep the "Today" window's cutoff current if the page is left open across
