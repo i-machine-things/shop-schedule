@@ -161,6 +161,24 @@ Register-ScheduledTask -TaskName 'ShopScheduleUpdate' -Action $UpdateAction -Tri
     -User 'SYSTEM' -RunLevel Highest -Force | Out-Null
 Start-ScheduledTask -TaskName 'ShopScheduleUpdate'
 
+# --- Release auto-updater: scheduled task, daily at 03:00 -------------------
+# Runs as SYSTEM (like ShopScheduleServer/Update above), which is what lets
+# auto_update.py freely Stop-ScheduledTask/Start-ScheduledTask on
+# ShopScheduleServer after updating -- no separate privilege setup needed,
+# unlike install.sh's sudoers rule for the same restart on Linux.
+
+$AutoUpdateAction = New-ScheduledTaskAction -Execute $VenvPython `
+    -Argument "`"$(Join-Path $InstallDir 'auto_update.py')`"" -WorkingDirectory $InstallDir
+$AutoUpdateTrigger = New-ScheduledTaskTrigger -Daily -At '3:00am'
+# StartWhenAvailable: a 3am-off PC still gets today's check once it's back on.
+# ExecutionTimeLimit: the default is 72 hours -- git fetch has no timeout of
+# its own, so cap the whole task well below that instead of letting a hung
+# fetch sit there indefinitely.
+$AutoUpdateSettings = New-ScheduledTaskSettingsSet -StartWhenAvailable `
+    -ExecutionTimeLimit (New-TimeSpan -Minutes 30)
+Register-ScheduledTask -TaskName 'ShopScheduleAutoUpdate' -Action $AutoUpdateAction -Trigger $AutoUpdateTrigger `
+    -Settings $AutoUpdateSettings -User 'SYSTEM' -RunLevel Highest -Force | Out-Null
+
 # --- Local kiosk display: scheduled task, at logon -------------------------
 
 $ChromePaths = @(

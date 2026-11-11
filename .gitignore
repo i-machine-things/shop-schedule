@@ -32,3 +32,6 @@ __pycache__/
 # db files
 *.db
 public/dept_colors.json
+
+# Runtime logs (shop-schedule.log on Windows, auto_update.log on both platforms)
+*.log

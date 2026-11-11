@@ -1,0 +1,212 @@
+#!/usr/bin/env python3
+"""Check GitHub for the latest tagged release and update this install's git
+checkout if a newer tag exists, then restart the HTTP server service so new
+Python code takes effect.
+
+update_schedule.py needs no restart -- the 15-minute cron/Task Scheduler
+cycle re-invokes it fresh every time, so it always runs whatever code is on
+disk at that moment. Only server.py's long-running process needs one.
+
+Run via a separate daily cron entry (Linux) / Scheduled Task (Windows) --
+install.sh/install.ps1 set this up. Deliberately not tied to the 15-minute
+schedule-data refresh: a code update is not time-sensitive the way schedule
+data is, and GitHub's unauthenticated REST API is rate-limited per IP.
+
+Tracks the latest tagged GitHub Release only (never master HEAD directly) --
+an install only updates itself to a version someone deliberately cut and
+reviewed. Fails safe throughout: any error (network, git, permissions) is
+logged to auto_update.log and the install is left exactly as it was, never
+on a half-updated checkout.
+
+Off by default -- this changes a production kiosk's running code
+unattended, with no one necessarily watching. Requires explicit opt-in via
+AUTO_UPDATE_ENABLED=1 in .env; the daily cron/task entry is installed either
+way, but this script no-ops immediately unless that's set.
+"""
+
+import json
+import logging
+import os
+import subprocess  # nosec B404 -- fixed argv lists below, no shell=True, no user input
+import sys
+import urllib.request
+
+REPO = "i-machine-things/shop-schedule"
+INSTALL_DIR = os.path.dirname(os.path.abspath(__file__))
+LOG_PATH = os.path.join(INSTALL_DIR, 'auto_update.log')
+ENV_PATH = os.path.join(INSTALL_DIR, '.env')
+
+logging.basicConfig(
+    filename=LOG_PATH, level=logging.INFO,
+    format='%(asctime)s %(levelname)s %(message)s',
+)
+
+
+def _read_env_flag(key, env_path=ENV_PATH):
+    """A single KEY=value line read straight from .env, without needing a
+    shell to source it first -- unlike update_schedule.py (always invoked
+    through run_update.sh/.ps1, which already load .env), this script is
+    invoked directly from cron/Task Scheduler. Good enough for this one
+    plain flag (strips quotes, skips comments/blank lines); not a general
+    .env parser -- install.sh's own _get_env does the equivalent in bash.
+    """
+    try:
+        with open(env_path, encoding='utf-8') as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith('#') or '=' not in line:
+                    continue
+                k, _, v = line.partition('=')
+                if k.strip() == key:
+                    return v.strip().strip('"').strip("'")
+    except FileNotFoundError:
+        pass
+    return ''
+
+
+def _run(cmd):
+    """A subprocess wrapper for commands with no shell involvement and no
+    user-controlled input -- every argv list below is a fixed, literal
+    command. Raises CalledProcessError (with stdout/stderr captured) on
+    a non-zero exit so callers can log it and bail out safely.
+    """
+    return subprocess.run(  # nosec B603 -- see docstring
+        cmd, cwd=INSTALL_DIR, check=True, capture_output=True, text=True,
+    )
+
+
+def _git(args):
+    """Run a git command scoped to trust this one checkout (INSTALL_DIR)
+    for the current invocation only -- on Windows this task runs as SYSTEM
+    via Task Scheduler, and a checkout owned by the installing user (not
+    SYSTEM) trips Git's dubious-ownership protection (safe.directory,
+    post-CVE-2022-24765), which would otherwise make every git call here
+    fail closed. `-c safe.directory=...` trusts only this path for this
+    one process; it never touches global/system gitconfig or any other
+    directory. Harmless no-op on Linux, where the cron job already runs
+    as the same user who owns the repo.
+    """
+    return _run(['git', '-c', f'safe.directory={INSTALL_DIR}'] + args)
+
+
+def latest_release_tag():
+    """The newest non-draft, non-prerelease tag (e.g. "v1.4.0"), straight
+    from GitHub's REST API -- never master HEAD, so an install only ever
+    updates itself to a version someone deliberately tagged and released.
+    """
+    url = f"https://api.github.com/repos/{REPO}/releases/latest"
+    req = urllib.request.Request(
+        url,
+        headers={
+            'Accept': 'application/vnd.github+json',
+            'User-Agent': 'shop-schedule-auto-update',
+        },
+    )
+    with urllib.request.urlopen(req, timeout=15) as resp:  # nosec B310 -- fixed https:// URL above
+        data = json.load(resp)
+    return data['tag_name']
+
+
+def current_tag():
+    """The tag HEAD currently sits on, or None if it isn't exactly at one
+    (e.g. a fresh clone of master, never yet updated to a tagged release --
+    any available tag is treated as newer in that case).
+    """
+    try:
+        return _git(['describe', '--tags', '--exact-match', 'HEAD']).stdout.strip()
+    except subprocess.CalledProcessError:
+        return None
+
+
+def _is_ancestor(older, newer):
+    """True if `older` is a git ancestor of (or the same commit as) `newer`
+    -- guards against ever checking out `latest` when it's actually an
+    older or diverged release (e.g. the real latest release was deleted or
+    re-pointed after HEAD was already updated past it), which would
+    silently downgrade the install.
+    """
+    try:
+        _git(['merge-base', '--is-ancestor', older, newer])
+        return True
+    except subprocess.CalledProcessError:
+        return False
+
+
+def restart_server():
+    """Restart the long-running HTTP server process so it picks up the new
+    code. Both platforms' install already run this (and the schedule
+    updater) with the privilege this needs -- systemd via a narrow,
+    install.sh-provisioned sudoers rule limited to exactly this one
+    command; Task Scheduler because install.ps1 registers ShopScheduleServer
+    to run as SYSTEM, so a same-box script can freely stop/start it.
+    """
+    if sys.platform == 'win32':
+        _run([
+            'powershell.exe', '-NoProfile', '-Command',
+            'Stop-ScheduledTask -TaskName ShopScheduleServer; '
+            'Start-ScheduledTask -TaskName ShopScheduleServer',
+        ])
+    else:
+        _run(['sudo', '-n', 'systemctl', 'restart', 'foreman-server'])
+
+
+def main():
+    """Entry point: no-op unless opted in, else check/update/restart, each
+    step failing safe (logged, existing checkout left untouched) so a
+    network blip or git/permissions error never leaves a half-updated install.
+    """
+    if _read_env_flag('AUTO_UPDATE_ENABLED', ENV_PATH) != '1':
+        logging.info("AUTO_UPDATE_ENABLED is not set to 1 in .env -- skipping (off by default).")
+        return
+
+    try:
+        latest = latest_release_tag()
+    except Exception as exc:
+        logging.error("Could not check latest release: %s", exc)
+        return
+
+    current = current_tag()
+    if current == latest:
+        logging.info("Already on latest (%s).", latest)
+        return
+
+    logging.info("Updating %s -> %s", current or '(untagged)', latest)
+    try:
+        _git(['fetch', '--tags', 'origin'])
+    except subprocess.CalledProcessError as exc:
+        logging.error(
+            "git fetch failed, leaving existing checkout in place: %s\n%s", exc, exc.stderr,
+        )
+        return
+
+    if current is not None and not _is_ancestor(current, latest):
+        logging.error(
+            "Refusing to update: current tag %s is not an ancestor of latest "
+            "release %s (would be a downgrade or diverged history) -- "
+            "leaving checkout as-is.", current, latest,
+        )
+        return
+
+    try:
+        _git(['checkout', latest])
+    except subprocess.CalledProcessError as exc:
+        logging.error(
+            "git checkout to %s failed, leaving existing checkout in place: %s\n%s",
+            latest, exc, exc.stderr,
+        )
+        return
+
+    try:
+        restart_server()
+    except subprocess.CalledProcessError as exc:
+        logging.error(
+            "Updated checkout to %s but server restart failed -- restart it "
+            "manually: %s\n%s", latest, exc, exc.stderr,
+        )
+        return
+
+    logging.info("Updated to %s and restarted the server successfully.", latest)
+
+
+if __name__ == '__main__':
+    main()

@@ -113,7 +113,7 @@ cd C:\shop-schedule
 .\install.ps1
 ```
 
-Sets up the same `.env`, a venv, a Task Scheduler job every 15 minutes (`ShopScheduleUpdate`), the HTTP server at boot (`ShopScheduleServer`), and a local kiosk display at logon (`ShopScheduleKiosk`, Chrome if present else Edge). The installer only prompts for `SHOP_NAME` — fill in `JOBBOSS_DB_HOST`/`NAME`/`USER`/`PASS` in `.env` yourself afterward (see [JobBoss DB source](#jobboss-db-source) below).
+Sets up the same `.env`, a venv, a Task Scheduler job every 15 minutes (`ShopScheduleUpdate`), the HTTP server at boot (`ShopScheduleServer`), a daily release check (`ShopScheduleAutoUpdate`, see [Updating](#updating) below), and a local kiosk display at logon (`ShopScheduleKiosk`, Chrome if present else Edge). The installer only prompts for `SHOP_NAME` — fill in `JOBBOSS_DB_HOST`/`NAME`/`USER`/`PASS` in `.env` yourself afterward (see [JobBoss DB source](#jobboss-db-source) below).
 
 #### Securing the DB password (Windows)
 
@@ -127,6 +127,18 @@ Sets up the same `.env`, a venv, a Task Scheduler job every 15 minutes (`ShopSch
 Rewrites `JOBBOSS_DB_PASS` in `.env` as a DPAPI-encrypted blob (`dpapi:...`); `jobboss_db.py` decrypts it transparently at connect time. Re-run it any time after changing the password — it's a no-op if already encrypted.
 
 Uses `LocalMachine` scope, not `CurrentUser`: the `ShopScheduleServer`/`ShopScheduleUpdate` scheduled tasks run as `SYSTEM`, not the account that ran this script, and `CurrentUser`-scoped DPAPI blobs only decrypt for the exact account that created them. `LocalMachine` scope means any local account on that PC *could* decrypt it, not only `SYSTEM` — still meaningfully better than the plaintext file it replaces (decryption needs local code execution on that specific machine, not just read access to `.env`), but it isn't full account-level secrecy. Windows Integrated Authentication (no stored password at all) would be stronger still, but needs the JobBoss SQL Server to allow Windows logins and a DBA-provisioned service account — out of scope here, left as a possible future option.
+
+### Updating
+
+**Off by default.** `install.sh`/`install.ps1` always set up the daily check, but `auto_update.py` does nothing unless `AUTO_UPDATE_ENABLED=1` is set in `.env` — updating a production kiosk's running code unattended, with no one necessarily watching, is opt-in on purpose. Set it once you're comfortable trusting the pipeline.
+
+Once enabled: checks GitHub once a day for the latest tagged release — never `master` directly, only a version someone deliberately tagged (see `.claude/CLAUDE.md`'s release process) — and if it's newer than what's currently checked out, pulls it (`git fetch --tags` + `git checkout <tag>`) and restarts the HTTP server so the new code takes effect. `update_schedule.py` needs no restart: the 15-minute cron/Task Scheduler cycle already re-invokes it fresh every time, so it always runs whatever's on disk.
+
+Fails safe: a failed git update leaves the existing checkout running untouched; a failed restart leaves the new code checked out but logs that the server needs a manual restart. Either way, check `auto_update.log` (next to `update_schedule.py`) if the device doesn't seem to have picked up a release you expected it to.
+
+Restarting the server needs a privilege neither platform's day-to-day update cron normally has: `install.sh` provisions a narrow, passwordless `sudo` rule scoped to exactly `systemctl restart foreman-server` (nothing broader) so the unattended cron job can do it without a password prompt it could never answer; on Windows, `ShopScheduleAutoUpdate` simply runs as `SYSTEM` like the other scheduled tasks, which can already freely stop/start `ShopScheduleServer`.
+
+To turn it back off: set `AUTO_UPDATE_ENABLED=` (blank) in `.env` — no need to touch cron/Task Scheduler. The device will then only ever update when you manually pull a new tag yourself.
 
 ## Remote access
 
@@ -238,6 +250,7 @@ python3 process_drop.py
 | `jobboss_db.py` | JobBoss DB source — connects, queries, shapes data for `generate_html()`/`generate_json()` |
 | `public/schedule.json` | Same schedule data as JSON, for non-browser clients (gitignored, regenerated every run) |
 | `process_drop.py` | Drop-dir handler — picks up PDFs from `incoming/` and regenerates the schedule |
+| `auto_update.py` | Daily release check — updates this install's git checkout to the latest tagged release and restarts `server.py`, if there is one (see [Updating](#updating)) |
 | `server.py` | HTTP server — serves `public/` and handles file-upload API (`/api/upload/*`, `/api/raw/*`) |
 | `run_update.sh` | Cron wrapper (Linux) — loads `.env` and calls the script |
 | `install.sh` | One-time server setup (Linux): deps, cron job, kiosk and HTTP server services |
