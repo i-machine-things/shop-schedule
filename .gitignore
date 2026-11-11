@@ -32,3 +32,6 @@ __pycache__/
 # db files
 *.db
 public/dept_colors.json
+
+# Scratch renders/screenshots dropped here for human review during testing
+test-output/
