@@ -451,6 +451,11 @@ def generate_html(data, out_path, *, kiosk=False, gen_ts=None):
       <div class="print-sec-hdr">Department&nbsp;&nbsp;{dept_e}&nbsp;&nbsp;&nbsp;&nbsp;'''
             f'''WC Group:&nbsp;&nbsp;{wcg_e}&nbsp;&nbsp;&nbsp;&nbsp;WC:&nbsp;{wc_attr}</div>
       <table class="print-table">
+        <colgroup>
+          <col style="width:33%"><col style="width:4%"><col style="width:10%">
+          <col style="width:11%"><col style="width:6%"><col style="width:11%">
+          <col style="width:10%"><col style="width:6%"><col style="width:9%">
+        </colgroup>
         <thead>
           <tr>
             <th>Job / Customer / Part</th>
@@ -761,7 +766,13 @@ thead th{{position:sticky;top:0;z-index:20;background:#0d0d20;color:#7799ff;font
 #print-output.pagebreak-per-wc .print-hdr-main {{ display:none }}
 #print-output.pagebreak-per-wc .print-hdr-section {{ display:flex }}
 .print-sec-hdr {{ font-weight:bold; font-size:11px; border-bottom:1px solid #000; padding:4px 0; margin-top:4px }}
-.print-table {{ width:100%; border-collapse:collapse; font-size:10px; color:#000 }}
+/* table-layout:fixed + the <colgroup> above locks column widths to fixed
+   percentages instead of sizing them from each table's own cell content --
+   needed so a chunk table built from a subset of rows (see
+   paginatePrintOutput()) can't wrap text differently than the original
+   table did, which would silently invalidate the row heights that were
+   measured against the original. */
+.print-table {{ width:100%; table-layout:fixed; border-collapse:collapse; font-size:10px; color:#000 }}
 .print-table th {{ text-align:left; font-size:9px; border-bottom:1px solid #000; padding:3px 4px;
                     background:#fff; color:#000; position:static }}
 .print-table td {{ padding:3px 4px; border-bottom:1px solid #ccc; vertical-align:top }}
@@ -776,7 +787,7 @@ thead th{{position:sticky;top:0;z-index:20;background:#0d0d20;color:#7799ff;font
 .print-total-row td {{ border-top:2px solid #000; border-bottom:none; font-weight:bold;
                         text-align:right; padding-top:6px }}
 @media print {{
-  @page {{ margin: 0.5in }}
+  @page {{ size: letter portrait; margin: 0.5in }}
   #hdr, #sidebar, #wrap {{ display:none }}
   body {{ overflow:visible; height:auto; background:#fff; color:#000 }}
   #print-output {{ position:static; width:auto; visibility:visible; pointer-events:auto }}
@@ -1206,12 +1217,18 @@ function printDateRangeText(){{
 // (which is why #print-output's print styling isn't gated behind @media
 // print: it needs to be live during this ordinary-screen-context pass) and
 // stamps an ordinary .print-page-num element before each one.
-// 10in content height (0.5in @page margin, 96 CSS px/in) minus ~14px for the
-// per-page label and a safety margin: getBoundingClientRect() on an element
-// doesn't include its own margins, and several small per-element shortfalls
-// like that compound once enough rows/headers share a page -- empirically
-// tuned against a worst-case render (three sections packed onto one page)
-// rather than derived exactly, so this errs conservative on purpose.
+// 10in content height (Letter, 0.5in @page margin, 96 CSS px/in) minus ~14px
+// for the per-page label and a safety margin: getBoundingClientRect() on an
+// element doesn't include its own margins, and several small per-element
+// shortfalls like that compound once enough rows/headers share a page --
+// empirically tuned against a worst-case render (three sections packed onto
+// one page) rather than derived exactly, so this errs conservative on
+// purpose. This number is only valid for Letter portrait, which is why
+// @page above pins `size: letter portrait` -- a page's real printed
+// dimensions aren't exposed to JS at all (no API reports the printer's
+// selected paper size/orientation), so the only way to keep this budget
+// trustworthy is to force the one layout it was computed for, not try to
+// adapt to whatever the print dialog happens to have selected.
 const PRINT_PAGE_BUDGET_PX = 860;
 
 function clearPagination(printOutput){{
@@ -1264,24 +1281,33 @@ function paginatePrintOutput(printOutput, useBreaks){{
     // original -- so there's nothing to "undo": next click's clearPagination
     // just removes the injected tables and un-hides the originals.
     const chunks = [[]];
+    const deptHdrH = deptHdr.getBoundingClientRect().height;
     rows.forEach(tr => {{
       const h = tr.getBoundingClientRect().height;
       let chunk = chunks[chunks.length - 1];
       if(chunk.length && budget < h){{
+        // deptHdr repeats on every continuation page too (not just thead) --
+        // a reader starting mid-table on page 3 of a long work center still
+        // needs to see which department/WC this is, same as page 1 does.
         chunks.push(chunk = []);
-        budget = PRINT_PAGE_BUDGET_PX - theadH;
+        budget = PRINT_PAGE_BUDGET_PX - deptHdrH - theadH;
       }}
       chunk.push(tr);
       budget -= h;
     }});
+    // Exactly one copy of tfoot ends up visible, wherever this section's
+    // last row landed (the original table if it wasn't split, otherwise the
+    // last chunk) -- either way it still takes up real space on that page,
+    // which the next section (if one shares the page) needs to know about.
+    budget -= tfoot.getBoundingClientRect().height;
 
     for(let i = 1; i < chunks.length; i++){{
+      const deptHdrClone = deptHdr.cloneNode(true);
+      deptHdrClone.classList.add('print-injected');
       const chunkTable = document.createElement('table');
       chunkTable.className = table.className;
-      // Not print-force-break here -- the break goes on this chunk's label
-      // (added in the labeling pass below), not on the table itself, or the
-      // label would be stranded alone on the previous page.
       chunkTable.classList.add('print-injected');
+      chunkTable.appendChild(table.querySelector('colgroup').cloneNode(true));
       chunkTable.appendChild(thead.cloneNode(true));
       const tbody = document.createElement('tbody');
       // Clone BEFORE hiding the originals -- cloneNode(true) copies whatever
@@ -1291,8 +1317,13 @@ function paginatePrintOutput(printOutput, useBreaks){{
       chunks[i].forEach(tr => tr.classList.add('print-chunked-out'));
       chunkTable.appendChild(tbody);
       if(i === chunks.length - 1 && tfoot) chunkTable.appendChild(tfoot.cloneNode(true));
+      sec.appendChild(deptHdrClone);
       sec.appendChild(chunkTable);
-      pageStarts.push(chunkTable);
+      // The label (and its break-before:page, added in the labeling pass
+      // below) goes before deptHdrClone, not chunkTable -- deptHdrClone is
+      // genuinely the first thing on this page now, so insertBefore needs
+      // to target it, not the table that comes after it.
+      pageStarts.push(deptHdrClone);
     }}
     if(chunks.length > 1 && tfoot) tfoot.classList.add('print-chunked-out');
   }});
