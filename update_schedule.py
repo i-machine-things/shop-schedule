@@ -662,9 +662,12 @@ body{{background:#07070f;color:#ddd;font-family:'Courier New',monospace;font-siz
 /* Laid out off-screen at all times (not display:none) so paginatePrintOutput()
    can measure real row/header heights via getBoundingClientRect() whenever
    Print is clicked, without a display:none->block toggle dance first. Width
-   matches the real printed content area (8.5in Letter - 2*0.5in @page margin)
-   so text wrapping in pdesc/odesc matches what will actually print. */
-#print-output{{position:absolute;top:0;left:0;width:7.5in;visibility:hidden;pointer-events:none}}
+   matches the real printed content area (Letter - 2*0.5in @page margin) so
+   text wrapping in pdesc/odesc matches what will actually print -- the
+   print-btn click handler sets --print-content-width to 7.5in (portrait) or
+   10in (landscape) depending on the Landscape checkbox, in lockstep with
+   the #print-page-style rewrite that actually forces that orientation. */
+#print-output{{position:absolute;top:0;left:0;width:var(--print-content-width,7.5in);visibility:hidden;pointer-events:none}}
 table{{width:100%;border-collapse:separate;border-spacing:0}}
 thead th{{position:sticky;top:0;z-index:20;background:#0d0d20;color:#7799ff;font-size:11px;
           text-transform:uppercase;letter-spacing:1px;padding:6px 8px;border-bottom:2px solid #333}}
@@ -787,13 +790,18 @@ thead th{{position:sticky;top:0;z-index:20;background:#0d0d20;color:#7799ff;font
 .print-total-row td {{ border-top:2px solid #000; border-bottom:none; font-weight:bold;
                         text-align:right; padding-top:6px }}
 @media print {{
-  @page {{ size: letter portrait; margin: 0.5in }}
   #hdr, #sidebar, #wrap {{ display:none }}
   body {{ overflow:visible; height:auto; background:#fff; color:#000 }}
   #print-output {{ position:static; width:auto; visibility:visible; pointer-events:auto }}
 }}
 {kiosk_css}
 </style>
+<!-- Separate from the main stylesheet above so the print-btn click handler
+     can rewrite just this one rule's text (size: ... portrait/landscape)
+     for the Landscape checkbox, without touching anything else. Never has
+     any effect on screen rendering (@page is a print/print-preview-only
+     at-rule), so it doesn't need an @media print wrapper of its own. -->
+<style id="print-page-style">@page {{ size: letter portrait; margin: 0.5in }}</style>
 <script>try{{if(localStorage.getItem('theme')==='light')document.documentElement.setAttribute('data-theme','light');}}catch(e){{}}</script>
 </head>
 <body data-gen="{gen_ts}">
@@ -820,8 +828,8 @@ thead th{{position:sticky;top:0;z-index:20;background:#0d0d20;color:#7799ff;font
   <div id="view-list"></div>
   <div class="sidebar-hdr" data-toggle="mode-list">Schedule Mode<span class="chev">&#9662;</span></div>
   <div id="mode-list"></div>
-  <div class="sidebar-hdr" data-toggle="print-select-row,print-list,print-pagebreak-opt,print-btn">"""
-        f"""Print Report<span class="chev">&#9662;</span></div>
+  <div class="sidebar-hdr" data-toggle="print-select-row,print-list,print-pagebreak-opt,"""
+        f"""print-landscape-opt,print-btn">Print Report<span class="chev">&#9662;</span></div>
   <div id="print-select-row">
     <button id="print-select-all">All</button>
     <button id="print-deselect-all">None</button>
@@ -831,6 +839,10 @@ thead th{{position:sticky;top:0;z-index:20;background:#0d0d20;color:#7799ff;font
   <label id="print-pagebreak-opt" class="print-opt">
     <input type="checkbox" id="print-pagebreak">
     One page per workcenter
+  </label>
+  <label id="print-landscape-opt" class="print-opt">
+    <input type="checkbox" id="print-landscape">
+    Landscape
   </label>
   <button id="print-btn" disabled>Print</button>
 </div>
@@ -865,7 +877,7 @@ thead th{{position:sticky;top:0;z-index:20;background:#0d0d20;color:#7799ff;font
   // centers, making it by far the tallest section) -- everything else starts
   // expanded. Only applies on a first visit with nothing stored yet; once the
   // user has toggled anything, their own choice always wins.
-  const DEFAULT_COLLAPSED = ['print-select-row,print-list,print-pagebreak-opt,print-btn'];
+  const DEFAULT_COLLAPSED = ['print-select-row,print-list,print-pagebreak-opt,print-landscape-opt,print-btn'];
   let collapsed;
   try {{
     const stored = localStorage.getItem('sidebar_collapsed');
@@ -1193,6 +1205,18 @@ pagebreakCb.addEventListener('change', () => {{
   try {{ localStorage.setItem('print_pagebreak', pagebreakCb.checked ? '1' : '0'); }} catch(e) {{}}
 }});
 
+// Forces the real print orientation to match via #print-page-style, rather
+// than leaving the print dialog's own Orientation control available --
+// paginatePrintOutput()'s page-break math has to assume one specific page
+// size, and nothing in JS can read back whatever the print dialog's own
+// Orientation control was actually set to, so letting both exist at once
+// (this checkbox AND the browser's own control) could silently disagree.
+const landscapeCb = document.getElementById('print-landscape');
+try {{ landscapeCb.checked = localStorage.getItem('print_landscape') === '1'; }} catch(e) {{}}
+landscapeCb.addEventListener('change', () => {{
+  try {{ localStorage.setItem('print_landscape', landscapeCb.checked ? '1' : '0'); }} catch(e) {{}}
+}});
+
 // "Thru <date>", not a two-sided range -- the Schedule Window filter only
 // ever caps how far *out* a job can start (see matchesWindowAndMode()); it
 // never excludes an overdue/already-started job on the other end, so a
@@ -1217,19 +1241,28 @@ function printDateRangeText(){{
 // (which is why #print-output's print styling isn't gated behind @media
 // print: it needs to be live during this ordinary-screen-context pass) and
 // stamps an ordinary .print-page-num element before each one.
-// 10in content height (Letter, 0.5in @page margin, 96 CSS px/in) minus ~14px
-// for the per-page label and a safety margin: getBoundingClientRect() on an
-// element doesn't include its own margins, and several small per-element
-// shortfalls like that compound once enough rows/headers share a page --
-// empirically tuned against a worst-case render (three sections packed onto
-// one page) rather than derived exactly, so this errs conservative on
-// purpose. This number is only valid for Letter portrait, which is why
-// @page above pins `size: letter portrait` -- a page's real printed
-// dimensions aren't exposed to JS at all (no API reports the printer's
+// Portrait: 10in content height (Letter, 0.5in @page margin, 96 CSS px/in)
+// minus ~14px for the per-page label and a safety margin:
+// getBoundingClientRect() on an element doesn't include its own margins,
+// and several small per-element shortfalls like that compound once enough
+// rows/headers share a page -- empirically tuned against a worst-case
+// render (three sections packed onto one page) rather than derived
+// exactly, so this errs conservative on purpose. Landscape: content height
+// is only 7.5in (same margins, rotated page) -- same ~100px total
+// deduction as portrait, not separately recalibrated against a
+// landscape-specific worst case, so treat it as a reasonable estimate
+// rather than as tightly verified as the portrait number.
+//
+// Either way, this is only valid for whichever orientation #print-page-style
+// (see the print-btn click handler) actually forces: a page's real printed
+// dimensions aren't exposed to JS at all (no API reports the print dialog's
 // selected paper size/orientation), so the only way to keep this budget
-// trustworthy is to force the one layout it was computed for, not try to
-// adapt to whatever the print dialog happens to have selected.
-const PRINT_PAGE_BUDGET_PX = 860;
+// trustworthy is to force the one layout it was computed for -- hence the
+// Landscape checkbox driving #print-page-style directly, instead of also
+// leaving the print dialog's own Orientation control available.
+function pageBudgetPx(landscape){{
+  return landscape ? 620 : 860;
+}}
 
 function clearPagination(printOutput){{
   printOutput.querySelectorAll('.print-injected').forEach(el => el.remove());
@@ -1237,7 +1270,8 @@ function clearPagination(printOutput){{
   printOutput.querySelectorAll('.print-chunked-out').forEach(el => el.classList.remove('print-chunked-out'));
 }}
 
-function paginatePrintOutput(printOutput, useBreaks){{
+function paginatePrintOutput(printOutput, useBreaks, landscape){{
+  const pageBudget = pageBudgetPx(landscape);
   const mainHdr = printOutput.querySelector(':scope > .print-hdr-main');
   const sections = [...printOutput.querySelectorAll(':scope > .print-section')]
     .filter(sec => !sec.classList.contains('hidden-section'));
@@ -1247,7 +1281,7 @@ function paginatePrintOutput(printOutput, useBreaks){{
   // mode (mainHdr is absent here already if useBreaks, see the click
   // handler), otherwise the first section's own repeated header.
   const pageStarts = [(!useBreaks && mainHdr) ? mainHdr : sections[0]];
-  let budget = PRINT_PAGE_BUDGET_PX;
+  let budget = pageBudget;
   if(!useBreaks && mainHdr) budget -= mainHdr.getBoundingClientRect().height;
 
   sections.forEach((sec, secIdx) => {{
@@ -1268,7 +1302,7 @@ function paginatePrintOutput(printOutput, useBreaks){{
       const firstRowH = rows[0].getBoundingClientRect().height;
       if(useBreaks || budget < topBlockH + firstRowH){{
         pageStarts.push(sec);
-        budget = PRINT_PAGE_BUDGET_PX;
+        budget = pageBudget;
       }}
     }}
     budget -= topBlockH;
@@ -1290,7 +1324,7 @@ function paginatePrintOutput(printOutput, useBreaks){{
         // a reader starting mid-table on page 3 of a long work center still
         // needs to see which department/WC this is, same as page 1 does.
         chunks.push(chunk = []);
-        budget = PRINT_PAGE_BUDGET_PX - deptHdrH - theadH;
+        budget = pageBudget - deptHdrH - theadH;
       }}
       chunk.push(tr);
       budget -= h;
@@ -1345,6 +1379,15 @@ function paginatePrintOutput(printOutput, useBreaks){{
 document.getElementById('print-btn').addEventListener('click', () => {{
   const printOutput = document.getElementById('print-output');
   clearPagination(printOutput);
+  const landscape = landscapeCb.checked;
+  // Must happen before any row/header measurement below: both the real
+  // orientation that will actually print (#print-page-style) and the width
+  // paginatePrintOutput() measures against (--print-content-width) have to
+  // agree with `landscape`, or the two would silently disagree about how
+  // wide a page is.
+  document.getElementById('print-page-style').textContent =
+    `@page {{ size: letter ${{landscape ? 'landscape' : 'portrait'}}; margin: 0.5in }}`;
+  document.documentElement.style.setProperty('--print-content-width', landscape ? '10in' : '7.5in');
   const useBreaks = pagebreakCb.checked;
   printOutput.classList.toggle('pagebreak-per-wc', useBreaks);
   const rangeText = printDateRangeText();
@@ -1376,7 +1419,7 @@ document.getElementById('print-btn').addEventListener('click', () => {{
     const totalEl = sec.querySelector('.print-total-val');
     if(totalEl) totalEl.textContent = anyVisible ? total.toFixed(2) : '';
   }});
-  paginatePrintOutput(printOutput, useBreaks);
+  paginatePrintOutput(printOutput, useBreaks, landscape);
   window.print();
 }});
 
