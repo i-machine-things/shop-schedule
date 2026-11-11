@@ -70,7 +70,9 @@ SELECT
     cur.Curr_WC,
     cur.Rem_Hrs,
     cur.NumOps_Ahead,
-    jo.Act_Run_Qty                          AS Qty_Run
+    jo.Act_Run_Qty                          AS Qty_Run,
+    dlv.Promised_Date,
+    dlv.Ship_Qty
 FROM Job_Operation jo
 JOIN Job j          ON j.Job = jo.Job
 JOIN Work_Center wc ON wc.Work_Center = jo.Work_Center
@@ -85,6 +87,26 @@ CROSS APPLY (
     WHERE cjo.Job = jo.Job AND cjo.Status <> 'C'
     ORDER BY cjo.Sequence ASC
 ) cur
+OUTER APPLY (
+    -- Not every job has a Delivery row -- OUTER APPLY (not CROSS APPLY) keeps
+    -- it with blank Promised/Ship_Qty rather than dropping it, same reasoning
+    -- as `cur` above. The soonest still-open delivery (Remaining_Quantity > 0)
+    -- is used as "the" promise/ship-qty for this job; if every delivery has
+    -- already fully shipped, falls back to the soonest by date -- identical
+    -- selection logic to the sibling jobdocs project's Job Report query
+    -- (also against Delivery, also for Promised_Date).
+    -- UNVERIFIED: Ship_Qty = Promised_Quantity (the quantity committed on
+    -- this specific delivery line) is a best guess, not confirmed against
+    -- live data -- Remaining_Quantity (what's still outstanding across all
+    -- deliveries) is a plausible alternative reading of "Ship Qty". Check
+    -- with: SELECT Promised_Date, Promised_Quantity, Shipped_Quantity,
+    -- Remaining_Quantity FROM Delivery WHERE Job = '<a real open job>'
+    -- and compare against the real Foreman's Report PDF for that job.
+    SELECT TOP 1 d.Promised_Date, d.Promised_Quantity AS Ship_Qty
+    FROM Delivery d
+    WHERE d.Job = j.Job
+    ORDER BY CASE WHEN d.Remaining_Quantity > 0 THEN 0 ELSE 1 END, d.Promised_Date ASC
+) dlv
 WHERE jo.Status <> 'C'
   AND j.Released_Date IS NOT NULL
 ORDER BY wc.Department, COALESCE(wc.Parent_ID, wc.Work_Center), jo.Work_Center, j.Job, jo.Sequence
@@ -254,10 +276,11 @@ def fetch_from_db():
             'pri': str(r['Priority']) if r['Priority'] is not None else '',
             'sch_start': _fmt_date(r['Sched_Start']),
             'curr_wc': r['Curr_WC'] or '',
-            # Not yet sourced from the DB -- see CODING_NOTES.md. Report still
-            # renders fine with these blank (overdue highlighting just no-ops).
-            'ship_qty': '',
-            'promised': '',
+            # See the Delivery OUTER APPLY's own comment -- Ship_Qty's exact
+            # source column is a best guess, not yet confirmed against live
+            # data.
+            'ship_qty': str(r['Ship_Qty']) if r['Ship_Qty'] is not None else '',
+            'promised': _fmt_date(r['Promised_Date']),
             'customer': r['Customer'] or '',
             'oper': r['Oper'] or '',
             # Job_Operation.Job_Operation -- yes, a column named the same as
