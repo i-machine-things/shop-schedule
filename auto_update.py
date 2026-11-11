@@ -75,6 +75,20 @@ def _run(cmd):
     )
 
 
+def _git(args):
+    """Run a git command scoped to trust this one checkout (INSTALL_DIR)
+    for the current invocation only -- on Windows this task runs as SYSTEM
+    via Task Scheduler, and a checkout owned by the installing user (not
+    SYSTEM) trips Git's dubious-ownership protection (safe.directory,
+    post-CVE-2022-24765), which would otherwise make every git call here
+    fail closed. `-c safe.directory=...` trusts only this path for this
+    one process; it never touches global/system gitconfig or any other
+    directory. Harmless no-op on Linux, where the cron job already runs
+    as the same user who owns the repo.
+    """
+    return _run(['git', '-c', f'safe.directory={INSTALL_DIR}'] + args)
+
+
 def latest_release_tag():
     """The newest non-draft, non-prerelease tag (e.g. "v1.4.0"), straight
     from GitHub's REST API -- never master HEAD, so an install only ever
@@ -99,9 +113,23 @@ def current_tag():
     any available tag is treated as newer in that case).
     """
     try:
-        return _run(['git', 'describe', '--tags', '--exact-match', 'HEAD']).stdout.strip()
+        return _git(['describe', '--tags', '--exact-match', 'HEAD']).stdout.strip()
     except subprocess.CalledProcessError:
         return None
+
+
+def _is_ancestor(older, newer):
+    """True if `older` is a git ancestor of (or the same commit as) `newer`
+    -- guards against ever checking out `latest` when it's actually an
+    older or diverged release (e.g. the real latest release was deleted or
+    re-pointed after HEAD was already updated past it), which would
+    silently downgrade the install.
+    """
+    try:
+        _git(['merge-base', '--is-ancestor', older, newer])
+        return True
+    except subprocess.CalledProcessError:
+        return False
 
 
 def restart_server():
@@ -119,10 +147,14 @@ def restart_server():
             'Start-ScheduledTask -TaskName ShopScheduleServer',
         ])
     else:
-        _run(['sudo', 'systemctl', 'restart', 'foreman-server'])
+        _run(['sudo', '-n', 'systemctl', 'restart', 'foreman-server'])
 
 
 def main():
+    """Entry point: no-op unless opted in, else check/update/restart, each
+    step failing safe (logged, existing checkout left untouched) so a
+    network blip or git/permissions error never leaves a half-updated install.
+    """
     if _read_env_flag('AUTO_UPDATE_ENABLED', ENV_PATH) != '1':
         logging.info("AUTO_UPDATE_ENABLED is not set to 1 in .env -- skipping (off by default).")
         return
@@ -140,11 +172,26 @@ def main():
 
     logging.info("Updating %s -> %s", current or '(untagged)', latest)
     try:
-        _run(['git', 'fetch', '--tags', 'origin'])
-        _run(['git', 'checkout', latest])
+        _git(['fetch', '--tags', 'origin'])
     except subprocess.CalledProcessError as exc:
         logging.error(
-            "git update to %s failed, leaving existing checkout in place: %s\n%s",
+            "git fetch failed, leaving existing checkout in place: %s\n%s", exc, exc.stderr,
+        )
+        return
+
+    if current is not None and not _is_ancestor(current, latest):
+        logging.error(
+            "Refusing to update: current tag %s is not an ancestor of latest "
+            "release %s (would be a downgrade or diverged history) -- "
+            "leaving checkout as-is.", current, latest,
+        )
+        return
+
+    try:
+        _git(['checkout', latest])
+    except subprocess.CalledProcessError as exc:
+        logging.error(
+            "git checkout to %s failed, leaving existing checkout in place: %s\n%s",
             latest, exc, exc.stderr,
         )
         return

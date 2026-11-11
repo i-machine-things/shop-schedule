@@ -170,8 +170,14 @@ Start-ScheduledTask -TaskName 'ShopScheduleUpdate'
 $AutoUpdateAction = New-ScheduledTaskAction -Execute $VenvPython `
     -Argument "`"$(Join-Path $InstallDir 'auto_update.py')`"" -WorkingDirectory $InstallDir
 $AutoUpdateTrigger = New-ScheduledTaskTrigger -Daily -At '3:00am'
+# StartWhenAvailable: a 3am-off PC still gets today's check once it's back on.
+# ExecutionTimeLimit: the default is 72 hours -- git fetch has no timeout of
+# its own, so cap the whole task well below that instead of letting a hung
+# fetch sit there indefinitely.
+$AutoUpdateSettings = New-ScheduledTaskSettingsSet -StartWhenAvailable `
+    -ExecutionTimeLimit (New-TimeSpan -Minutes 30)
 Register-ScheduledTask -TaskName 'ShopScheduleAutoUpdate' -Action $AutoUpdateAction -Trigger $AutoUpdateTrigger `
-    -User 'SYSTEM' -RunLevel Highest -Force | Out-Null
+    -Settings $AutoUpdateSettings -User 'SYSTEM' -RunLevel Highest -Force | Out-Null
 
 # --- Local kiosk display: scheduled task, at logon -------------------------
 

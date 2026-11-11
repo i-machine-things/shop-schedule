@@ -152,25 +152,31 @@ fi
 # auto_update.py runs unattended from cron and can't answer an interactive
 # sudo prompt. Scoped to exactly this one command, nothing broader (0440,
 # validated with visudo -c before installing).
-SYSTEMCTL_BIN="$(command -v systemctl)"
-SUDOERS_FILE="/etc/sudoers.d/shop-schedule-auto-update"
-_tmp_sudoers="$(mktemp)"
-printf '%s\n' "$USER ALL=(root) NOPASSWD: $SYSTEMCTL_BIN restart foreman-server" > "$_tmp_sudoers"
-if sudo visudo -c -f "$_tmp_sudoers" >/dev/null 2>&1; then
-    sudo install -o root -g root -m 0440 "$_tmp_sudoers" "$SUDOERS_FILE"
-    echo "Configured passwordless sudo for 'systemctl restart foreman-server' (auto-updater)."
+SYSTEMCTL_BIN="$(command -v systemctl || true)"
+if [ -z "$SYSTEMCTL_BIN" ]; then
+    echo "WARNING: systemctl not found -- skipping auto-updater sudoers rule (no way to restart foreman-server)." >&2
 else
-    echo "WARNING: generated sudoers rule failed validation -- auto-updater won't be able to restart the server. Skipping." >&2
+    SUDOERS_FILE="/etc/sudoers.d/shop-schedule-auto-update"
+    _tmp_sudoers="$(mktemp)"
+    printf '%s\n' "$(id -un) ALL=(root) NOPASSWD: $SYSTEMCTL_BIN restart foreman-server" > "$_tmp_sudoers"
+    if sudo visudo -c -f "$_tmp_sudoers" >/dev/null 2>&1; then
+        sudo install -o root -g root -m 0440 "$_tmp_sudoers" "$SUDOERS_FILE"
+        echo "Configured passwordless sudo for 'systemctl restart foreman-server' (auto-updater)."
+    else
+        echo "WARNING: generated sudoers rule failed validation -- auto-updater won't be able to restart the server. Skipping." >&2
+    fi
+    rm -f "$_tmp_sudoers"
 fi
-rm -f "$_tmp_sudoers"
 
 # Add cron jobs: schedule-data refresh (every 15 min) and the daily release
-# auto-updater (03:00, low-traffic) -- grep -v shop-schedule strips any
-# previous version of either line first, so re-running this installer
-# doesn't duplicate entries.
-UPDATE_CRON="*/15 * * * * \"$INSTALL_DIR/run_update.sh\" >> /tmp/shop-schedule.log 2>&1"
-AUTO_UPDATE_CRON="0 3 * * * \"$INSTALL_DIR/venv/bin/python3\" \"$INSTALL_DIR/auto_update.py\" >> /tmp/shop-schedule.log 2>&1"
-( crontab -l 2>/dev/null || true ) | grep -v shop-schedule | { cat; echo "$UPDATE_CRON"; echo "$AUTO_UPDATE_CRON"; } | crontab -
+# auto-updater (03:00, low-traffic) -- logging to $INSTALL_DIR (not /tmp,
+# which is often cleared at boot and shared by other users/jobs). The old
+# entries are stripped by matching the exact managed script paths, not a
+# bare "shop-schedule" substring, so an unrelated crontab line (e.g. a
+# backup job mentioning this install path) isn't collateral damage.
+UPDATE_CRON="*/15 * * * * \"$INSTALL_DIR/run_update.sh\" >> \"$INSTALL_DIR/shop-schedule.log\" 2>&1"
+AUTO_UPDATE_CRON="0 3 * * * \"$INSTALL_DIR/venv/bin/python3\" \"$INSTALL_DIR/auto_update.py\" >> \"$INSTALL_DIR/auto_update.log\" 2>&1"
+( crontab -l 2>/dev/null || true ) | grep -vF -e "$INSTALL_DIR/run_update.sh" -e "$INSTALL_DIR/auto_update.py" | { cat; echo "$UPDATE_CRON"; echo "$AUTO_UPDATE_CRON"; } | crontab -
 
 echo ""
 echo "=== Done ==="
