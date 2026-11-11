@@ -339,6 +339,7 @@ def generate_html(data, out_path, *, kiosk=False, gen_ts=None):
       <div class="print-hdr-title">Shop Schedule Report</div>
       <div class="print-hdr-right">
         <div>by Work Center - Scheduled Start Date</div>
+        <div class="print-hdr-daterange"></div>
         {released_line}
       </div>
     </div>'''
@@ -483,12 +484,13 @@ def generate_html(data, out_path, *, kiosk=False, gen_ts=None):
     # A standalone copy at the top for the default (continuous-flow) mode,
     # plus one baked into each section for "one page per workcenter" mode --
     # CSS shows exactly one of the two depending on that checkbox (see
-    # print-hdr-main/print-hdr-section in the @media print block). Chromium's
-    # print engine doesn't support CSS Paged Media's @page margin boxes, so
-    # there's no way to repeat an arbitrary block on every *naturally*
-    # overflowing page (or render "Page X of Y") the way the original
-    # report's own generator can -- this only covers the case where we
-    # already know where each page starts, because we forced the break.
+    # print-hdr-main/print-hdr-section in the @media print block). @page
+    # margin boxes (confirmed working in current Chromium -- see the
+    # "Page X of Y" @top-right rule in that same block) only cover simple
+    # generated content (counters/strings), not repeating an arbitrary HTML
+    # block like this full header onto every *naturally* overflowing page --
+    # this duplication only covers the case where we already know where each
+    # page starts, because we forced the break.
     print_body = _print_hdr('print-hdr-main') + '\n' + '\n'.join(print_rows)
 
     home_btn = '' if kiosk else '<a href="index.html" id="home-btn" title="Home">&#8962;</a>\n    '
@@ -722,6 +724,10 @@ thead th{{position:sticky;top:0;z-index:20;background:#0d0d20;color:#7799ff;font
    any long table. Position:fixed/sticky are reset to static since fixed
    positioning clips print output to a single page in Chrome. */
 @media print {{
+  @page {{
+    margin: 0.5in;
+    @top-right {{ content: "Page " counter(page) " of " counter(pages); font-size:10px }}
+  }}
   #hdr, #sidebar, #wrap {{ display:none }}
   body {{ overflow:visible; height:auto; background:#fff; color:#000 }}
   #print-output {{ display:block }}
@@ -733,6 +739,7 @@ thead th{{position:sticky;top:0;z-index:20;background:#0d0d20;color:#7799ff;font
   .print-hdr-title {{ font-weight:bold; font-size:16px; align-self:center }}
   .print-hdr-right {{ font-size:10px; text-align:right }}
   .print-hdr-sub {{ margin-top:2px }}
+  .print-hdr-daterange {{ margin-top:2px }}
   .print-hdr-section {{ display:none }}
   #print-output.pagebreak-per-wc .print-hdr-main {{ display:none }}
   #print-output.pagebreak-per-wc .print-hdr-section {{ display:flex }}
@@ -1145,10 +1152,29 @@ pagebreakCb.addEventListener('change', () => {{
   try {{ localStorage.setItem('print_pagebreak', pagebreakCb.checked ? '1' : '0'); }} catch(e) {{}}
 }});
 
+// "Thru <date>", not a two-sided range -- the Schedule Window filter only
+// ever caps how far *out* a job can start (see matchesWindowAndMode()); it
+// never excludes an overdue/already-started job on the other end, so a
+// literal start-to-end range would misleadingly imply jobs before today
+// are excluded.
+function printDateRangeText(){{
+  const active = VIEW_WINDOWS.find(w => w.days === viewDays) || VIEW_WINDOWS[VIEW_WINDOWS.length - 1];
+  if(viewDays === Infinity) return active.label;
+  const end = new Date();
+  end.setHours(0, 0, 0, 0);
+  end.setDate(end.getDate() + viewDays);
+  const fmt = d => d.toLocaleDateString('en-US', {{month:'2-digit', day:'2-digit', year:'2-digit'}});
+  return `${{active.label}} (thru ${{fmt(end)}})`;
+}}
+
 document.getElementById('print-btn').addEventListener('click', () => {{
   const useBreaks = pagebreakCb.checked;
   const printOutput = document.getElementById('print-output');
   printOutput.classList.toggle('pagebreak-per-wc', useBreaks);
+  const rangeText = printDateRangeText();
+  document.querySelectorAll('#print-output .print-hdr-daterange').forEach(el => {{
+    el.textContent = rangeText;
+  }});
   // display:none isn't enough to rule out: pull print-hdr-main out of the DOM
   // entirely in this mode rather than trust that a hidden sibling can't
   // affect where break-before:page lands on the first section. Reinserted

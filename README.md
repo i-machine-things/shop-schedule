@@ -187,6 +187,8 @@ Tapping a work center toggles it in or out of the print selection (independent o
 
 What prints mirrors what's currently on screen: the Schedule Window and Schedule Mode filters still apply, so printing "1 Week" + WC Dispatch prints only the jobs that filter leaves visible. By default, work centers flow continuously and a page break occurs only where content overflows. Enable **One page per workcenter** (saved per browser) to start each selected work center on its own page. In that mode, the report header repeats on every work center's first page.
 
+The header also names the active Schedule Window (e.g. "1 Week (thru 11/18/26)", or just "All" with no date) so a printed page says what it covers without anyone needing to check the screen it came from — computed fresh at print time, not baked into the page on load, so it's always the window that was actually selected when **Print** was clicked. Every page also gets a "Page X of Y" in the top-right corner (CSS `@page` margin boxes — Chromium didn't support this for a long time, which is why the rest of this layout works around per-page content the hard way; it does now).
+
 Each job row also prints a Code128 barcode under the job number, and another under the Rev/Oper cell — the second one encodes JobBoss's own internal Operation Key (a numeric ID, not the "OP1"-style label shown as text), so scanning it identifies the exact operation row rather than an op label that isn't guaranteed unique across jobs. DB-sourced only: a PDF-parsed report has no access to that internal key, so that barcode is simply omitted there. Both barcodes are generated client-side (no server round-trip, no third-party JS) and render once at page load and again whenever the schedule refreshes.
 
 ## Page rotation

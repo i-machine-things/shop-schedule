@@ -204,6 +204,10 @@ This note was created based on issues encountered with PyInstaller executables r
 
 **Flagged, not fixed (CodeRabbit, PR #290): `scheduleMidnightRefresh()`'s `setTimeout` is computed once from the local date/time at call time, so a timezone change on the device wouldn't retrigger it early.** Not fixing: these are fixed, stationary kiosk/server devices (no travel, no timezone reconfiguration in normal operation) — the scenario this guards against doesn't occur for this deployment model. Revisit if that assumption changes (e.g. a portable/VM-hosted deployment where the host clock's timezone could change under the running page).
 
+## Print Output (CSS)
+
+**Chromium's print engine DOES support CSS Paged Media's `@page` margin boxes now (confirmed on Chromium 156) -- a prior comment in this file claiming otherwise was stale, not re-verified before being relied on.** `@page { @top-right { content: "Page " counter(page) " of " counter(pages); } }` renders correctly across pages created by an explicit `break-before:page` *and* pages created by natural content overflow, tested together in the same document. Only covers simple generated content (counters/strings) though -- it's still not a way to repeat an arbitrary HTML block (like this page's full `.print-hdr`) onto every naturally-overflowing page; that still needs the existing per-forced-page duplication trick. Verify current browser support empirically (render to PDF, read the text back) before trusting an old "X isn't supported" comment -- browser engines gain CSS features between whenever a comment like that was written and whenever it's next read.
+
 ## Server & HTTP
 
 **Guard `int(Content-Length)` parsing with try/except; return 400 on failure or negative values.** Malformed requests otherwise raise an unhandled `ValueError` and produce a 500.
