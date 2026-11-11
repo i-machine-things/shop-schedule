@@ -452,7 +452,12 @@ def generate_html(data, out_path, *, kiosk=False, gen_ts=None):
             f'''WC Group:&nbsp;&nbsp;{wcg_e}&nbsp;&nbsp;&nbsp;&nbsp;WC:&nbsp;{wc_attr}</div>
       <table class="print-table">
         <colgroup>
-          <col style="width:33%"><col style="width:4%"><col style="width:10%">
+          <!-- Oper (3rd column, 17%) looks wide for "OP1" + a short number,
+               but it has to fit the Oper barcode -- Code128 width scales with
+               character count, and Job_Operation's real IDs can run 8+
+               digits; narrower cut that barcode off into Oper Desc's text.
+               CodeRabbit catch on PR #296. -->
+          <col style="width:26%"><col style="width:4%"><col style="width:17%">
           <col style="width:11%"><col style="width:6%"><col style="width:11%">
           <col style="width:10%"><col style="width:6%"><col style="width:9%">
         </colgroup>

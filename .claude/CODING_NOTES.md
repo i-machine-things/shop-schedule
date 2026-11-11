@@ -226,6 +226,8 @@ This note was created based on issues encountered with PyInstaller executables r
 
 **A repeating per-page heading (department/work-center name) belongs on every continuation page of a long section, not just the page where that section starts.** `paginatePrintOutput()` originally only repeated the column-header row (`<thead>`) on a section's own overflow continuation pages, matching what plain `<table>` pagination already did natively -- but a reader starting mid-list on page 3 of a long work center still needs to see *which* department/work center it is, same as page 1 shows. Fixed by cloning `.print-sec-hdr` onto every continuation chunk too (not just the first page), and reserving its height in that chunk's budget. CodeRabbit catch on PR #296.
 
+**A barcode column's width has to be sized for the longest value it will ever encode, not for its label text.** The Oper column looked plenty wide for "OP1" plus a short number, but Code128's rendered width scales directly with character count (`code128Svg(text, 1, 10)` -- 1px/module, ~11 modules/character) -- an 8+ digit `op_key` (`Job_Operation`'s real IDs grow unbounded) overflowed visibly into the Oper Desc column's text. Widened from 10% to 17% of the table, confirmed against both an 8-digit and a 10-digit op_key with room to spare. CodeRabbit catch on PR #296.
+
 ## Server & HTTP
 
 **Guard `int(Content-Length)` parsing with try/except; return 400 on failure or negative values.** Malformed requests otherwise raise an unhandled `ValueError` and produce a 500.
