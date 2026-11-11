@@ -654,7 +654,12 @@ body{{background:#07070f;color:#ddd;font-family:'Courier New',monospace;font-siz
 #print-btn:disabled{{opacity:0.3;cursor:not-allowed}}
 #print-btn:disabled:hover{{background:transparent}}
 #wrap{{position:fixed;top:50px;bottom:0;left:160px;right:0;overflow-y:scroll}}
-#print-output{{display:none}}
+/* Laid out off-screen at all times (not display:none) so paginatePrintOutput()
+   can measure real row/header heights via getBoundingClientRect() whenever
+   Print is clicked, without a display:none->block toggle dance first. Width
+   matches the real printed content area (8.5in Letter - 2*0.5in @page margin)
+   so text wrapping in pdesc/odesc matches what will actually print. */
+#print-output{{position:absolute;top:0;left:0;width:7.5in;visibility:hidden;pointer-events:none}}
 table{{width:100%;border-collapse:separate;border-spacing:0}}
 thead th{{position:sticky;top:0;z-index:20;background:#0d0d20;color:#7799ff;font-size:11px;
           text-transform:uppercase;letter-spacing:1px;padding:6px 8px;border-bottom:2px solid #333}}
@@ -719,45 +724,62 @@ thead th{{position:sticky;top:0;z-index:20;background:#0d0d20;color:#7799ff;font
 
 /* Print Report -- "mirror the screen": only rows already visible under the
    current Schedule Window/Mode filter AND belonging to a selected work
-   center print. Each printed section starts on its own page (break-before);
-   a section whose jobs don't fit on one page continues onto more, same as
-   any long table. Position:fixed/sticky are reset to static since fixed
-   positioning clips print output to a single page in Chrome. */
+   center print. Page numbers ("Page X of Y") can't use CSS Paged Media's
+   @page margin boxes (@top-right etc.) -- Firefox has never implemented
+   them, only Chromium has -- so paginatePrintOutput() (see the print-btn
+   click handler) computes real page breaks itself from measured element
+   heights and stamps an ordinary .print-page-num element before each one;
+   .print-force-break is what actually breaks the page at that point. A
+   section whose jobs don't fit on one page is split into multiple <table>s
+   by the same function, each with its own repeated column-header row.
+   Position:fixed/sticky are reset to static since fixed positioning clips
+   print output to a single page in Chrome.
+
+   All of #print-output's own content styling below is deliberately NOT
+   scoped to @media print, even though it only ever matters when printing --
+   #print-output is already invisible on screen (position:absolute;
+   visibility:hidden, set unconditionally above) regardless of media type,
+   so these rules have zero visual effect outside of printing. Scoping them
+   to @media print instead would make them invisible to
+   getBoundingClientRect() during paginatePrintOutput()'s measurement pass,
+   since that runs in ordinary screen context, not inside an actual print
+   -- the real heights it needs to measure (print-table row heights,
+   section header heights, barcode heights, ...) only exist once these
+   rules are live. */
+.print-page-num {{ text-align:right; font-size:10px; color:#000; margin-bottom:4px }}
+.print-force-break {{ break-before:page }}
+.print-chunked-out {{ display:none!important }}
+.print-hdr {{ display:flex; justify-content:space-between; align-items:flex-start;
+              border-bottom:2px solid #000; padding-bottom:8px; margin-bottom:10px }}
+.print-hdr-left {{ font-size:10px }}
+.print-hdr-company {{ font-weight:bold; font-size:13px; margin-top:2px }}
+.print-hdr-title {{ font-weight:bold; font-size:16px; align-self:center }}
+.print-hdr-right {{ font-size:10px; text-align:right }}
+.print-hdr-sub {{ margin-top:2px }}
+.print-hdr-daterange {{ margin-top:2px }}
+.print-hdr-section {{ display:none }}
+#print-output.pagebreak-per-wc .print-hdr-main {{ display:none }}
+#print-output.pagebreak-per-wc .print-hdr-section {{ display:flex }}
+.print-sec-hdr {{ font-weight:bold; font-size:11px; border-bottom:1px solid #000; padding:4px 0; margin-top:4px }}
+.print-table {{ width:100%; border-collapse:collapse; font-size:10px; color:#000 }}
+.print-table th {{ text-align:left; font-size:9px; border-bottom:1px solid #000; padding:3px 4px;
+                    background:#fff; color:#000; position:static }}
+.print-table td {{ padding:3px 4px; border-bottom:1px solid #ccc; vertical-align:top }}
+.print-table td.c {{ text-align:center }}
+.print-row {{ break-inside:avoid }}
+.p-job {{ font-weight:bold }}
+.p-desc {{ color:#444; font-size:9px }}
+.p-barcode {{ display:block; margin:2px 0 }}
+.p-barcode rect {{ fill:#000 }}
+.p-barcode-num {{ display:block; font-size:8px; color:#000; letter-spacing:1px }}
+.print-table .overdue {{ color:#c00; font-weight:bold }}
+.print-total-row td {{ border-top:2px solid #000; border-bottom:none; font-weight:bold;
+                        text-align:right; padding-top:6px }}
 @media print {{
-  @page {{
-    margin: 0.5in;
-    @top-right {{ content: "Page " counter(page) " of " counter(pages); font-size:10px }}
-  }}
+  @page {{ margin: 0.5in }}
   #hdr, #sidebar, #wrap {{ display:none }}
   body {{ overflow:visible; height:auto; background:#fff; color:#000 }}
-  #print-output {{ display:block }}
-  #print-output.pagebreak-per-wc .print-section {{ break-before:page }}
-  .print-hdr {{ display:flex; justify-content:space-between; align-items:flex-start;
-                border-bottom:2px solid #000; padding-bottom:8px; margin-bottom:10px }}
-  .print-hdr-left {{ font-size:10px }}
-  .print-hdr-company {{ font-weight:bold; font-size:13px; margin-top:2px }}
-  .print-hdr-title {{ font-weight:bold; font-size:16px; align-self:center }}
-  .print-hdr-right {{ font-size:10px; text-align:right }}
-  .print-hdr-sub {{ margin-top:2px }}
-  .print-hdr-daterange {{ margin-top:2px }}
-  .print-hdr-section {{ display:none }}
-  #print-output.pagebreak-per-wc .print-hdr-main {{ display:none }}
-  #print-output.pagebreak-per-wc .print-hdr-section {{ display:flex }}
-  .print-sec-hdr {{ font-weight:bold; font-size:11px; border-bottom:1px solid #000; padding:4px 0; margin-top:4px }}
-  .print-table {{ width:100%; border-collapse:collapse; font-size:10px; color:#000 }}
-  .print-table th {{ text-align:left; font-size:9px; border-bottom:1px solid #000; padding:3px 4px;
-                      background:#fff; color:#000; position:static }}
-  .print-table td {{ padding:3px 4px; border-bottom:1px solid #ccc; vertical-align:top }}
-  .print-table td.c {{ text-align:center }}
-  .print-row {{ break-inside:avoid }}
-  .p-job {{ font-weight:bold }}
-  .p-desc {{ color:#444; font-size:9px }}
-  .p-barcode {{ display:block; margin:2px 0 }}
-  .p-barcode rect {{ fill:#000 }}
-  .p-barcode-num {{ display:block; font-size:8px; color:#000; letter-spacing:1px }}
-  .print-table .overdue {{ color:#c00; font-weight:bold }}
-  .print-total-row td {{ border-top:2px solid #000; border-bottom:none; font-weight:bold;
-                          text-align:right; padding-top:6px }}
+  #print-output {{ position:static; width:auto; visibility:visible; pointer-events:auto }}
 }}
 {kiosk_css}
 </style>
@@ -1178,9 +1200,121 @@ function printDateRangeText(){{
   return `${{active.label}} (thru ${{fmt(end)}})`;
 }}
 
+// Page numbers ("Page X of Y") can't rely on CSS Paged Media's @page margin
+// boxes -- Firefox has never implemented @top-right/etc, only Chromium has
+// -- so this computes real page breaks itself from measured element heights
+// (which is why #print-output's print styling isn't gated behind @media
+// print: it needs to be live during this ordinary-screen-context pass) and
+// stamps an ordinary .print-page-num element before each one.
+// 10in content height (0.5in @page margin, 96 CSS px/in) minus ~14px for the
+// per-page label and a safety margin: getBoundingClientRect() on an element
+// doesn't include its own margins, and several small per-element shortfalls
+// like that compound once enough rows/headers share a page -- empirically
+// tuned against a worst-case render (three sections packed onto one page)
+// rather than derived exactly, so this errs conservative on purpose.
+const PRINT_PAGE_BUDGET_PX = 860;
+
+function clearPagination(printOutput){{
+  printOutput.querySelectorAll('.print-injected').forEach(el => el.remove());
+  printOutput.querySelectorAll('.print-force-break').forEach(el => el.classList.remove('print-force-break'));
+  printOutput.querySelectorAll('.print-chunked-out').forEach(el => el.classList.remove('print-chunked-out'));
+}}
+
+function paginatePrintOutput(printOutput, useBreaks){{
+  const mainHdr = printOutput.querySelector(':scope > .print-hdr-main');
+  const sections = [...printOutput.querySelectorAll(':scope > .print-section')]
+    .filter(sec => !sec.classList.contains('hidden-section'));
+  if(!sections.length) return;
+
+  // The very first thing printed overall: the main header in continuous
+  // mode (mainHdr is absent here already if useBreaks, see the click
+  // handler), otherwise the first section's own repeated header.
+  const pageStarts = [(!useBreaks && mainHdr) ? mainHdr : sections[0]];
+  let budget = PRINT_PAGE_BUDGET_PX;
+  if(!useBreaks && mainHdr) budget -= mainHdr.getBoundingClientRect().height;
+
+  sections.forEach((sec, secIdx) => {{
+    const secHdr = sec.querySelector(':scope > .print-hdr-section');
+    const deptHdr = sec.querySelector(':scope > .print-sec-hdr');
+    const table = sec.querySelector(':scope > table.print-table');
+    const thead = table.querySelector('thead');
+    const tfoot = table.querySelector('tfoot');
+    const rows = [...table.querySelectorAll('tbody > tr.print-row')]
+      .filter(tr => !tr.classList.contains('hidden-section'));
+    const theadH = thead.getBoundingClientRect().height;
+    // secHdr is only really going to render in useBreaks mode (CSS hides it
+    // otherwise), but that CSS rule depends on the .pagebreak-per-wc class
+    // alone, so it's already live here too -- no need to re-check useBreaks.
+    const topBlockH = secHdr.getBoundingClientRect().height + deptHdr.getBoundingClientRect().height + theadH;
+
+    if(secIdx > 0){{
+      const firstRowH = rows[0].getBoundingClientRect().height;
+      if(useBreaks || budget < topBlockH + firstRowH){{
+        pageStarts.push(sec);
+        budget = PRINT_PAGE_BUDGET_PX;
+      }}
+    }}
+    budget -= topBlockH;
+
+    // Walk this section's own rows, splitting into page-chunks as needed.
+    // chunk[0] always stays put in the original table; chunk[1+] become new
+    // <table>s appended after it (built below), each repeating the column
+    // header. Rows aren't moved out of the original table for this -- they're
+    // cloned into the new chunk table and hidden (.print-chunked-out) in the
+    // original -- so there's nothing to "undo": next click's clearPagination
+    // just removes the injected tables and un-hides the originals.
+    const chunks = [[]];
+    rows.forEach(tr => {{
+      const h = tr.getBoundingClientRect().height;
+      let chunk = chunks[chunks.length - 1];
+      if(chunk.length && budget < h){{
+        chunks.push(chunk = []);
+        budget = PRINT_PAGE_BUDGET_PX - theadH;
+      }}
+      chunk.push(tr);
+      budget -= h;
+    }});
+
+    for(let i = 1; i < chunks.length; i++){{
+      const chunkTable = document.createElement('table');
+      chunkTable.className = table.className;
+      // Not print-force-break here -- the break goes on this chunk's label
+      // (added in the labeling pass below), not on the table itself, or the
+      // label would be stranded alone on the previous page.
+      chunkTable.classList.add('print-injected');
+      chunkTable.appendChild(thead.cloneNode(true));
+      const tbody = document.createElement('tbody');
+      // Clone BEFORE hiding the originals -- cloneNode(true) copies whatever
+      // classes are on tr *at clone time*, so hiding tr first would hide its
+      // clone too.
+      chunks[i].forEach(tr => tbody.appendChild(tr.cloneNode(true)));
+      chunks[i].forEach(tr => tr.classList.add('print-chunked-out'));
+      chunkTable.appendChild(tbody);
+      if(i === chunks.length - 1 && tfoot) chunkTable.appendChild(tfoot.cloneNode(true));
+      sec.appendChild(chunkTable);
+      pageStarts.push(chunkTable);
+    }}
+    if(chunks.length > 1 && tfoot) tfoot.classList.add('print-chunked-out');
+  }});
+
+  const total = pageStarts.length;
+  pageStarts.forEach((el, i) => {{
+    const label = document.createElement('div');
+    label.className = 'print-page-num print-injected';
+    // The break itself goes on the LABEL, not on `el` -- el is only used to
+    // find the right insertion point. A break on `el` would land between the
+    // label and its page's real content, stranding the label on the
+    // *previous* page instead of the one it's labeling.
+    if(i > 0) label.classList.add('print-force-break');
+    label.textContent = `Page ${{i + 1}} of ${{total}}`;
+    el.parentNode.insertBefore(label, el);
+  }});
+}}
+
 document.getElementById('print-btn').addEventListener('click', () => {{
-  const useBreaks = pagebreakCb.checked;
   const printOutput = document.getElementById('print-output');
+  clearPagination(printOutput);
+  const useBreaks = pagebreakCb.checked;
   printOutput.classList.toggle('pagebreak-per-wc', useBreaks);
   const rangeText = printDateRangeText();
   document.querySelectorAll('#print-output .print-hdr-daterange').forEach(el => {{
@@ -1211,6 +1345,7 @@ document.getElementById('print-btn').addEventListener('click', () => {{
     const totalEl = sec.querySelector('.print-total-val');
     if(totalEl) totalEl.textContent = anyVisible ? total.toFixed(2) : '';
   }});
+  paginatePrintOutput(printOutput, useBreaks);
   window.print();
 }});
 
