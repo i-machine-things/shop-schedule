@@ -434,7 +434,7 @@ def generate_html(data, out_path, *, kiosk=False, gen_ts=None):
                 f'''<span class="p-barcode" data-code="{je["job"]}"></span>{je["customer"]}<br>'''
                 f'''{je["part"]}<br><span class="p-desc">{je["description"]}</span></td>
         <td>{je["rev"]}</td>
-        <td>{je["oper"]}<span class="p-barcode" data-code="{je["op_key"]}"></span></td>
+        <td>{je["oper"]}<span class="p-barcode" data-code="{je["op_key"]}" data-show-value="1"></span></td>
         <td class="p-desc">{je["oper_desc"]}</td>
         <td class="c">{je["make_qty"]}</td>
         <td class="c">{je["sch_start"]}<br>{je["sch_end"]}</td>
@@ -754,6 +754,7 @@ thead th{{position:sticky;top:0;z-index:20;background:#0d0d20;color:#7799ff;font
   .p-desc {{ color:#444; font-size:9px }}
   .p-barcode {{ display:block; margin:2px 0 }}
   .p-barcode rect {{ fill:#000 }}
+  .p-barcode-num {{ display:block; font-size:8px; color:#000; letter-spacing:1px }}
   .print-table .overdue {{ color:#c00; font-weight:bold }}
   .print-total-row td {{ border-top:2px solid #000; border-bottom:none; font-weight:bold;
                           text-align:right; padding-top:6px }}
@@ -1067,8 +1068,15 @@ function renderBarcodes(){{
     // je["oper"] (and in principle je["job"]) can be a blank string -- remove
     // the placeholder entirely rather than leaving an empty display:block
     // span with its own margin sitting in the row.
-    if (el.dataset.code) el.outerHTML = code128Svg(el.dataset.code, 1, 10);
-    else el.remove();
+    if (!el.dataset.code) {{ el.remove(); return; }}
+    // The job barcode's own value is already shown as bold plaintext right
+    // above it (the job number); the op barcode's value (op_key) has no
+    // other plaintext appearance anywhere on the page, so only it repeats
+    // its value below the barcode -- not a blanket behavior for every
+    // barcode, just this one, via data-show-value.
+    const valueHtml = el.dataset.showValue === '1'
+      ? `<span class="p-barcode-num">${{el.dataset.code}}</span>` : '';
+    el.outerHTML = code128Svg(el.dataset.code, 1, 10) + valueHtml;
   }});
 }}
 
