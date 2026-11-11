@@ -1170,7 +1170,10 @@ function printDateRangeText(){{
   if(viewDays === Infinity) return active.label;
   const end = new Date();
   end.setHours(0, 0, 0, 0);
-  end.setDate(end.getDate() + viewDays);
+  // matchesWindowAndMode()'s cutoff (today + viewDays) is an EXCLUSIVE upper
+  // bound -- the last day actually included is one day before that, so the
+  // printed label needs the same -1 or it'd claim a day that's excluded.
+  end.setDate(end.getDate() + viewDays - 1);
   const fmt = d => d.toLocaleDateString('en-US', {{month:'2-digit', day:'2-digit', year:'2-digit'}});
   return `${{active.label}} (thru ${{fmt(end)}})`;
 }}

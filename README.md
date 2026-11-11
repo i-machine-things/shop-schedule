@@ -23,7 +23,7 @@ Queries `Job`, `Job_Operation`, and `Work_Center` directly — no export/email s
 
 Pulls the entire open, released schedule — no day-ahead cutoff. How much of it any one viewer actually sees is a local, per-browser choice (see [Schedule window](#schedule-window) below), not something configured here. On a shop with a large number of open job-operations, note that the per-row current-work-center/remaining-hours lookup now runs across the whole backlog on every refresh, not just a near-term slice.
 
-**Use a dedicated read-only login**, not an existing admin/user account — if this device or its `.env` is ever compromised, a read-only login scoped to three tables is a much smaller exposure than whatever broader access an existing login has. Run as a JobBoss DB admin:
+**Use a dedicated read-only login**, not an existing admin/user account — if this device or its `.env` is ever compromised, a read-only login scoped to four tables is a much smaller exposure than whatever broader access an existing login has. Run as a JobBoss DB admin:
 
 ```sql
 CREATE LOGIN shop_schedule_ro WITH PASSWORD = 'choose-a-strong-password';
@@ -32,6 +32,14 @@ CREATE USER shop_schedule_ro FOR LOGIN shop_schedule_ro;
 GRANT SELECT ON dbo.Job TO shop_schedule_ro;
 GRANT SELECT ON dbo.Job_Operation TO shop_schedule_ro;
 GRANT SELECT ON dbo.Work_Center TO shop_schedule_ro;
+GRANT SELECT ON dbo.Delivery TO shop_schedule_ro;
+```
+
+**Upgrading an existing install:** the Delivery grant is new (Ship Qty/Promised Date columns). Run just that one line, as a JobBoss DB admin, against an existing `shop_schedule_ro` login:
+
+```sql
+USE <your_jobboss_database>;
+GRANT SELECT ON dbo.Delivery TO shop_schedule_ro;
 ```
 
 Then set in `.env`:

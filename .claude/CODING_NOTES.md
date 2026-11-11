@@ -184,6 +184,8 @@ This note was created based on issues encountered with PyInstaller executables r
 
 **Clear pending state before the null guard, not after.** If DOM query results are null from malformed fetched HTML, clear the pending flag first, or the function retries on every animation frame.
 
+**A `today + N` exclusive cutoff's last-included day is `today + N - 1`, not `today + N`.** `matchesWindowAndMode()`'s cutoff (`>=` exclusive) correctly caps the Schedule Window at `today + viewDays`, but `printDateRangeText()`'s "thru" label computed that same cutoff date and displayed it as if it were included -- off by one, claiming a day the filter actually excludes. CodeRabbit catch on PR #296.
+
 ## Accessibility
 
 **Custom `<div>` controls need `role`, `tabindex`, a keydown handler, and `:focus-visible`.** Any `<div>` replacing a native interactive element (e.g. a drop zone) must remain keyboard-operable.
@@ -241,6 +243,8 @@ This note was created based on issues encountered with PyInstaller executables r
 **Verified the gap-detection boundary with synthetic data before pushing, not just read through it** — eight cases (no gap, gap >1wk, the overdue-catch-up scenario specifically, a genuine gap past some overdue backlog that must still be detected, gap <1wk that must NOT stop early, empty job list, all-overdue with no next job, gap exactly at the 7-day threshold) all matched hand-computed `(backlog_days, gap_days)` pairs. Cheap and worth doing for any date-arithmetic-with-a-threshold change; off-by-one-week errors here are exactly the kind of bug that looks right on a quick read -- neither the overdue-catch-up case nor the still-must-detect-a-real-gap case were caught by earlier rounds of this test suite, since none of those cases had a job already in the past.
 
 ## JobBoss Schema Gotchas
+
+**Every `jobboss_db.py` query change that touches a new table needs a matching `GRANT SELECT` in README's `shop_schedule_ro` setup script, plus an explicit upgrade step for already-provisioned logins.** Adding the `Delivery` OUTER APPLY (Ship Qty/Promised Date) without updating the documented login's grants would leave every existing install's read-only login unable to actually run the new query. CodeRabbit catch on PR #296.
 
 **`Job_Operation`'s real "Operation Key" (what JobBoss's own UI calls it, and what a shop-floor scanner should read) is the `Job_Operation` column -- yes, a column named identically to its own table -- not the decoy-named `Job_OperationKey` column that sits right next to it (ordinal 1 vs. 2 in `jobboss-tables.xlsx`'s schema dump).** Picked `Job_OperationKey` first on name alone and shipped it in the Print Report's op-code barcode; wrong on the first try, caught only by the user comparing a live barcode's scanned value against JobBoss's own UI for a real job. Don't trust a JobBoss column name's plain-English reading when a near-identical alternative exists on the same table -- verify against `jobboss-tables.xlsx` (or live data for a known job) before relying on one.
 
