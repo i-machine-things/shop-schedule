@@ -40,3 +40,49 @@ function Import-DotEnv {
         Set-Item -Path "Env:$key" -Value $val
     }
 }
+
+# Shared .env writer -- single-quotes the value (matching Import-DotEnv's
+# read side above) and replaces the key's existing line if present, appends
+# otherwise. Used by install.ps1 (initial prompts) and protect-db-password.ps1
+# (rewriting JOBBOSS_DB_PASS in place after encrypting it).
+function Set-DotEnvValue {
+    param([string]$Key, [string]$Value, [string]$Path)
+    # Escape an embedded single quote the same way install.sh's _set_env()
+    # does (close quote, double-quoted literal quote, reopen quote) -- this
+    # .env format is shared with the Linux side, and a plain
+    # SHOP_NAME='Joe's Garage' is a bash syntax error (unterminated quote)
+    # when run_update.sh sources it, even though PowerShell's own
+    # Import-DotEnv tolerates it. CodeRabbit catch on PR #277.
+    $dq = [char]34
+    $escaped = $Value -replace "'", "'$dq'$dq'"
+    $line = "$Key='$escaped'"
+    # Explicit -Encoding UTF8 -- Windows PowerShell 5.1's Get-Content defaults
+    # to the system ANSI codepage for a BOM-less file, not UTF-8. CodeRabbit
+    # catch on PR #277.
+    $content = @(if (Test-Path $Path) { Get-Content -Path $Path -Encoding UTF8 } else { @() })
+    # Tolerate leading whitespace and whitespace around '=' the same way
+    # Import-DotEnv's read side already does (it Trim()s the whole line
+    # before matching) -- without this, an indented existing key (e.g.
+    # JOBBOSS_DB_PASS written back in by protect-db-password.ps1) silently
+    # fails to match here and gets a second, unindented line appended
+    # instead of replaced, leaving the OLD value -- e.g. the plaintext
+    # password -- still sitting in the file right next to the new one.
+    # CodeRabbit catch on PR #278.
+    $pattern = "^\s*$([regex]::Escape($Key))\s*="
+    if ($content -match $pattern) {
+        $content = $content | ForEach-Object { if ($_ -match $pattern) { $line } else { $_ } }
+    } else {
+        $content += $line
+    }
+    # [System.Text.UTF8Encoding]::new($false) -- no BOM. Windows PowerShell
+    # 5.1's `Set-Content -Encoding utf8` always writes a BOM (unlike
+    # PowerShell 7's separate utf8NoBOM); a BOM on this file's first line
+    # breaks bash's `source .env` outright -- the BOM bytes glue onto the
+    # first KEY=value as one token ("command not found"), and that var's
+    # value silently never gets set. Could be JOBBOSS_DB_PASS. Verified
+    # directly: wrote a BOM'd file, sourced it in bash, confirmed the
+    # failure and that the fix (no BOM) parses clean. CodeRabbit catch on
+    # PR #278.
+    $Utf8NoBom = New-Object System.Text.UTF8Encoding $false
+    [System.IO.File]::WriteAllLines($Path, $content, $Utf8NoBom)
+}

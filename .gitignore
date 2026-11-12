@@ -36,3 +36,6 @@ public/dept_colors.json
 # Roku channel zip packaging output (roku-ci.yml/roku-release.yml build here)
 /build/
 *.zip
+
+# Scratch renders/screenshots dropped here for human review during testing
+test-output/

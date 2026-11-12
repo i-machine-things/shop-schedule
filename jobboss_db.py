@@ -27,6 +27,11 @@ _DB_PORT_RAW = os.environ.get('JOBBOSS_DB_PORT', '').strip()
 DB_PORT = int(_DB_PORT_RAW) if _DB_PORT_RAW else None
 DB_NAME = os.environ.get('JOBBOSS_DB_NAME', '').strip()
 DB_USER = os.environ.get('JOBBOSS_DB_USER', '').strip()
+# A 'dpapi:<base64>' prefix means this was encrypted by protect-db-password.ps1
+# (Windows DPAPI, see that script) -- resolved lazily in _resolve_db_pass(),
+# not here at import time, so a leftover Windows-encrypted value can't break
+# module import -- or a Gmail-path run that doesn't even touch the DB -- on
+# a platform that can't decrypt it.
 DB_PASS = os.environ.get('JOBBOSS_DB_PASS', '')
 # Optional -- path to the SQL Server's certificate (PEM/Base-64 .cer), exported
 # by a DBA from SQL Server Configuration Manager. Without this, pytds leaves
@@ -34,7 +39,6 @@ DB_PASS = os.environ.get('JOBBOSS_DB_PASS', '')
 # No" setting, so no new exposure vs. today's Excel/Power Query access -- but
 # set this whenever a DBA can provide the cert). See README.md.
 DB_CAFILE = os.environ.get('JOBBOSS_DB_CAFILE', '').strip()
-DAYS_AHEAD = int(os.environ.get('JOBBOSS_DAYS_AHEAD', '').strip() or 14)
 
 # Current operation per job = earliest non-complete Sequence. Rem_Hrs/NumOps_Ahead
 # are the sum/count of everything queued ahead of *this row's* operation, not the
@@ -42,6 +46,16 @@ DAYS_AHEAD = int(os.environ.get('JOBBOSS_DAYS_AHEAD', '').strip() or 14)
 # the same job appears once per open operation with those two values changing
 # per appearance while Curr_WC stays constant. See PR description for the worked
 # example (job 30180, 5 appearances, 5 matching Rem_Hrs/#Ops pairs).
+#
+# No Sched_Start cutoff -- this pulls every open, released job-operation
+# regardless of how far out it's scheduled (same row scope as the backlog
+# query below). Previously capped to JOBBOSS_DAYS_AHEAD so the kiosk's
+# scrolling display stayed near-term, but that's now the Schedule Window
+# control's job (public/*.html, client-side, per-browser) -- the server
+# sends the whole open schedule and each viewer locally decides how much
+# of it to actually show. Trade-off: the CROSS APPLY below now runs per
+# row across the full backlog, not just the next ~14 days, on every
+# refresh -- a real cost on a shop with a large number of open operations.
 _QUERY = """
 SELECT
     wc.Department,
@@ -50,12 +64,15 @@ SELECT
     j.Job, j.Rev, j.Customer, j.Part_Number, j.Description,
     j.Make_Quantity, j.Priority,
     jo.Operation_Service                    AS Oper,
+    jo.Job_Operation                         AS Op_Key,
     jo.Description                          AS Oper_Desc,
     jo.Sched_Start, jo.Sched_End,
     cur.Curr_WC,
     cur.Rem_Hrs,
     cur.NumOps_Ahead,
-    jo.Act_Run_Qty                          AS Qty_Run
+    jo.Act_Run_Qty                          AS Qty_Run,
+    dlv.Promised_Date,
+    dlv.Ship_Qty
 FROM Job_Operation jo
 JOIN Job j          ON j.Job = jo.Job
 JOIN Work_Center wc ON wc.Work_Center = jo.Work_Center
@@ -70,22 +87,36 @@ CROSS APPLY (
     WHERE cjo.Job = jo.Job AND cjo.Status <> 'C'
     ORDER BY cjo.Sequence ASC
 ) cur
+OUTER APPLY (
+    -- Not every job has a Delivery row -- OUTER APPLY (not CROSS APPLY) keeps
+    -- it with blank Promised/Ship_Qty rather than dropping it, same reasoning
+    -- as `cur` above. The soonest still-open delivery (Remaining_Quantity > 0)
+    -- is used as "the" promise/ship-qty for this job; if every delivery has
+    -- already fully shipped, falls back to the soonest by date -- identical
+    -- selection logic to the sibling jobdocs project's Job Report query
+    -- (also against Delivery, also for Promised_Date).
+    -- UNVERIFIED: Ship_Qty = Promised_Quantity (the quantity committed on
+    -- this specific delivery line) is a best guess, not confirmed against
+    -- live data -- Remaining_Quantity (what's still outstanding across all
+    -- deliveries) is a plausible alternative reading of "Ship Qty". Check
+    -- with: SELECT Promised_Date, Promised_Quantity, Shipped_Quantity,
+    -- Remaining_Quantity FROM Delivery WHERE Job = '<a real open job>'
+    -- and compare against the real Foreman's Report PDF for that job.
+    SELECT TOP 1 d.Promised_Date, d.Promised_Quantity AS Ship_Qty
+    FROM Delivery d
+    WHERE d.Job = j.Job
+    ORDER BY CASE WHEN d.Remaining_Quantity > 0 THEN 0 ELSE 1 END, d.Promised_Date ASC
+) dlv
 WHERE jo.Status <> 'C'
   AND j.Released_Date IS NOT NULL
-  AND jo.Sched_Start <= %s
 ORDER BY wc.Department, COALESCE(wc.Parent_ID, wc.Work_Center), jo.Work_Center, j.Job, jo.Sequence
 """
 
-# Separate, unbounded query for work-center backlog only -- no Sched_Start
-# cutoff and no per-row CROSS APPLY (don't need Rem_Hrs/NumOps_Ahead/Curr_WC
-# here, just the schedule window). The main query above is intentionally
-# limited to JOBBOSS_DAYS_AHEAD so the scrolling kiosk display stays
-# near-term, but reusing that same limited row set for the backlog stat
-# silently capped it at ~days_ahead too -- defeating the point, since sales
-# needs to see real backlog depth beyond what's on screen. Cheaper than
-# widening the main query's cutoff would be: no CROSS APPLY means this
-# doesn't pay the correlated-subquery cost per row across a much larger date
-# range on every 60s refresh.
+# Separate query for work-center backlog only -- same row scope as the main
+# query above (no Sched_Start cutoff on either, now), but no per-row CROSS
+# APPLY since the backlog calc only needs sch_start/sch_end, not
+# Rem_Hrs/NumOps_Ahead/Curr_WC -- avoids paying that correlated-subquery
+# cost twice for the same rows on every refresh.
 _BACKLOG_QUERY = """
 SELECT
     wc.Department,
@@ -103,6 +134,24 @@ WHERE jo.Status <> 'C'
 def is_configured():
     """True if enough JOBBOSS_DB_* env vars are set to attempt a connection."""
     return bool(DB_HOST and DB_NAME and DB_USER)
+
+
+def _resolve_db_pass():
+    """Decrypt DB_PASS if protect-db-password.ps1 DPAPI-encrypted it, else
+    return it unchanged. Only decryptable on the Windows machine that
+    encrypted it (DPAPI, LocalMachine-scoped) -- raises clearly instead of
+    pytds producing a confusing auth failure on the literal 'dpapi:...' blob.
+    """
+    if not DB_PASS.startswith('dpapi:'):
+        return DB_PASS
+    if not sys.platform.startswith('win'):
+        raise RuntimeError(
+            "JOBBOSS_DB_PASS is DPAPI-encrypted, which only decrypts on the "
+            "Windows machine it was encrypted on (see protect-db-password.ps1).")
+    import base64
+    import win32crypt  # Windows-only (pywin32) -- import lazily, not installed on Linux.
+    blob = base64.b64decode(DB_PASS[len('dpapi:'):])
+    return win32crypt.CryptUnprotectData(blob, None, None, None, 0)[1].decode('utf-8')
 
 
 def _fmt_date(dt):
@@ -179,7 +228,6 @@ def _work_center_backlog_days(jobs, now):
 
 def fetch_from_db():
     """Query JobBoss directly; return {report_date, thru_date, sections}, or None on failure."""
-    cutoff = datetime.now() + timedelta(days=DAYS_AHEAD)
     # Only pass port= when explicitly configured -- otherwise let pytds resolve
     # a named instance (e.g. "SMI-APP02\JBSQL") via the SQL Browser service,
     # same as the ODBC driver does for Excel/Power Query against this server.
@@ -187,19 +235,23 @@ def fetch_from_db():
     # are given ("Both instance and port shouldn't be specified"), so a static
     # port means connecting to the bare host instead.
     dsn = DB_HOST
-    connect_kwargs = {
-        'database': DB_NAME, 'user': DB_USER, 'password': DB_PASS,
-        'timeout': 15, 'as_dict': True,
-    }
     if DB_PORT is not None:
         dsn = DB_HOST.split('\\', 1)[0]
-        connect_kwargs['port'] = DB_PORT
-    if DB_CAFILE:
-        connect_kwargs['cafile'] = DB_CAFILE
     try:
+        # Password resolution (DPAPI decrypt, if applicable) happens inside
+        # this try too -- a decryption failure is a connection failure from
+        # the caller's point of view, and should be reported the same way.
+        connect_kwargs = {
+            'database': DB_NAME, 'user': DB_USER, 'password': _resolve_db_pass(),
+            'timeout': 15, 'as_dict': True,
+        }
+        if DB_PORT is not None:
+            connect_kwargs['port'] = DB_PORT
+        if DB_CAFILE:
+            connect_kwargs['cafile'] = DB_CAFILE
         with pytds.connect(dsn, **connect_kwargs) as conn:
             with conn.cursor() as cur:
-                cur.execute(_QUERY, (cutoff,))
+                cur.execute(_QUERY)
                 rows = cur.fetchall()
                 cur.execute(_BACKLOG_QUERY)
                 backlog_rows = cur.fetchall()
@@ -224,12 +276,22 @@ def fetch_from_db():
             'pri': str(r['Priority']) if r['Priority'] is not None else '',
             'sch_start': _fmt_date(r['Sched_Start']),
             'curr_wc': r['Curr_WC'] or '',
-            # Not yet sourced from the DB -- see CODING_NOTES.md. Report still
-            # renders fine with these blank (overdue highlighting just no-ops).
-            'ship_qty': '',
-            'promised': '',
+            # See the Delivery OUTER APPLY's own comment -- Ship_Qty's exact
+            # source column is a best guess, not yet confirmed against live
+            # data.
+            'ship_qty': str(r['Ship_Qty']) if r['Ship_Qty'] is not None else '',
+            'promised': _fmt_date(r['Promised_Date']),
             'customer': r['Customer'] or '',
             'oper': r['Oper'] or '',
+            # Job_Operation.Job_Operation -- yes, a column named the same as
+            # its own table -- is the real "Operation Key" JobBoss's own UI
+            # shows, confirmed against jobboss-tables.xlsx's schema dump and
+            # live data for a real job; the table also has a *different*
+            # column, Job_OperationKey, which looked like the obvious match
+            # by name but is NOT it. Distinct from Operation_Service above
+            # (the human-facing "OP1"-style label), which isn't guaranteed
+            # unique across jobs.
+            'op_key': str(r['Op_Key']) if r['Op_Key'] is not None else '',
             'oper_desc': r['Oper_Desc'] or '',
             'sch_end': _fmt_date(r['Sched_End']),
             'num_ops': str(r['NumOps_Ahead']) if r['NumOps_Ahead'] is not None else '',
@@ -239,10 +301,10 @@ def fetch_from_db():
             'description': r['Description'] or '',
         })
 
-    # Group the unbounded backlog-query rows by the same (department,
-    # wc_group, wc) key as sections above, and compute backlog_days/
-    # gap_days from that full set -- not from sec['jobs'], which is
-    # intentionally truncated to JOBBOSS_DAYS_AHEAD for display.
+    # Group the backlog-query rows by the same (department, wc_group, wc)
+    # key as sections above, and compute backlog_days/gap_days from that --
+    # a plain query with no CROSS APPLY, cheaper than reusing sec['jobs']
+    # (which already carries Curr_WC/Rem_Hrs/NumOps_Ahead this calc doesn't need).
     backlog_jobs_by_wc = {}
     for r in backlog_rows:
         key = (r['Department'] or '', r['WC_Group'] or '', r['WC'] or '')
@@ -257,8 +319,14 @@ def fetch_from_db():
         sec['backlog_days'] = backlog_days
         sec['gap_days'] = gap_days
 
+    # No fixed cutoff anymore (the query is unbounded) -- report the real
+    # extent of what's actually in this data instead of a contrived date,
+    # so "Thru:" on the header stays honest.
+    thru_dt = max((r['Sched_End'] for r in rows if r['Sched_End']), default=None)
+    thru_date = thru_dt.strftime('%m/%d/%Y') if thru_dt else ''
+
     return {
         'report_date': datetime.now().strftime('%d-%b-%y %I:%M%p'),
-        'thru_date': cutoff.strftime('%m/%d/%Y'),
+        'thru_date': thru_date,
         'sections': list(sections.values()),
     }

@@ -6,15 +6,15 @@ You are a senior software developer. These rules override your default behavior.
 
 ## Project Overview
 
-**Shop Schedule** — a Single Board Computer kiosk for a manufacturer's shop floor, plus a native
-Roku client for the same display.
+**Shop Schedule** — a kiosk display for a manufacturer's shop floor, running on a Linux Single Board Computer or a Windows PC, plus a native Roku client for the same display.
 
-- Runs as a cron job every 15 minutes via `run_update.sh`
-- Pulls the schedule from JobBoss directly (preferred) or parses a dropped/uploaded Foreman's
-  Report PDF, and generates `schedule.html`/`kiosk.html`/`schedule.json`
-- `foreman-kiosk.service` (systemd) opens Chromium in kiosk mode pointing at `schedule.html`
+- `update_schedule.py` runs every 15 minutes (cron on Linux, Task Scheduler on Windows) and either queries JobBoss directly (preferred — `jobboss_db.py`) or parses a Foreman's Report PDF already sitting at `PDF_PATH` (manual drop into `incoming/`, or web upload via `options.html`)
+- Generates `public/schedule.html` (static view) and `public/kiosk.html` (auto-scrolling, with page rotation) from the same data, plus `public/schedule.json` for non-browser clients
+- Both generated pages share one template with a sidebar: Work Center filter, Schedule Window (date range), Schedule Mode (Standard/WC Dispatch), and a Print Report tool (pick work centers, print a dedicated plain-print layout, independent of both the on-screen Work Center filter and the JobBoss Foreman's Report's own print layout) — all client-side, no server round-trip. Schedule Window, Schedule Mode, and sidebar collapse state persist via `localStorage`; the Work Center filter and Print Report's own work-center selection are one-off choices that reset on reload or schedule refresh. This template is the thing most PRs touch; re-check this overview after any PR that changes it materially.
+- `server.py` serves `public/` plus a small upload/config API (`/api/upload/*`, `/api/pages`, `/api/dept-colors`) — not just a static file server
+- `foreman-kiosk.service` (Linux systemd) / `ShopScheduleKiosk` task (Windows, via `kiosk-launch.ps1`) opens Chromium in kiosk mode pointing at `kiosk.html`
 - Credentials live in `.env` (gitignored) — never commit them
-- Deployed to a Single Board Computer at `~/shop-schedule/` (cloned from GitHub, install.sh runs in-place)
+- Deployed to the device at `~/shop-schedule/` (Linux) or an install directory (Windows), cloned from GitHub; `install.sh`/`install.ps1` set up in-place
 - `roku/` — a native BrightScript/Roku channel that polls `schedule.json` and renders it on a
   shop-floor TV (Roku's SDK has no web-view component, so it can't just display `kiosk.html`).
   Merged into this repo from the formerly-separate `shop-schedule-roku` project (full history
@@ -22,12 +22,14 @@ Roku client for the same display.
   conventions live in `roku/.claude/CLAUDE.md` — read that too before touching anything under
   `roku/`; it supplements, not replaces, the rules below.
 
-Key files:
-- `update_schedule.py` — DB/PDF source selection, HTML and JSON generation
+Key files (see `README.md`'s Files table for the complete list):
+- `update_schedule.py` — source selection, PDF parse, HTML/JSON generation (the shared template described above)
 - `jobboss_db.py` — JobBoss DB source
-- `run_update.sh` — cron wrapper that loads `.env` and calls the script
-- `install.sh` — one-time setup script for the device
-- `foreman-kiosk.service` — systemd service definition
+- `server.py` — HTTP server and upload/config API
+- `process_drop.py` — drop-dir PDF ingestion
+- `run_update.sh` / `run_update.ps1` — cron/Task Scheduler wrapper, loads `.env`
+- `install.sh` / `install.ps1` — one-time device setup
+- `foreman-kiosk.service` / `kiosk-launch.ps1` — kiosk display launch
 - `.env.example` — credential template (safe to commit)
 - `roku/` — native Roku client; see `roku/.claude/CLAUDE.md`
 
@@ -98,10 +100,10 @@ Rules:
 
 Before pushing any commit that touches `update_schedule.py`, `run_update.sh`, or HTML generation:
 
-1. Run the script against a real or sample PDF to verify parsing succeeds:
+1. Run the script against a real or sample PDF to verify parsing succeeds (with `JOBBOSS_DB_*` unset/not configured, so it takes the PDF-parsing path):
    ```bash
-   GMAIL_USER='' python3 update_schedule.py
-   # (skips email fetch; regenerates schedule.html from last_report.pdf if present)
+   python3 update_schedule.py
+   # regenerates schedule.html from whatever PDF already sits at PDF_PATH (e.g. last_report.pdf)
    ```
 2. Open `schedule.html` in a browser and confirm the table renders correctly — departments, job rows, overdue highlighting.
 3. If you changed cron/service config, verify the syntax is valid before committing.

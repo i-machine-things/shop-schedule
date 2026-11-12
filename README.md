@@ -1,6 +1,6 @@
 # Shop Schedule
 
-Kiosk display for a machine shop floor — runs on a Linux Single Board Computer or a Windows PC (see [Setup](#setup)). Every 15 minutes (cron on Linux, Task Scheduler on Windows), pulls the current Foreman's Report data and serves an auto-scrolling HTML schedule on a wall-mounted screen.
+Kiosk display for a machine shop floor — runs on a Linux Single Board Computer or a Windows PC (see [Setup](#setup)). Every 15 minutes (cron on Linux, Task Scheduler on Windows) during the shop's active hours, pulls the current Foreman's Report data and serves an auto-scrolling HTML schedule on a wall-mounted screen.
 
 > Two ways to get data in: **query JobBoss directly** over the network (preferred — see [JobBoss DB source](#jobboss-db-source)), or drop/upload the Foreman's Report PDF export (see [PDF source](#pdf-source) — drop a PDF directly into the `incoming/` folder, or upload it via [options.html](#uploading-files)). If `JOBBOSS_DB_HOST` is set in `.env`, the DB path is used and the PDF settings are ignored.
 
@@ -12,16 +12,18 @@ Kiosk display for a machine shop floor — runs on a Linux Single Board Computer
 
 ## How it works
 
-1. `run_update.sh` (Linux, via cron) or `run_update.ps1` (Windows, via Task Scheduler) runs every 15 minutes
-2. It loads credentials from `.env` and runs `update_schedule.py`
-3. If `JOBBOSS_DB_HOST` is set, it queries JobBoss directly for open operations scheduled within `JOBBOSS_DAYS_AHEAD` days; otherwise it parses whatever PDF is sitting at `PDF_PATH`, dropped into `incoming/` or uploaded via `options.html` (see [PDF source](#pdf-source))
+1. `run_update.sh` (Linux, via cron) or `run_update.ps1` (Windows, via Task Scheduler) runs every 15 minutes, around the clock
+2. It loads credentials from `.env` and runs `update_schedule.py`, which immediately no-ops outside `SCHEDULE_ACTIVE_START_HOUR`/`SCHEDULE_ACTIVE_END_HOUR` (`.env`, default 5am-5pm local time) — nothing changes in JobBoss while the shop's closed, so there's nothing to pull. A manual PDF drop/upload (`process_drop.py`) always bypasses this via `update_schedule.py --force`, so it takes effect immediately rather than waiting for the next active-hours cycle
+3. If `JOBBOSS_DB_HOST` is set, it queries JobBoss directly for the entire open, released schedule; otherwise it parses whatever PDF is sitting at `PDF_PATH`, dropped into `incoming/` or uploaded via `options.html` (see [PDF source](#pdf-source))
 4. `schedule.html` is regenerated and picked up live by Chromium in kiosk mode
 
 ## JobBoss DB source
 
 Queries `Job`, `Job_Operation`, and `Work_Center` directly — no export/email step needed. Only the columns needed for display are selected (no pricing, cost, or margin fields).
 
-**Use a dedicated read-only login**, not an existing admin/user account — if this device or its `.env` is ever compromised, a read-only login scoped to three tables is a much smaller exposure than whatever broader access an existing login has. Run as a JobBoss DB admin:
+Pulls the entire open, released schedule — no day-ahead cutoff. How much of it any one viewer actually sees is a local, per-browser choice (see [Schedule window](#schedule-window) below), not something configured here. On a shop with a large number of open job-operations, note that the per-row current-work-center/remaining-hours lookup now runs across the whole backlog on every refresh, not just a near-term slice.
+
+**Use a dedicated read-only login**, not an existing admin/user account — if this device or its `.env` is ever compromised, a read-only login scoped to four tables is a much smaller exposure than whatever broader access an existing login has. Run as a JobBoss DB admin:
 
 ```sql
 CREATE LOGIN shop_schedule_ro WITH PASSWORD = 'choose-a-strong-password';
@@ -30,6 +32,14 @@ CREATE USER shop_schedule_ro FOR LOGIN shop_schedule_ro;
 GRANT SELECT ON dbo.Job TO shop_schedule_ro;
 GRANT SELECT ON dbo.Job_Operation TO shop_schedule_ro;
 GRANT SELECT ON dbo.Work_Center TO shop_schedule_ro;
+GRANT SELECT ON dbo.Delivery TO shop_schedule_ro;
+```
+
+**Upgrading an existing install:** the Delivery grant is new (Ship Qty/Promised Date columns). Run just that one line, as a JobBoss DB admin, against an existing `shop_schedule_ro` login:
+
+```sql
+USE <your_jobboss_database>;
+GRANT SELECT ON dbo.Delivery TO shop_schedule_ro;
 ```
 
 Then set in `.env`:
@@ -40,7 +50,6 @@ JOBBOSS_DB_PORT=
 JOBBOSS_DB_NAME=<your_jobboss_database>
 JOBBOSS_DB_USER=shop_schedule_ro
 JOBBOSS_DB_PASS=<the-password-from-above>
-JOBBOSS_DAYS_AHEAD=14
 ```
 
 Use the exact `Server` value from your SQL Server ODBC DSN (Windows: ODBC Data Sources → System DSN → your DSN → Configure) for `JOBBOSS_DB_HOST` — for a named instance like `SMI-APP02\JBSQL`, leave `JOBBOSS_DB_PORT` blank and it resolves the real port automatically via the SQL Browser service, the same way the ODBC driver does it for Excel/Power Query. Only set `JOBBOSS_DB_PORT` if that resolution isn't available (e.g. the browser service/UDP 1434 is firewalled) and a DBA has given you a static port instead.
@@ -49,7 +58,7 @@ Use the exact `Server` value from your SQL Server ODBC DSN (Windows: ODBC Data S
 
 The device needs network access to the SQL Server (same LAN as the shop floor is normally sufficient — both the resolved TCP port and UDP 1434 if using instance-name resolution). Uses [`python-tds`](https://pypi.org/project/python-tds/) — pure Python, no native ODBC driver to install, which matters on ARM boards where Microsoft's ODBC driver support is inconsistent.
 
-> **Known gap:** `Promised` and `Ship Qty` aren't sourced from the DB yet (not yet located in the schema) and display blank in this mode — overdue-date highlighting is inactive until that's resolved. Everything else (job, customer, part, work center, schedule dates, remaining hours) matches the real Foreman's Report, verified against production data.
+> **Known gap, partially resolved:** `Promised` now comes from `Delivery.Promised_Date` (the soonest still-open delivery for the job, same selection logic as the sibling `jobdocs` project's Job Report), so overdue-date highlighting is active in this mode. `Ship Qty` is sourced too (`Delivery.Promised_Quantity`), but that specific column is an **unverified best guess**, not yet confirmed against live data — see `jobboss_db.py`'s comment on the `Delivery` lookup for the exact query to check it with. Everything else (job, customer, part, work center, schedule dates, remaining hours) matches the real Foreman's Report, verified against production data.
 
 > **Known limitation — unencrypted transport by default:** `pytds` doesn't encrypt the connection unless given a CA certificate file. By default `JOBBOSS_DB_CAFILE` is unset, so credentials and job/customer data travel in plaintext between the device and the SQL Server. This matches the existing trust model for this server — the reference ODBC DSN itself is configured with `Data Encryption: No` — so leaving it unset doesn't introduce a new exposure beyond what Excel/Power Query access already has. To close the gap, set `JOBBOSS_DB_CAFILE` to a PEM/Base-64-encoded copy of the SQL Server's TLS certificate (SQL Server auto-generates a self-signed one by default even when unused — a DBA can find which one is active in **SQL Server Configuration Manager → SQL Server Network Configuration → Protocols for `JBSQL` → Certificate tab**, then export its public certificate only, no private key, via `certlm.msc` → Personal → Certificates → right-click → All Tasks → Export → Base-64 encoded X.509). Requires `pyOpenSSL` on the device (installed by `install.sh`). Worth doing whenever someone with DBA access on `SMI-APP02\JBSQL` is available.
 
@@ -114,6 +123,19 @@ cd C:\shop-schedule
 
 Sets up the same `.env`, a venv, a Task Scheduler job every 15 minutes (`ShopScheduleUpdate`), the HTTP server at boot (`ShopScheduleServer`), and a local kiosk display at logon (`ShopScheduleKiosk`, Chrome if present else Edge). The installer only prompts for `SHOP_NAME` — fill in `JOBBOSS_DB_HOST`/`NAME`/`USER`/`PASS` in `.env` yourself afterward (see [JobBoss DB source](#jobboss-db-source) below).
 
+#### Securing the DB password (Windows)
+
+`JOBBOSS_DB_PASS` sits in `.env` as plaintext by default, like every other value here — fine on Linux where `install.sh` locks the file to `600`, but Windows has a better option. Excel/Power Query avoids storing a SQL password at all by defaulting to Windows Integrated Authentication (your logged-in identity, not a password); when it does remember one, it encrypts it via **DPAPI**, the same mechanism behind Windows Credential Manager.
+
+```powershell
+# After JOBBOSS_DB_PASS is set in .env:
+.\protect-db-password.ps1
+```
+
+Rewrites `JOBBOSS_DB_PASS` in `.env` as a DPAPI-encrypted blob (`dpapi:...`); `jobboss_db.py` decrypts it transparently at connect time. Re-run it any time after changing the password — it's a no-op if already encrypted.
+
+Uses `LocalMachine` scope, not `CurrentUser`: the `ShopScheduleServer`/`ShopScheduleUpdate` scheduled tasks run as `SYSTEM`, not the account that ran this script, and `CurrentUser`-scoped DPAPI blobs only decrypt for the exact account that created them. `LocalMachine` scope means any local account on that PC *could* decrypt it, not only `SYSTEM` — still meaningfully better than the plaintext file it replaces (decryption needs local code execution on that specific machine, not just read access to `.env`), but it isn't full account-level secrecy. Windows Integrated Authentication (no stored password at all) would be stronger still, but needs the JobBoss SQL Server to allow Windows logins and a DBA-provisioned service account — out of scope here, left as a possible future option.
+
 ## Remote access
 
 Once the installer runs, the kiosk and schedule are served over HTTP on port 8080:
@@ -156,6 +178,28 @@ Uploaded display PDFs are stored in `public/raw/` and their entries are managed 
 ## Work center filter
 
 The schedule page has a fixed sidebar listing every work center in the current report. Tapping a WC solos it (first tap); subsequent taps toggle additional WCs in or out. Tapping the sole active WC resets to showing all. The **All** button at the top also resets to the full view.
+
+## Schedule window
+
+Below the work center filter, two independent controls narrow what's displayed — both are local, per-browser display preferences, stored in `localStorage` like the theme toggle, with no effect on the server, `schedule.json`, or any other kiosk/browser viewing the same schedule.
+
+**Schedule Window** (Today / 3 Days / 1 Week / 2 Weeks / All) limits the view to jobs starting within that many days. A section's header hides too once none of its jobs are visible. **All** shows everything the server sent — what "everything" means depends on the data source: with [JobBoss DB source](#jobboss-db-source), the server always queries and sends the entire open schedule, no day cap; with [PDF source](#pdf-source), "everything" is whatever job rows the Foreman's Report PDF itself contained — the server has no way to pull more than the PDF supplied.
+
+**Schedule Mode** (Standard / WC Dispatch) is a separate toggle, not another day count. In **WC Dispatch**, within each work center's own section, only jobs whose *current* operation (JobBoss's `Curr_WC`) is actually sitting at that work center right now are shown — i.e. `wc == curr_wc` — rather than every job scheduled to eventually pass through it. It combines with whatever Schedule Window is selected rather than replacing it (e.g. "1 Week" + WC Dispatch shows only ready-to-run jobs due within a week). Useful for an operator who wants "what can I pick up at my station right now" instead of "what's in my station's future queue."
+
+## Print report
+
+Below Schedule Mode, **Print Report** lets you pick one or more work centers and print a physical copy — a run list to hand to a station rather than something read off the screen.
+
+Tapping a work center toggles it in or out of the print selection (independent of the Work Center filter above it); **Print** opens the browser's print dialog once at least one is selected. The selection isn't saved across reloads — it's a one-off choice, not a display preference like the other sidebar controls.
+
+What prints mirrors what's currently on screen: the Schedule Window and Schedule Mode filters still apply, so printing "1 Week" + WC Dispatch prints only the jobs that filter leaves visible. By default, work centers flow continuously and a page break occurs only where content overflows. Enable **One page per workcenter** (saved per browser) to start each selected work center on its own page. In that mode, the report header repeats on every work center's first page.
+
+Always prints Letter landscape — the print dialog's own Orientation control won't offer Portrait, because the page-number pagination (below) has to assume one fixed page size to stay accurate, and nothing in JS can read back whatever orientation the print dialog actually ends up using.
+
+The header also names the active Schedule Window (e.g. "1 Week (thru 11/18/26)", or just "All" with no date) so a printed page says what it covers without anyone needing to check the screen it came from — computed fresh at print time, not baked into the page on load, so it's always the window that was actually selected when **Print** was clicked. Every page also gets a "Page X of Y" at its top right — computed and placed by ordinary JavaScript (measuring each section/row's real height and inserting a forced page break plus a label), not CSS Paged Media's `@page` margin boxes (`@top-right` etc.). Firefox has never implemented those margin boxes at all — only Chromium has — so this report needed to work without them to print correctly outside Chromium/Edge. A side effect: a work center whose own job list is too long for one page is automatically split across multiple pages, each repeating the column headers, rather than just overflowing uncontrolled.
+
+Each job row also prints a Code128 barcode under the job number, and another under the Oper cell — the second one encodes JobBoss's own internal Operation Key (a numeric ID, not the "OP1"-style label shown as text next to it), so scanning it identifies the exact operation row rather than an op label that isn't guaranteed unique across jobs. That number also repeats as plain text right below its barcode, since — unlike the job number, already shown as text above its own barcode — the Operation Key otherwise wouldn't appear anywhere readable on the page. DB-sourced only: a PDF-parsed report has no access to that internal key, so that barcode (and its plaintext number) is simply omitted there. Both barcodes are generated client-side (no server round-trip, no third-party JS) and render once at page load and again whenever the schedule refreshes.
 
 ## Page rotation
 
@@ -215,7 +259,8 @@ python3 process_drop.py
 | `run_update.ps1` | Scheduled-task wrapper (Windows) — loads `.env` and calls the script |
 | `install.ps1` | One-time server setup (Windows): deps, Task Scheduler jobs |
 | `kiosk-launch.ps1` | Waits for the HTTP server to answer, then opens the browser in kiosk mode (Windows `ShopScheduleKiosk` task) |
-| `dotenv.ps1` | `.env` parser shared by `install.ps1`/`run_update.ps1` |
+| `dotenv.ps1` | `.env` parser/writer shared by `install.ps1`/`run_update.ps1`/`protect-db-password.ps1` |
+| `protect-db-password.ps1` | DPAPI-encrypts `JOBBOSS_DB_PASS` in `.env` at rest (Windows, optional) |
 | `public/install.html` | Web UI showing the copyable client install one-liner |
 | `public/options.html` | Admin UI — page rotation config, uploads, and department color pickers |
 | `public/kiosk.html` | Rotation shell — wraps the schedule and fades to configured pages |
