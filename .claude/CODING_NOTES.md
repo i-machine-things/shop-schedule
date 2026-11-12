@@ -313,3 +313,9 @@ This note was created based on issues encountered with PyInstaller executables r
 **Quote `.env.example` values that contain spaces.** `KEY=Value With Spaces` may parse incorrectly in some dotenv loaders; use `KEY="Value With Spaces"`.
 
 **Always tag fenced code blocks in Markdown with a language.** An untagged block (e.g. raw `.env` vars) fails MD040 lint; use e.g. ` ```dotenv `.
+
+## Scheduled Refresh Gating
+
+**A `[start, end)` active-hours window read from `.env` must validate `start < end` itself -- an inverted or equal pair (e.g. a typo'd `START=17 END=5`) silently makes the gate always-false, disabling the refresh entirely with no error anywhere.** Not just a malformed-value problem (`_parse_hour()` already guards that) -- both values can individually be perfectly valid integers and still produce a useless window together. Fixed by checking `start >= end` after parsing both and resetting to the default with a stderr warning, rather than trusting the pair blindly. CodeRabbit catch on PR #297.
+
+**A gate added to an unattended script's `main()` has to be bypassable for every *other* caller of that same `main()`, not just the scheduler it was designed for.** `update_schedule.py` gained an active-hours no-op for its cron/Task Scheduler cycle, but `process_drop.py` also calls it directly after a manual PDF drop/upload (`server.py`'s web upload handler) -- without a bypass, a supervisor uploading a corrected PDF at 6pm would see nothing happen, with no indication why. Fixed with a `--force` CLI flag that `process_drop.py` always passes (that code path is never reached by the unattended cron cycle, which always uses `--no-regen` instead -- see `run_update.sh`/`.ps1`), so a deliberate, right-now action takes effect immediately while the scheduled cycle still respects the gate. Before adding a gate like this, grep every caller of the function being gated, not just the one that motivated it. CodeRabbit catch on PR #297.
