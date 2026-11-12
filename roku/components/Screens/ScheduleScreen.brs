@@ -19,6 +19,11 @@ sub init()
     ' successful fetch; colorsForDept()'s neutral fallback covers that gap.
     m.deptColors = {}
 
+    ' Set by teardown() -- checked by onGhostVideoState()/startGhostVideo()
+    ' so stopping ghostVideo (and a pending ghostRetryTimer firing after)
+    ' can't restart it right back up during reconfiguration.
+    m.tornDown = false
+
     m.titleLabel = m.top.findNode("titleLabel")
     m.metaLabel = m.top.findNode("metaLabel")
     m.clockLabel = m.top.findNode("clockLabel")
@@ -100,12 +105,21 @@ end sub
 ' timers/Task. CodeRabbit catch on PR #286, sixth review pass.
 sub teardown()
     try
+        ' Set BEFORE stopping ghostVideo -- stopping it fires its "state"
+        ' observer (onGhostVideoState()) with state="stopped", which would
+        ' otherwise call startGhostVideo() right back, undoing the stop this
+        ' same call is making. A pending ghostRetryTimer needs stopping too,
+        ' not just the flag -- without this, a retry already in flight from
+        ' an earlier video error still fires startGhostVideo() well after
+        ' teardown returns. CodeRabbit catch on PR #286, seventh review pass.
+        m.tornDown = true
         m.refreshTimer.control = "stop"
         m.scrollTimer.control = "stop"
         m.pauseTimer.control = "stop"
         m.clockTimer.control = "stop"
         m.manualPauseTimer.control = "stop"
         m.scheduleTask.control = "stop"
+        m.ghostRetryTimer.control = "stop"
         m.ghostVideo.control = "stop"
     catch e
         print "teardown error: "; e.getMessage()
@@ -116,6 +130,10 @@ end sub
 ' video file (media/ghost.mp4) -- Video nodes need actual content to play,
 ' even invisible/off-screen ones; there's no "fake playing" state.
 sub startGhostVideo()
+    ' Defense in depth alongside the checks in onGhostVideoState()/
+    ' onGhostRetryTimerFire() -- any future caller added here inherits the
+    ' same guarantee without having to remember this rule itself.
+    if m.tornDown then return
     content = CreateObject("roSGNode", "ContentNode")
     content.url = "pkg:/media/ghost.mp4"
     content.streamFormat = "mp4"
@@ -128,6 +146,11 @@ end sub
 ' this only fires on a genuine stop/error). See the ghostVideo XML comment
 ' for how this was diagnosed and confirmed fixed via telnet.
 sub onGhostVideoState()
+    ' teardown() sets this right before stopping ghostVideo itself -- without
+    ' this check, that stop's own "stopped" state change would land here and
+    ' call startGhostVideo() right back. CodeRabbit catch on PR #286,
+    ' seventh review pass.
+    if m.tornDown then return
     st = m.ghostVideo.state
     if st = "error" then
         print "[GHOST] errorCode="; m.ghostVideo.errorCode; " errorMsg="; m.ghostVideo.errorMsg
@@ -301,8 +324,20 @@ sub buildContent(sections as Object)
         newSectionBounds = []
         y = 0
         hadInputSections = (sections <> invalid and sections.Count() > 0)
+        ' Tracked separately from "zero displayable sections" below -- a
+        ' section with a genuinely empty (but valid) jobs array isn't
+        ' malformed, just nothing to show for that work center right now.
+        ' The PDF path can legitimately produce this (a work-center header
+        ' with no job lines under it); treating it as malformed meant a
+        ' kiosk stuck showing the error banner on every refresh until the
+        ' PDF changed. CodeRabbit catch on PR #286, seventh review pass.
+        malformedSections = 0
         for each section in sections
-            if section.jobs <> invalid and section.jobs.Count() > 0 then
+            if section.jobs = invalid then
+                malformedSections = malformedSections + 1
+            else if GetInterface(section.jobs, "ifArray") = invalid then
+                malformedSections = malformedSections + 1
+            else if section.jobs.Count() > 0 then
                 header = buildSectionHeader(section, y)
                 ' header kept directly on the bounds entry (not re-found by
                 ' id later) so onDeptColors() below can repaint it in place --
@@ -321,17 +356,18 @@ sub buildContent(sections as Object)
         end for
         newContentHeight = y
 
-        ' A non-empty response that produced zero displayable sections means
-        ' every section's `jobs` was missing/malformed -- not a legitimate
-        ' "nothing scheduled right now" (that's sections itself being empty,
-        ' which is fine and swaps in normally below). Swapping in an empty
-        ' schedule here would silently blank an otherwise-fine kiosk over a
-        ' malformed response, the same failure mode the exception-safety
-        ' above exists to prevent, just reached without throwing. Partially-
-        ' malformed responses (some sections fine, others not) still display
-        ' the valid ones -- only an all-bad response is rejected outright.
-        ' CodeRabbit catch on PR #286, fifth review pass.
-        if hadInputSections and newSectionBounds.Count() = 0 then
+        ' Only reject when NOTHING displayed AND at least one section was
+        ' actually malformed -- not a legitimate "nothing scheduled right
+        ' now" (sections itself empty, or every section's jobs validly
+        ' empty), which swaps in an empty schedule normally below instead.
+        ' Swapping in an empty schedule over a genuinely malformed response
+        ' would silently blank an otherwise-fine kiosk, the same failure
+        ' mode the exception-safety above exists to prevent, just reached
+        ' without throwing. Partially-malformed responses (some sections
+        ' fine, others not) still display the valid ones -- only an
+        ' all-bad response is rejected outright. CodeRabbit catch on PR
+        ' #286, fifth and seventh review passes.
+        if hadInputSections and newSectionBounds.Count() = 0 and malformedSections > 0 then
             m.errorLabel.text = "Display error building schedule -- will retry next refresh."
             m.errorBanner.visible = true
             return
