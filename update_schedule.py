@@ -49,6 +49,14 @@ PDF_COMPANY_NAME = os.environ.get('PDF_COMPANY_NAME', '').strip()
 # stationary kiosk device).
 SCHEDULE_ACTIVE_START_HOUR = _parse_hour('SCHEDULE_ACTIVE_START_HOUR', 5)
 SCHEDULE_ACTIVE_END_HOUR = _parse_hour('SCHEDULE_ACTIVE_END_HOUR', 17)
+if SCHEDULE_ACTIVE_START_HOUR >= SCHEDULE_ACTIVE_END_HOUR:
+    # [start, end) only, no overnight-wraparound support (e.g. 22-6) -- a
+    # start >= end would make _within_active_hours() false for every hour,
+    # silently disabling the refresh entirely rather than just narrowing it.
+    print(f"SCHEDULE_ACTIVE_START_HOUR ({SCHEDULE_ACTIVE_START_HOUR}) must be before "
+          f"SCHEDULE_ACTIVE_END_HOUR ({SCHEDULE_ACTIVE_END_HOUR}) -- using the 5-17 default instead.",
+          file=sys.stderr)
+    SCHEDULE_ACTIVE_START_HOUR, SCHEDULE_ACTIVE_END_HOUR = 5, 17
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 PDF_PATH = os.path.join(BASE_DIR, PDF_FILENAME)
 HTML_PATH = os.path.join(BASE_DIR, 'public', 'schedule.html')
@@ -1624,13 +1632,18 @@ setInterval(async () => {{
 
 # ── Main ────────────────────────────────────────────────────────────────────────
 
-def main():
+def main(force=False):
     """Regenerate schedule.html/kiosk.html from the JobBoss DB if configured,
     otherwise fall back to parsing a PDF already sitting at PDF_PATH from a
     manual drop (incoming/) or web upload (options.html) -- same on both
     platforms. No-ops outside SCHEDULE_ACTIVE_START_HOUR/END_HOUR, leaving
-    the last-generated pages in place."""
-    if not _within_active_hours():
+    the last-generated pages in place, unless force=True (--force on the
+    command line) -- process_drop.py passes that for a web upload or a
+    manual drop-dir run, since someone deliberately handing over a new PDF
+    right now should take effect immediately, not silently wait for the
+    next active-hours cycle. The unattended cron/Task Scheduler path never
+    passes it, so the gate still applies there."""
+    if not force and not _within_active_hours():
         print(f"[{datetime.now():%Y-%m-%d %H:%M}] Outside active hours "
               f"({SCHEDULE_ACTIVE_START_HOUR:02d}:00-{SCHEDULE_ACTIVE_END_HOUR:02d}:00) -- skipping this cycle.")
         return
@@ -1670,4 +1683,4 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    main(force='--force' in sys.argv)

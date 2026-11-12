@@ -13,7 +13,7 @@ Kiosk display for a machine shop floor — runs on a Linux Single Board Computer
 ## How it works
 
 1. `run_update.sh` (Linux, via cron) or `run_update.ps1` (Windows, via Task Scheduler) runs every 15 minutes, around the clock
-2. It loads credentials from `.env` and runs `update_schedule.py`, which immediately no-ops outside `SCHEDULE_ACTIVE_START_HOUR`/`SCHEDULE_ACTIVE_END_HOUR` (`.env`, default 5am-5pm local time) — nothing changes in JobBoss while the shop's closed, so there's nothing to pull
+2. It loads credentials from `.env` and runs `update_schedule.py`, which immediately no-ops outside `SCHEDULE_ACTIVE_START_HOUR`/`SCHEDULE_ACTIVE_END_HOUR` (`.env`, default 5am-5pm local time) — nothing changes in JobBoss while the shop's closed, so there's nothing to pull. A manual PDF drop/upload (`process_drop.py`) always bypasses this via `update_schedule.py --force`, so it takes effect immediately rather than waiting for the next active-hours cycle
 3. If `JOBBOSS_DB_HOST` is set, it queries JobBoss directly for the entire open, released schedule; otherwise it parses whatever PDF is sitting at `PDF_PATH`, dropped into `incoming/` or uploaded via `options.html` (see [PDF source](#pdf-source))
 4. `schedule.html` is regenerated and picked up live by Chromium in kiosk mode
 
