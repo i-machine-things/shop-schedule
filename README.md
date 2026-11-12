@@ -1,6 +1,6 @@
 # Shop Schedule
 
-Kiosk display for a machine shop floor — runs on a Linux Single Board Computer or a Windows PC (see [Setup](#setup)). Every 15 minutes (cron on Linux, Task Scheduler on Windows), pulls the current Foreman's Report data and serves an auto-scrolling HTML schedule on a wall-mounted screen.
+Kiosk display for a machine shop floor — runs on a Linux Single Board Computer or a Windows PC (see [Setup](#setup)). Every 15 minutes (cron on Linux, Task Scheduler on Windows) during the shop's active hours, pulls the current Foreman's Report data and serves an auto-scrolling HTML schedule on a wall-mounted screen.
 
 > Two ways to get data in: **query JobBoss directly** over the network (preferred — see [JobBoss DB source](#jobboss-db-source)), or drop/upload the Foreman's Report PDF export (see [PDF source](#pdf-source) — drop a PDF directly into the `incoming/` folder, or upload it via [options.html](#uploading-files)). If `JOBBOSS_DB_HOST` is set in `.env`, the DB path is used and the PDF settings are ignored.
 
@@ -12,8 +12,8 @@ Kiosk display for a machine shop floor — runs on a Linux Single Board Computer
 
 ## How it works
 
-1. `run_update.sh` (Linux, via cron) or `run_update.ps1` (Windows, via Task Scheduler) runs every 15 minutes
-2. It loads credentials from `.env` and runs `update_schedule.py`
+1. `run_update.sh` (Linux, via cron) or `run_update.ps1` (Windows, via Task Scheduler) runs every 15 minutes, around the clock
+2. It loads credentials from `.env` and runs `update_schedule.py`, which immediately no-ops outside `SCHEDULE_ACTIVE_START_HOUR`/`SCHEDULE_ACTIVE_END_HOUR` (`.env`, default 5am-5pm local time) — nothing changes in JobBoss while the shop's closed, so there's nothing to pull
 3. If `JOBBOSS_DB_HOST` is set, it queries JobBoss directly for the entire open, released schedule; otherwise it parses whatever PDF is sitting at `PDF_PATH`, dropped into `incoming/` or uploaded via `options.html` (see [PDF source](#pdf-source))
 4. `schedule.html` is regenerated and picked up live by Chromium in kiosk mode
 

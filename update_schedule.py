@@ -3,7 +3,10 @@
 Foreman Schedule - HTML generator for shop floor display.
 Run via cron every 15 minutes. Pulls the current Foreman's Report (JobBoss DB,
 or a PDF dropped/uploaded into place) and regenerates schedule.html for the
-kiosk display.
+kiosk display. Only does anything between SCHEDULE_ACTIVE_START_HOUR and
+SCHEDULE_ACTIVE_END_HOUR (.env, default 5-17 local time) -- cron/Task
+Scheduler still trigger every 15 minutes around the clock either way; this
+script itself skips the refresh outside that window.
 """
 
 import hashlib
@@ -18,10 +21,34 @@ from datetime import datetime
 
 import jobboss_db
 
+
+def _parse_hour(env_key, default):
+    """Parse `env_key` as an hour (0-24); falls back to `default` if unset,
+    blank, non-numeric, or out of range -- a malformed value should never
+    crash the 15-minute refresh cycle, just use the default instead."""
+    raw = os.environ.get(env_key, '').strip()
+    if not raw:
+        return default
+    try:
+        hour = int(raw)
+    except ValueError:
+        return default
+    return hour if 0 <= hour <= 24 else default
+
+
 # ── Config (loaded from .env by run_update.sh) ─────────────────────────────────
 SHOP_NAME = os.environ.get('SHOP_NAME', 'My Shop')
 PDF_FILENAME = os.path.basename(os.environ.get('PDF_FILENAME', '').strip()) or 'last_report.pdf'
 PDF_COMPANY_NAME = os.environ.get('PDF_COMPANY_NAME', '').strip()
+# The shop isn't staffed outside this window, so there's nothing new in
+# JobBoss (or a new PDF worth parsing) to pick up either -- [start, end),
+# in the device's own local time (same as every other datetime.now() in
+# this file; assumes the system clock is already set to the device's
+# correct local timezone, same assumption the midnight-refresh logic in
+# update_schedule.py's generated JS already makes for this kind of fixed,
+# stationary kiosk device).
+SCHEDULE_ACTIVE_START_HOUR = _parse_hour('SCHEDULE_ACTIVE_START_HOUR', 5)
+SCHEDULE_ACTIVE_END_HOUR = _parse_hour('SCHEDULE_ACTIVE_END_HOUR', 17)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 PDF_PATH = os.path.join(BASE_DIR, PDF_FILENAME)
 HTML_PATH = os.path.join(BASE_DIR, 'public', 'schedule.html')
@@ -29,6 +56,13 @@ KIOSK_PATH = os.path.join(BASE_DIR, 'public', 'kiosk.html')
 JSON_PATH = os.path.join(BASE_DIR, 'public', 'schedule.json')
 DEPT_COLORS_PATH = os.path.join(BASE_DIR, 'public', 'dept_colors.json')
 # ───────────────────────────────────────────────────────────────────────────────
+
+
+def _within_active_hours(now=None):
+    """True if `now` (default: current local time) falls within
+    [SCHEDULE_ACTIVE_START_HOUR, SCHEDULE_ACTIVE_END_HOUR)."""
+    now = now or datetime.now()
+    return SCHEDULE_ACTIVE_START_HOUR <= now.hour < SCHEDULE_ACTIVE_END_HOUR
 
 
 def _get_local_ip():
@@ -1594,7 +1628,12 @@ def main():
     """Regenerate schedule.html/kiosk.html from the JobBoss DB if configured,
     otherwise fall back to parsing a PDF already sitting at PDF_PATH from a
     manual drop (incoming/) or web upload (options.html) -- same on both
-    platforms."""
+    platforms. No-ops outside SCHEDULE_ACTIVE_START_HOUR/END_HOUR, leaving
+    the last-generated pages in place."""
+    if not _within_active_hours():
+        print(f"[{datetime.now():%Y-%m-%d %H:%M}] Outside active hours "
+              f"({SCHEDULE_ACTIVE_START_HOUR:02d}:00-{SCHEDULE_ACTIVE_END_HOUR:02d}:00) -- skipping this cycle.")
+        return
     if jobboss_db.is_configured():
         data = jobboss_db.fetch_from_db()
         if data is None:
