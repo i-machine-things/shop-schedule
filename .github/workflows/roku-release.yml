@@ -1,0 +1,133 @@
+name: Roku Release
+
+# Shares the same vMAJOR.MINOR.PATCH tag namespace as the web kiosk/server side
+# (see .claude/CLAUDE.md Rule 4) -- one tag releases both together. This
+# workflow always runs on a real tag push, even if nothing under roku/
+# actually changed since the last tag, so the Roku zip attached to every
+# GitHub Release stays current with that release's commit.
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to rehearse (e.g. v1.0.0) -- packages the zip as a workflow artifact for sideload testing; does not tag or publish a release.'
+        required: true
+
+jobs:
+  release:
+    name: Build and publish Roku release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Require tag to be on master
+        if: github.event_name == 'push'
+        run: |
+          git fetch origin master
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/master; then
+            echo "::error::Tag $GITHUB_REF_NAME does not point at a commit on master. Per .claude/CLAUDE.md Rule 4, only tag from master." >&2
+            exit 1
+          fi
+
+      - name: Determine version
+        id: version
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          DISPATCH_VERSION: ${{ github.event.inputs.version }}
+        run: |
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            # Free-text input ends up in the zip filename and artifact name
+            # below -- a "/" would make `zip` fail (build/ subdirectory
+            # doesn't exist) and something like "../x" would write outside
+            # build/ entirely. Reject anything that isn't vMAJOR.MINOR.PATCH
+            # up front for a clear error instead of an obscure failure.
+            # Bash [[ =~ ]], not `grep -Eq '^...$'` -- grep's anchors match
+            # per LINE, not the whole string, so a value containing a
+            # newline (e.g. "v1.2.3\nsome_output=pwned") would pass grep
+            # and then get written as-is to GITHUB_OUTPUT below, where its
+            # second line becomes an ATTACKER-CONTROLLED extra output entry
+            # (GITHUB_OUTPUT is parsed one key=value per line). Verified
+            # directly: grep -Eq accepted that exact multi-line input:
+            # bash's [[ =~ ]] correctly anchors the entire string. CodeRabbit
+            # catch on PR #286, second pass.
+            if [[ ! "$DISPATCH_VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo "::error::Version must look like v1.2.3, got: $DISPATCH_VERSION" >&2
+              exit 1
+            fi
+            echo "tag=$DISPATCH_VERSION" >> "$GITHUB_OUTPUT"
+          else
+            # Not the same injection risk as the dispatch path above -- git
+            # ref names can't contain newlines, so there's no GITHUB_OUTPUT
+            # smuggling angle here. Same check anyway for consistency and to
+            # catch a malformed tag (the v*.*.* trigger glob above is looser
+            # than this regex -- e.g. "v1.2.3-rc1" matches the glob but not
+            # this) with a clear error instead of a weird zip filename.
+            if [[ ! "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo "::error::Tag must look like v1.2.3, got: $GITHUB_REF_NAME" >&2
+              exit 1
+            fi
+            echo "tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          fi
+
+      # roku/manifest's major_version/minor_version/build_version are
+      # committed as whatever they were at the last manual bump -- without
+      # this, a tag like v1.2.3 would ship a zip whose *filename* says
+      # v1.2.3 but whose *installed channel* (what Roku's own Settings UI
+      # reports on the device) still says 1.1.0 or whatever's checked in,
+      # breaking the "one tag, one version, both halves" contract this
+      # merge exists for. Rewrites only the ephemeral CI checkout, not the
+      # repo -- the committed manifest is free to lag between releases.
+      # RELEASE_TAG is already validated as vMAJOR.MINOR.PATCH by the step
+      # above, so the parameter expansions below can't land on a non-numeric
+      # field. CodeRabbit catch on PR #286, fourth review pass.
+      - name: Sync manifest version to release tag
+        env:
+          RELEASE_TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          VERSION="${RELEASE_TAG#v}"
+          MAJOR="${VERSION%%.*}"
+          REST="${VERSION#*.}"
+          MINOR="${REST%%.*}"
+          PATCH="${REST#*.}"
+          sed -i \
+            -e "s/^major_version=.*/major_version=${MAJOR}/" \
+            -e "s/^minor_version=.*/minor_version=${MINOR}/" \
+            -e "s/^build_version=.*/build_version=${PATCH}/" \
+            roku/manifest
+
+      - name: Package channel zip
+        env:
+          RELEASE_TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          mkdir -p build
+          cd roku
+          zip -r "../build/shop-schedule-roku-${RELEASE_TAG}.zip" \
+            manifest components source images media \
+            -x '*.bak'
+
+      # Rehearsal (workflow_dispatch) stops here -- the artifact below is for
+      # downloading and sideloading onto real hardware per CLAUDE.md's
+      # "Rehearse before releasing": a green rehearsal proves the zip
+      # packaged, not that the channel actually launches and renders on a
+      # Roku. Only a real tag push reaches the publish step after this.
+      - name: Upload rehearsal artifact
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@v4
+        with:
+          name: shop-schedule-roku-${{ steps.version.outputs.tag }}
+          path: build/*.zip
+
+      - name: Create GitHub release
+        if: github.event_name == 'push'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: build/shop-schedule-roku-${{ github.ref_name }}.zip
+          generate_release_notes: true
