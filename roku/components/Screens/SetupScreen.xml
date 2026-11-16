@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<component name="SetupScreen" extends="Group">
+    <script type="text/brightscript" uri="pkg:/components/Screens/SetupScreen.brs" />
+    <interface>
+        <field id="setupComplete" type="boolean" value="false" />
+        <function name="screenShown" />
+    </interface>
+
+    <children>
+        <Rectangle width="1920" height="1080" color="0x07070FFF" />
+
+        <Label text="SHOP SCHEDULE" translation="[660, 320]" font="font:LargeBoldSystemFont" color="0xFFFFFFFF" />
+        <Label text="Enter the shop-schedule server address" translation="[660, 390]" font="font:MediumSystemFont" color="0x888888FF" />
+
+        <!-- Focusable "field" that opens a KeyboardDialog on select -->
+        <Rectangle id="urlFieldBg" translation="[660, 460]" width="600" height="70" color="0x0D1A2BFF">
+            <Label id="urlFieldLabel" text="Press OK to enter address (e.g. http://192.168.1.65:8080)" translation="[20, 22]" font="font:MediumSystemFont" color="0x666666FF" />
+        </Rectangle>
+
+        <Rectangle id="saveButtonBg" translation="[660, 560]" width="200" height="60" color="0x1A6640FF">
+            <Label id="saveButtonLabel" text="Save &amp; Continue" translation="[20, 16]" font="font:MediumBoldSystemFont" color="0xFFFFFFFF" />
+        </Rectangle>
+
+        <Label id="statusLabel" text="" translation="[660, 640]" font="font:SmallSystemFont" color="0xFF5555FF" />
+    </children>
+</component>

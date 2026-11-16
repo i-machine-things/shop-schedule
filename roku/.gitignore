@@ -1,0 +1,15 @@
+# Build output
+build/
+*.zip
+
+# Claude Code local files
+.claude/settings.local.json
+.claude/scheduled_tasks.lock
+
+# Editor
+.vscode/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db

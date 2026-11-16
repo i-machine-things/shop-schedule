@@ -33,6 +33,10 @@ __pycache__/
 *.db
 public/dept_colors.json
 
+# Roku channel zip packaging output (roku-ci.yml/roku-release.yml build here)
+/build/
+*.zip
+
 # Runtime logs (shop-schedule.log on Windows, auto_update.log on both platforms)
 *.log
 auto_update.lock
