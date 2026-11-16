@@ -1,0 +1,104 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to rehearse release notes for (rehearsal only -- does not publish)'
+        required: true
+
+jobs:
+  # Runs for both events, not just 'push' -- a workflow_dispatch rehearsal
+  # must exercise this same eligibility check (minus the actual publish),
+  # per .claude/CLAUDE.md's "Rehearse before releasing" rule, not skip it.
+  # For workflow_dispatch, $GITHUB_SHA is the commit of whatever ref the run
+  # was dispatched from (the default branch unless --ref overrides it).
+  verify-master-ancestry:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Verify commit is on master
+        run: |
+          git fetch origin master
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/master; then
+            echo "ERROR: $GITHUB_SHA is not on master. Only tag from master."
+            exit 1
+          fi
+          echo "OK: $GITHUB_SHA is on master"
+
+  create-release:
+    needs: verify-master-ancestry
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+
+      # DISPATCH_TAG/PUSH_TAG go through env:, not a raw ${{ }} inside run: --
+      # a tag name is only restricted by git's ref-name rules, which still
+      # allow $(), backticks, etc. (e.g. `v1.0.0$(curl evil)` is a valid
+      # ref). Template-expanding either straight into the script would let
+      # that get executed as shell instead of treated as a literal string.
+      # CodeRabbit/zizmor catch on PR #293.
+      - name: Resolve tag
+        id: tag
+        env:
+          DISPATCH_TAG: ${{ inputs.tag }}
+          PUSH_TAG: ${{ github.ref_name }}
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "tag=$DISPATCH_TAG" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=$PUSH_TAG" >> "$GITHUB_OUTPUT"
+          fi
+
+      # Rehearsal: prove the release-notes generation works without creating
+      # a real release -- a pushed tag is public and hard to take back.
+      # target_commitish is required by the generate-notes endpoint when
+      # tag_name doesn't already name an existing tag (the normal case for
+      # rehearsing a not-yet-released version); ignored when it does exist.
+      - name: Rehearsal -- preview release notes only, publish nothing
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          gh api "repos/${{ github.repository }}/releases/generate-notes" \
+            -f tag_name="$TAG" \
+            -f target_commitish="$GITHUB_SHA" \
+            --jq .body >> "$GITHUB_STEP_SUMMARY"
+
+      # roku-release.yml triggers on this same v* tag push and also creates
+      # this release (attaching the Roku zip) -- the two jobs race with no
+      # dependency between them. If roku-release.yml wins, `gh release
+      # create` below would hard-fail ("release already exists"), so check
+      # first and defer instead of racing it. The narrow window between the
+      # check and the create (roku-release.yml finishes in between) is
+      # covered by treating that specific create failure as a non-error too.
+      - name: Publish release (defers to roku-release.yml if it got there first)
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG already exists (created by roku-release.yml, which shares this tag namespace) -- nothing to do."
+            exit 0
+          fi
+          if ! gh release create "$TAG" --verify-tag --title "$TAG" --generate-notes 2>err.log; then
+            if grep -qi 'already exists' err.log; then
+              echo "Release $TAG was created concurrently by roku-release.yml -- nothing more to do."
+              cat err.log
+              exit 0
+            fi
+            cat err.log >&2
+            exit 1
+          fi
