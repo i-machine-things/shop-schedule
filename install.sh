@@ -148,9 +148,35 @@ if [ "$(awk '
     echo "Removed legacy [schedule-drop] SMB share -- SMB drop is no longer supported (see README.md)."
 fi
 
-# Add cron job (every 15 minutes)
-CRON="*/15 * * * * \"$INSTALL_DIR/run_update.sh\" >> /tmp/shop-schedule.log 2>&1"
-( crontab -l 2>/dev/null || true ) | grep -v shop-schedule | { cat; echo "$CRON"; } | crontab -
+# Allow this (non-root) user to restart foreman-server without a password --
+# auto_update.py runs unattended from cron and can't answer an interactive
+# sudo prompt. Scoped to exactly this one command, nothing broader (0440,
+# validated with visudo -c before installing).
+SYSTEMCTL_BIN="$(command -v systemctl || true)"
+if [ -z "$SYSTEMCTL_BIN" ]; then
+    echo "WARNING: systemctl not found -- skipping auto-updater sudoers rule (no way to restart foreman-server)." >&2
+else
+    SUDOERS_FILE="/etc/sudoers.d/shop-schedule-auto-update"
+    _tmp_sudoers="$(mktemp)"
+    printf '%s\n' "$(id -un) ALL=(root) NOPASSWD: $SYSTEMCTL_BIN restart foreman-server" > "$_tmp_sudoers"
+    if sudo visudo -c -f "$_tmp_sudoers" >/dev/null 2>&1; then
+        sudo install -o root -g root -m 0440 "$_tmp_sudoers" "$SUDOERS_FILE"
+        echo "Configured passwordless sudo for 'systemctl restart foreman-server' (auto-updater)."
+    else
+        echo "WARNING: generated sudoers rule failed validation -- auto-updater won't be able to restart the server. Skipping." >&2
+    fi
+    rm -f "$_tmp_sudoers"
+fi
+
+# Add cron jobs: schedule-data refresh (every 15 min) and the daily release
+# auto-updater (03:00, low-traffic) -- logging to $INSTALL_DIR (not /tmp,
+# which is often cleared at boot and shared by other users/jobs). The old
+# entries are stripped by matching the exact managed script paths, not a
+# bare "shop-schedule" substring, so an unrelated crontab line (e.g. a
+# backup job mentioning this install path) isn't collateral damage.
+UPDATE_CRON="*/15 * * * * \"$INSTALL_DIR/run_update.sh\" >> \"$INSTALL_DIR/shop-schedule.log\" 2>&1"
+AUTO_UPDATE_CRON="0 3 * * * \"$INSTALL_DIR/venv/bin/python3\" \"$INSTALL_DIR/auto_update.py\" >> \"$INSTALL_DIR/auto_update.log\" 2>&1"
+( crontab -l 2>/dev/null || true ) | grep -vF -e "$INSTALL_DIR/run_update.sh" -e "$INSTALL_DIR/auto_update.py" | { cat; echo "$UPDATE_CRON"; echo "$AUTO_UPDATE_CRON"; } | crontab -
 
 echo ""
 echo "=== Done ==="
@@ -159,3 +185,4 @@ echo "2. Drop a PDF into $INSTALL_DIR/incoming/ to test"
 echo "3. View at:    http://$(hostname -I | awk '{print $1}'):8080/"
 echo "4. Upload at:  http://$(hostname -I | awk '{print $1}'):8080/options.html"
 echo "5. Edit $INSTALL_DIR/public/pages.json to manually add URLs to the kiosk rotation"
+echo "6. This device will check for a new tagged release daily at 03:00 and update itself automatically (see auto_update.py / auto_update.log)"

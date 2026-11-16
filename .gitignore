@@ -33,5 +33,9 @@ __pycache__/
 *.db
 public/dept_colors.json
 
+# Runtime logs (shop-schedule.log on Windows, auto_update.log on both platforms)
+*.log
+auto_update.lock
+
 # Scratch renders/screenshots dropped here for human review during testing
 test-output/
