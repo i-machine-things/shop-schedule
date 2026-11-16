@@ -11,8 +11,11 @@ on:
         required: true
 
 jobs:
-  # Only meaningful for a real tag push -- a workflow_dispatch rehearsal has
-  # no tag ref to check, so this step just no-ops for that event instead.
+  # Runs for both events, not just 'push' -- a workflow_dispatch rehearsal
+  # must exercise this same eligibility check (minus the actual publish),
+  # per .claude/CLAUDE.md's "Rehearse before releasing" rule, not skip it.
+  # For workflow_dispatch, $GITHUB_SHA is the commit of whatever ref the run
+  # was dispatched from (the default branch unless --ref overrides it).
   verify-master-ancestry:
     runs-on: ubuntu-latest
     permissions:
@@ -22,15 +25,14 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Verify tag is descended from master
-        if: github.event_name == 'push'
+      - name: Verify commit is on master
         run: |
           git fetch origin master
-          if ! git merge-base --is-ancestor origin/master "$GITHUB_SHA"; then
-            echo "ERROR: Tag $GITHUB_REF_NAME is not descended from master. Only tag from master."
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/master; then
+            echo "ERROR: $GITHUB_SHA is not on master. Only tag from master."
             exit 1
           fi
-          echo "OK: $GITHUB_REF_NAME is descended from master"
+          echo "OK: $GITHUB_SHA is on master"
 
   create-release:
     needs: verify-master-ancestry
@@ -40,24 +42,38 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      # DISPATCH_TAG/PUSH_TAG go through env:, not a raw ${{ }} inside run: --
+      # a tag name is only restricted by git's ref-name rules, which still
+      # allow $(), backticks, etc. (e.g. `v1.0.0$(curl evil)` is a valid
+      # ref). Template-expanding either straight into the script would let
+      # that get executed as shell instead of treated as a literal string.
+      # CodeRabbit/zizmor catch on PR #293.
       - name: Resolve tag
         id: tag
+        env:
+          DISPATCH_TAG: ${{ inputs.tag }}
+          PUSH_TAG: ${{ github.ref_name }}
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "tag=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
+            echo "tag=$DISPATCH_TAG" >> "$GITHUB_OUTPUT"
           else
-            echo "tag=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
+            echo "tag=$PUSH_TAG" >> "$GITHUB_OUTPUT"
           fi
 
       # Rehearsal: prove the release-notes generation works without creating
       # a real release -- a pushed tag is public and hard to take back.
+      # target_commitish is required by the generate-notes endpoint when
+      # tag_name doesn't already name an existing tag (the normal case for
+      # rehearsing a not-yet-released version); ignored when it does exist.
       - name: Rehearsal -- preview release notes only, publish nothing
         if: github.event_name == 'workflow_dispatch'
         env:
           GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.tag.outputs.tag }}
         run: |
           gh api "repos/${{ github.repository }}/releases/generate-notes" \
-            -f tag_name="${{ steps.tag.outputs.tag }}" \
+            -f tag_name="$TAG" \
+            -f target_commitish="$GITHUB_SHA" \
             --jq .body >> "$GITHUB_STEP_SUMMARY"
 
       # roku-release.yml triggers on this same v* tag push and also creates
@@ -77,7 +93,7 @@ jobs:
             echo "Release $TAG already exists (created by roku-release.yml, which shares this tag namespace) -- nothing to do."
             exit 0
           fi
-          if ! gh release create "$TAG" --title "$TAG" --generate-notes 2>err.log; then
+          if ! gh release create "$TAG" --verify-tag --title "$TAG" --generate-notes 2>err.log; then
             if grep -qi 'already exists' err.log; then
               echo "Release $TAG was created concurrently by roku-release.yml -- nothing more to do."
               cat err.log
