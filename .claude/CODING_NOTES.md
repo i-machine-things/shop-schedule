@@ -128,6 +128,14 @@ This note was created based on issues encountered with PyInstaller executables r
 
 **`FileSystemSecurity.RemoveAccessRule()` does a rights SUBTRACTION against any rule for the same identity+inheritance, not an exact-match removal -- verified directly, not just reasoned about.** On a folder with only an unrelated `Everyone:(OI)(CI)(R)` grant (not the specific rule being "removed"), `RemoveAccessRule(ModifyRule)` still returns `$true` and rewrites that grant down to a near-empty `Everyone:(OI)(CI)(S)` ACE -- silently corrupting an admin's unrelated grant instead of leaving it alone. `RemoveAccessRuleSpecific()` is the exact-match method (identity+rights+inheritance+propagation+type all equal, or no-op); it has no return value, so detect whether anything was actually removed by comparing `$Acl.Access.Count` before/after. CodeRabbit catch on PR #284 (`install.ps1`'s legacy-SMB-share ACL cleanup), confirmed with a real `Get-Acl`/`Set-Acl` round trip against both an exact-match folder and an unrelated-grant one before pushing.
 
+**Give unattended Scheduled Tasks an explicit `-ExecutionTimeLimit`, not the default.** `New-ScheduledTaskSettingsSet`'s implicit limit is 72 hours; a hung step (e.g. `git fetch` on a dead network, which has no timeout of its own) sits there the whole time instead of failing fast. Add `-StartWhenAvailable` too for daily tasks, so a missed run (device off at the scheduled hour) still happens once it's back on. CodeRabbit catch on PR #294 (`ShopScheduleAutoUpdate`).
+
+**`command -v <bin>` inside a `set -e` script needs `|| true`, and check the result before using it.** An unguarded `SYSTEMCTL_BIN="$(command -v systemctl)"` can abort the whole installer if the binary is missing, and an empty value silently produces a broken sudoers/cron line instead of a clear error. CodeRabbit catch on PR #294.
+
+**Use `id -un`, not `$USER`, to get the current username in installer scripts.** `$USER` can be unset in some shells/contexts (e.g. certain `sudo`/cron invocations); `id -un` is reliable everywhere. CodeRabbit catch on PR #294.
+
+**`grep -v <substring>` to strip an installer's own crontab lines before re-adding them is over-broad -- match the exact managed script path instead.** `grep -v shop-schedule` also deletes any unrelated line that happens to mention that string (e.g. a user's own backup job for this install path). Use `grep -vF -e "$INSTALL_DIR/script.sh"` per managed entry. Also don't log unattended cron jobs to `/tmp` -- it's often cleared at boot and shared across users; log inside `$INSTALL_DIR` instead. CodeRabbit catch on PR #294.
+
 ## Security
 
 **Never interpolate raw user input into a `sed` replacement pattern.** `&`, `|`, backslashes, and `$()` in the value corrupt the sed command or execute later on `source`; rewrite lines via a temp file and single-quote values instead.
@@ -156,6 +164,18 @@ This note was created based on issues encountered with PyInstaller executables r
 
 **Bandit B608 on `update_schedule.py`'s `html = f"""..."""` template is a confirmed false positive, not a real SQL-injection risk.** Its regex is `select\s.*from\s` with `re.DOTALL`, scanned across the *entire* f-string's literal text joined together -- it matches `<select id="print-select-dept">` against an unrelated `// Pause/resume from kiosk shell` comment thousands of lines later; no query is built anywhere in this file (see the audit above -- `jobboss_db.py` is the only file that executes SQL). Suppressed with a same-line `# nosec B608`, which requires wrapping the f-string in `html = (f"""..."""` / `""")  # nosec B608` -- a bare `# nosec` can't attach to any line *inside* the literal (every line is string content, not a comment token), so the trailing comment has to land on the physical line holding the closing `"""`.
 
+## Git Automation (unattended invocations)
+
+**A SYSTEM/cron-run `git` command against a checkout owned by a different user hits Git's dubious-ownership refusal (`safe.directory`, post-CVE-2022-24765) -- scope the trust per-invocation, not globally.** `auto_update.py` runs as SYSTEM via Windows Task Scheduler against a checkout cloned by a regular user; without trust, every `git` call (including `git describe`) fails, so the script can't even tell what tag it's on, let alone fetch/checkout. Fixed by passing `-c safe.directory=<INSTALL_DIR>` on every git subprocess call via a shared `_git()` wrapper -- trusts only this one path for this one process, never touches global/system gitconfig, and is a no-op on Linux where cron already runs as the repo owner. CodeRabbit Major finding on PR #294.
+
+**Before checking out a "latest release" tag fetched from an API, verify it's actually a forward update (`git merge-base --is-ancestor <current> <latest>`), not just `current != latest`.** A release that's deleted/re-tagged after an install already updated past it would otherwise silently downgrade the checkout. CodeRabbit catch on PR #294 (`auto_update.py`).
+
+**Pass `-n` to `sudo` in any unattended (cron/Task Scheduler) script.** Without it, a missing/misconfigured sudoers rule makes `sudo` try to prompt -- under cron there's no TTY, so it usually hangs or fails unpredictably instead of failing immediately and deterministically. CodeRabbit catch on PR #294.
+
+**Resolve a tag to its commit explicitly (`refs/tags/<tag>^{commit}`) before using it, rather than passing the tag name straight to `git checkout`/`rev-parse`.** A same-named local branch takes precedence over the tag in a bare revision lookup, so an ancestry check that validates the tag can pass while checkout silently activates branch HEAD instead. CodeRabbit catch on PR #294 (`auto_update.py`).
+
+**Before checking out a release tag fetched from an API, verify the target tree actually contains the script doing the checking out.** A tag cut before that file existed (e.g. `v1.4.0` predating `auto_update.py`) checks out clean but deletes the tracked file out from under the running install, breaking every later scheduled run until a human notices. Check with `git cat-file -e <ref>:<path>` and skip (logging why) if it's missing. CodeRabbit Major finding on PR #294.
+
 ## Concurrency & File I/O
 
 **Include microseconds in timestamp-based filenames.** `strftime('%Y%m%d_%H%M%S')` collides when two files are processed within the same second, silently overwriting the earlier one; add `%f`.
@@ -167,6 +187,8 @@ This note was created based on issues encountered with PyInstaller executables r
 **Delete the `.tmp` file on write failure, then re-raise.** An atomic temp-file-then-`os.replace()` write that hits `OSError` mid-write leaves an orphaned `.tmp` file behind; wrap in `try`/`except OSError: os.unlink(tmp); raise` so the error still propagates but doesn't litter the disk. CodeRabbit catch on `generate_json()`.
 
 **Use `ThreadingHTTPServer`, not `HTTPServer`, for anything handling uploads or slow requests.** Same import/API, but a slow request won't stall every other client.
+
+**A daily/periodic unattended script needs its own overlap guard, even if the OS scheduler has one -- don't assume cron does what Task Scheduler does.** Windows Task Scheduler defaults to refusing overlapping runs (`MultipleInstances=IgnoreNew`), but plain cron has no equivalent, so a run stuck in a slow network call (e.g. `git fetch`) can overlap a second one and let it undo the first's work once it resumes. Acquire a non-blocking `fcntl.flock` on a lock file on POSIX; set the Windows scheduled task's `MultipleInstances` explicitly rather than relying on its default. CodeRabbit catch on PR #294 (`auto_update.py`).
 
 ## Kiosk / Scroll Timer Logic
 
