@@ -172,6 +172,10 @@ This note was created based on issues encountered with PyInstaller executables r
 
 **Pass `-n` to `sudo` in any unattended (cron/Task Scheduler) script.** Without it, a missing/misconfigured sudoers rule makes `sudo` try to prompt -- under cron there's no TTY, so it usually hangs or fails unpredictably instead of failing immediately and deterministically. CodeRabbit catch on PR #294.
 
+**Resolve a tag to its commit explicitly (`refs/tags/<tag>^{commit}`) before using it, rather than passing the tag name straight to `git checkout`/`rev-parse`.** A same-named local branch takes precedence over the tag in a bare revision lookup, so an ancestry check that validates the tag can pass while checkout silently activates branch HEAD instead. CodeRabbit catch on PR #294 (`auto_update.py`).
+
+**Before checking out a release tag fetched from an API, verify the target tree actually contains the script doing the checking out.** A tag cut before that file existed (e.g. `v1.4.0` predating `auto_update.py`) checks out clean but deletes the tracked file out from under the running install, breaking every later scheduled run until a human notices. Check with `git cat-file -e <ref>:<path>` and skip (logging why) if it's missing. CodeRabbit Major finding on PR #294.
+
 ## Concurrency & File I/O
 
 **Include microseconds in timestamp-based filenames.** `strftime('%Y%m%d_%H%M%S')` collides when two files are processed within the same second, silently overwriting the earlier one; add `%f`.
@@ -183,6 +187,8 @@ This note was created based on issues encountered with PyInstaller executables r
 **Delete the `.tmp` file on write failure, then re-raise.** An atomic temp-file-then-`os.replace()` write that hits `OSError` mid-write leaves an orphaned `.tmp` file behind; wrap in `try`/`except OSError: os.unlink(tmp); raise` so the error still propagates but doesn't litter the disk. CodeRabbit catch on `generate_json()`.
 
 **Use `ThreadingHTTPServer`, not `HTTPServer`, for anything handling uploads or slow requests.** Same import/API, but a slow request won't stall every other client.
+
+**A daily/periodic unattended script needs its own overlap guard, even if the OS scheduler has one -- don't assume cron does what Task Scheduler does.** Windows Task Scheduler defaults to refusing overlapping runs (`MultipleInstances=IgnoreNew`), but plain cron has no equivalent, so a run stuck in a slow network call (e.g. `git fetch`) can overlap a second one and let it undo the first's work once it resumes. Acquire a non-blocking `fcntl.flock` on a lock file on POSIX; set the Windows scheduled task's `MultipleInstances` explicitly rather than relying on its default. CodeRabbit catch on PR #294 (`auto_update.py`).
 
 ## Kiosk / Scroll Timer Logic
 
