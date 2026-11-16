@@ -88,6 +88,8 @@ This note was created based on issues encountered with PyInstaller executables r
 
 **Add `timeout-minutes` to CI jobs.** A hung linter/scanner invocation without a timeout can occupy a runner indefinitely.
 
+**Two separate workflows triggered by the same tag push, both trying to create the same GitHub Release, will race.** `release.yml` and `roku-release.yml` both fire on `v*` pushes with no `needs`/dependency between them (can't cross workflow files); whichever's `gh release create`/`action-gh-release` step runs second either fails outright ("already exists") or silently updates what the first one made. Have the second writer check first (`gh release view <tag>`) and no-op if one already exists, and also tolerate the race's narrow window by treating an "already exists" failure from its own create call as success, not an error. Found while merging PR #286 (roku subtree, which added `roku-release.yml`) into PR #293 (added `release.yml`) -- neither PR's own rehearsal mode would have caught it, since rehearsals don't actually create a release.
+
 **Fork PRs get restricted `issues: write` via `GITHUB_TOKEN`.** If this repo ever accepts external contributions, gate `gh issue create` in CI on `github.event.pull_request.head.repo.full_name == github.repository`.
 
 **PR audits enforce an 80% docstring-coverage threshold on changed files.** Add a concise one-line docstring to every function touched by a PR, public or private.

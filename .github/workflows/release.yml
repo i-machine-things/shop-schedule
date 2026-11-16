@@ -60,8 +60,29 @@ jobs:
             -f tag_name="${{ steps.tag.outputs.tag }}" \
             --jq .body >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Publish release
+      # roku-release.yml triggers on this same v* tag push and also creates
+      # this release (attaching the Roku zip) -- the two jobs race with no
+      # dependency between them. If roku-release.yml wins, `gh release
+      # create` below would hard-fail ("release already exists"), so check
+      # first and defer instead of racing it. The narrow window between the
+      # check and the create (roku-release.yml finishes in between) is
+      # covered by treating that specific create failure as a non-error too.
+      - name: Publish release (defers to roku-release.yml if it got there first)
         if: github.event_name == 'push'
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "${{ steps.tag.outputs.tag }}" --title "${{ steps.tag.outputs.tag }}" --generate-notes
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG already exists (created by roku-release.yml, which shares this tag namespace) -- nothing to do."
+            exit 0
+          fi
+          if ! gh release create "$TAG" --title "$TAG" --generate-notes 2>err.log; then
+            if grep -qi 'already exists' err.log; then
+              echo "Release $TAG was created concurrently by roku-release.yml -- nothing more to do."
+              cat err.log
+              exit 0
+            fi
+            cat err.log >&2
+            exit 1
+          fi

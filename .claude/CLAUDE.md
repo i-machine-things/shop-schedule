@@ -121,12 +121,19 @@ Tag releases using `vMAJOR.MINOR.PATCH`:
 ### Release Workflow
 
 The web kiosk/server side has no build pipeline of its own — deployment is a plain `git checkout`
-of the tag on the device (see "Deployment after tagging" below). Pushing a `v*` tag to `master`
-triggers two workflows that share this one tag namespace: `.github/workflows/roku-release.yml`
-builds the Roku channel zip and publishes it as a GitHub Release asset, and
-`.github/workflows/release.yml` verifies the tag is descended from `master` and ensures that
-release exists with auto-generated notes (`gh release create --generate-notes`). One
-`vMAJOR.MINOR.PATCH` tag releases both halves together — there's no separate Roku version number.
+of the tag on the device (see "Deployment after tagging" below). But pushing a `v*` tag to
+`master` triggers two independent workflows that share this one tag namespace:
+
+- `.github/workflows/roku-release.yml` builds the Roku channel zip and publishes it as a GitHub
+  Release asset (creating the release if one doesn't exist yet for that tag).
+- `.github/workflows/release.yml` verifies the tag is descended from `master`, then ensures a
+  GitHub Release exists for it with auto-generated notes (`gh release create --generate-notes`) --
+  deferring (no-op, not an error) if `roku-release.yml` already created one first, since the two
+  jobs race on the same push event with no dependency between them.
+
+One `vMAJOR.MINOR.PATCH` tag releases both halves together -- there's no separate Roku version
+number, and exactly one GitHub Release ends up with both the auto-generated notes and the zip
+asset regardless of which workflow's job finishes first.
 
 **To cut a release:**
 ```bash
