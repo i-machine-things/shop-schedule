@@ -1,0 +1,115 @@
+name: Roku CI
+
+on:
+  pull_request:
+    branches: [master]
+    paths:
+      - 'roku/**'
+      - '.github/workflows/roku-ci.yml'
+
+# Least-privilege default -- none of these jobs push anything; each only
+# needs read access to the checked-out code. CodeRabbit/zizmor catch on
+# PR #286.
+permissions:
+  contents: read
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Lint — bslint (BrightScript static analysis).
+  # ---------------------------------------------------------------------------
+  lint:
+    name: Roku Lint (bslint)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Run bslint
+        working-directory: roku
+        run: npx --yes @rokucommunity/bslint
+
+  # ---------------------------------------------------------------------------
+  # Security scan — gitleaks, catching hardcoded credentials/secrets.
+  # ---------------------------------------------------------------------------
+  security:
+    name: Roku Security scan (gitleaks)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Install gitleaks
+        env:
+          GITLEAKS_VERSION: 8.30.1
+        run: |
+          base="https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}"
+          curl -sSfLO "${base}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          curl -sSfLO "${base}/gitleaks_${GITLEAKS_VERSION}_checksums.txt"
+          sha256sum --check --ignore-missing "gitleaks_${GITLEAKS_VERSION}_checksums.txt"
+          tar -xzf "gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" gitleaks
+          sudo mv gitleaks /usr/local/bin/
+
+      - name: Scan PR commits
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: gitleaks git --redact --verbose --log-opts="--diff-merges=first-parent ${BASE_SHA}..${HEAD_SHA}" .
+
+  # ---------------------------------------------------------------------------
+  # Tests — no automated test framework for BrightScript in this project.
+  # Manual sideload verification substitutes (see roku/.claude/CLAUDE.md).
+  # ---------------------------------------------------------------------------
+  test:
+    name: Roku Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: No automated tests configured
+        run: echo "No BrightScript test framework in use — verify manually via sideload before merging."
+
+  # ---------------------------------------------------------------------------
+  # Build — package the Roku channel and upload it as a PR artifact so
+  # reviewers can sideload-test the exact commit under review.
+  # ---------------------------------------------------------------------------
+  build:
+    name: Roku Build channel package
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      # PR_NUMBER via env, not direct ${{ }} interpolation into the run:
+      # block -- see roku/.claude/CODING_NOTES.md's CI/CD note on this.
+      # Not exploitable here (a PR number is server-generated, not
+      # attacker-controlled text), but the pattern itself is what's banned,
+      # not just the cases where it'd be dangerous.
+      - name: Package channel zip
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          mkdir -p build
+          cd roku
+          zip -r "../build/shop-schedule-roku-pr-${PR_NUMBER}.zip" \
+            manifest components source images media \
+            -x '*.bak'
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: shop-schedule-roku-pr-${{ github.event.pull_request.number }}
+          path: build/shop-schedule-roku-pr-${{ github.event.pull_request.number }}.zip
+          retention-days: 14

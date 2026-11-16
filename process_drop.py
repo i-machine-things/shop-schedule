@@ -68,7 +68,13 @@ def main(regen=True):
     print(f"[{datetime.now():%Y-%m-%d %H:%M}] Drop-dir: picked up {os.path.basename(newest)}")
 
     if regen:
-        subprocess.run([sys.executable, MAIN_SCRIPT], check=True)
+        # --force: this path only ever runs from a web upload (server.py) or
+        # someone manually running this script directly -- never from the
+        # unattended cron/Task Scheduler cycle (that always passes
+        # --no-regen, see run_update.sh/.ps1) -- so it's always a
+        # deliberate, right-now action that should bypass update_schedule.py's
+        # active-hours gate rather than silently waiting for the next cycle.
+        subprocess.run([sys.executable, MAIN_SCRIPT, '--force'], check=True)
 
 
 if __name__ == '__main__':
