@@ -3,7 +3,10 @@
 Foreman Schedule - HTML generator for shop floor display.
 Run via cron every 15 minutes. Pulls the current Foreman's Report (JobBoss DB,
 or a PDF dropped/uploaded into place) and regenerates schedule.html for the
-kiosk display.
+kiosk display. Only does anything between SCHEDULE_ACTIVE_START_HOUR and
+SCHEDULE_ACTIVE_END_HOUR (.env, default 5-17 local time) -- cron/Task
+Scheduler still trigger every 15 minutes around the clock either way; this
+script itself skips the refresh outside that window.
 """
 
 import hashlib
@@ -18,10 +21,42 @@ from datetime import datetime
 
 import jobboss_db
 
+
+def _parse_hour(env_key, default):
+    """Parse `env_key` as an hour (0-24); falls back to `default` if unset,
+    blank, non-numeric, or out of range -- a malformed value should never
+    crash the 15-minute refresh cycle, just use the default instead."""
+    raw = os.environ.get(env_key, '').strip()
+    if not raw:
+        return default
+    try:
+        hour = int(raw)
+    except ValueError:
+        return default
+    return hour if 0 <= hour <= 24 else default
+
+
 # ── Config (loaded from .env by run_update.sh) ─────────────────────────────────
 SHOP_NAME = os.environ.get('SHOP_NAME', 'My Shop')
 PDF_FILENAME = os.path.basename(os.environ.get('PDF_FILENAME', '').strip()) or 'last_report.pdf'
 PDF_COMPANY_NAME = os.environ.get('PDF_COMPANY_NAME', '').strip()
+# The shop isn't staffed outside this window, so there's nothing new in
+# JobBoss (or a new PDF worth parsing) to pick up either -- [start, end),
+# in the device's own local time (same as every other datetime.now() in
+# this file; assumes the system clock is already set to the device's
+# correct local timezone, same assumption the midnight-refresh logic in
+# update_schedule.py's generated JS already makes for this kind of fixed,
+# stationary kiosk device).
+SCHEDULE_ACTIVE_START_HOUR = _parse_hour('SCHEDULE_ACTIVE_START_HOUR', 5)
+SCHEDULE_ACTIVE_END_HOUR = _parse_hour('SCHEDULE_ACTIVE_END_HOUR', 17)
+if SCHEDULE_ACTIVE_START_HOUR >= SCHEDULE_ACTIVE_END_HOUR:
+    # [start, end) only, no overnight-wraparound support (e.g. 22-6) -- a
+    # start >= end would make _within_active_hours() false for every hour,
+    # silently disabling the refresh entirely rather than just narrowing it.
+    print(f"SCHEDULE_ACTIVE_START_HOUR ({SCHEDULE_ACTIVE_START_HOUR}) must be before "
+          f"SCHEDULE_ACTIVE_END_HOUR ({SCHEDULE_ACTIVE_END_HOUR}) -- using the 5-17 default instead.",
+          file=sys.stderr)
+    SCHEDULE_ACTIVE_START_HOUR, SCHEDULE_ACTIVE_END_HOUR = 5, 17
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 PDF_PATH = os.path.join(BASE_DIR, PDF_FILENAME)
 HTML_PATH = os.path.join(BASE_DIR, 'public', 'schedule.html')
@@ -29,6 +64,13 @@ KIOSK_PATH = os.path.join(BASE_DIR, 'public', 'kiosk.html')
 JSON_PATH = os.path.join(BASE_DIR, 'public', 'schedule.json')
 DEPT_COLORS_PATH = os.path.join(BASE_DIR, 'public', 'dept_colors.json')
 # ───────────────────────────────────────────────────────────────────────────────
+
+
+def _within_active_hours(now=None):
+    """True if `now` (default: current local time) falls within
+    [SCHEDULE_ACTIVE_START_HOUR, SCHEDULE_ACTIVE_END_HOUR)."""
+    now = now or datetime.now()
+    return SCHEDULE_ACTIVE_START_HOUR <= now.hour < SCHEDULE_ACTIVE_END_HOUR
 
 
 def _get_local_ip():
@@ -339,6 +381,7 @@ def generate_html(data, out_path, *, kiosk=False, gen_ts=None):
       <div class="print-hdr-title">Shop Schedule Report</div>
       <div class="print-hdr-right">
         <div>by Work Center - Scheduled Start Date</div>
+        <div class="print-hdr-daterange"></div>
         {released_line}
       </div>
     </div>'''
@@ -433,7 +476,7 @@ def generate_html(data, out_path, *, kiosk=False, gen_ts=None):
                 f'''<span class="p-barcode" data-code="{je["job"]}"></span>{je["customer"]}<br>'''
                 f'''{je["part"]}<br><span class="p-desc">{je["description"]}</span></td>
         <td>{je["rev"]}</td>
-        <td>{je["oper"]}<span class="p-barcode" data-code="{je["op_key"]}"></span></td>
+        <td>{je["oper"]}<span class="p-barcode" data-code="{je["op_key"]}" data-show-value="1"></span></td>
         <td class="p-desc">{je["oper_desc"]}</td>
         <td class="c">{je["make_qty"]}</td>
         <td class="c">{je["sch_start"]}<br>{je["sch_end"]}</td>
@@ -450,6 +493,16 @@ def generate_html(data, out_path, *, kiosk=False, gen_ts=None):
       <div class="print-sec-hdr">Department&nbsp;&nbsp;{dept_e}&nbsp;&nbsp;&nbsp;&nbsp;'''
             f'''WC Group:&nbsp;&nbsp;{wcg_e}&nbsp;&nbsp;&nbsp;&nbsp;WC:&nbsp;{wc_attr}</div>
       <table class="print-table">
+        <colgroup>
+          <!-- Oper (3rd column, 17%) looks wide for "OP1" + a short number,
+               but it has to fit the Oper barcode -- Code128 width scales with
+               character count, and Job_Operation's real IDs can run 8+
+               digits; narrower cut that barcode off into Oper Desc's text.
+               CodeRabbit catch on PR #296. -->
+          <col style="width:26%"><col style="width:4%"><col style="width:17%">
+          <col style="width:11%"><col style="width:6%"><col style="width:11%">
+          <col style="width:10%"><col style="width:6%"><col style="width:9%">
+        </colgroup>
         <thead>
           <tr>
             <th>Job / Customer / Part</th>
@@ -483,12 +536,13 @@ def generate_html(data, out_path, *, kiosk=False, gen_ts=None):
     # A standalone copy at the top for the default (continuous-flow) mode,
     # plus one baked into each section for "one page per workcenter" mode --
     # CSS shows exactly one of the two depending on that checkbox (see
-    # print-hdr-main/print-hdr-section in the @media print block). Chromium's
-    # print engine doesn't support CSS Paged Media's @page margin boxes, so
-    # there's no way to repeat an arbitrary block on every *naturally*
-    # overflowing page (or render "Page X of Y") the way the original
-    # report's own generator can -- this only covers the case where we
-    # already know where each page starts, because we forced the break.
+    # print-hdr-main/print-hdr-section in the @media print block). @page
+    # margin boxes (confirmed working in current Chromium -- see the
+    # "Page X of Y" @top-right rule in that same block) only cover simple
+    # generated content (counters/strings), not repeating an arbitrary HTML
+    # block like this full header onto every *naturally* overflowing page --
+    # this duplication only covers the case where we already know where each
+    # page starts, because we forced the break.
     print_body = _print_hdr('print-hdr-main') + '\n' + '\n'.join(print_rows)
 
     home_btn = '' if kiosk else '<a href="index.html" id="home-btn" title="Home">&#8962;</a>\n    '
@@ -652,7 +706,12 @@ body{{background:#07070f;color:#ddd;font-family:'Courier New',monospace;font-siz
 #print-btn:disabled{{opacity:0.3;cursor:not-allowed}}
 #print-btn:disabled:hover{{background:transparent}}
 #wrap{{position:fixed;top:50px;bottom:0;left:160px;right:0;overflow-y:scroll}}
-#print-output{{display:none}}
+/* Laid out off-screen at all times (not display:none) so paginatePrintOutput()
+   can measure real row/header heights via getBoundingClientRect() whenever
+   Print is clicked, without a display:none->block toggle dance first. Width
+   matches the real printed content area (Letter landscape - 2*0.5in @page
+   margin) so text wrapping in pdesc/odesc matches what will actually print. */
+#print-output{{position:absolute;top:0;left:0;width:10in;visibility:hidden;pointer-events:none}}
 table{{width:100%;border-collapse:separate;border-spacing:0}}
 thead th{{position:sticky;top:0;z-index:20;background:#0d0d20;color:#7799ff;font-size:11px;
           text-transform:uppercase;letter-spacing:1px;padding:6px 8px;border-bottom:2px solid #333}}
@@ -717,39 +776,68 @@ thead th{{position:sticky;top:0;z-index:20;background:#0d0d20;color:#7799ff;font
 
 /* Print Report -- "mirror the screen": only rows already visible under the
    current Schedule Window/Mode filter AND belonging to a selected work
-   center print. Each printed section starts on its own page (break-before);
-   a section whose jobs don't fit on one page continues onto more, same as
-   any long table. Position:fixed/sticky are reset to static since fixed
-   positioning clips print output to a single page in Chrome. */
+   center print. Page numbers ("Page X of Y") can't use CSS Paged Media's
+   @page margin boxes (@top-right etc.) -- Firefox has never implemented
+   them, only Chromium has -- so paginatePrintOutput() (see the print-btn
+   click handler) computes real page breaks itself from measured element
+   heights and stamps an ordinary .print-page-num element before each one;
+   .print-force-break is what actually breaks the page at that point. A
+   section whose jobs don't fit on one page is split into multiple <table>s
+   by the same function, each with its own repeated column-header row.
+   Position:fixed/sticky are reset to static since fixed positioning clips
+   print output to a single page in Chrome.
+
+   All of #print-output's own content styling below is deliberately NOT
+   scoped to @media print, even though it only ever matters when printing --
+   #print-output is already invisible on screen (position:absolute;
+   visibility:hidden, set unconditionally above) regardless of media type,
+   so these rules have zero visual effect outside of printing. Scoping them
+   to @media print instead would make them invisible to
+   getBoundingClientRect() during paginatePrintOutput()'s measurement pass,
+   since that runs in ordinary screen context, not inside an actual print
+   -- the real heights it needs to measure (print-table row heights,
+   section header heights, barcode heights, ...) only exist once these
+   rules are live. */
+.print-page-num {{ text-align:right; font-size:10px; color:#000; margin-bottom:4px }}
+.print-force-break {{ break-before:page }}
+.print-chunked-out {{ display:none!important }}
+.print-hdr {{ display:flex; justify-content:space-between; align-items:flex-start;
+              border-bottom:2px solid #000; padding-bottom:8px; margin-bottom:10px }}
+.print-hdr-left {{ font-size:10px }}
+.print-hdr-company {{ font-weight:bold; font-size:13px; margin-top:2px }}
+.print-hdr-title {{ font-weight:bold; font-size:16px; align-self:center }}
+.print-hdr-right {{ font-size:10px; text-align:right }}
+.print-hdr-sub {{ margin-top:2px }}
+.print-hdr-daterange {{ margin-top:2px }}
+.print-hdr-section {{ display:none }}
+#print-output.pagebreak-per-wc .print-hdr-main {{ display:none }}
+#print-output.pagebreak-per-wc .print-hdr-section {{ display:flex }}
+.print-sec-hdr {{ font-weight:bold; font-size:11px; border-bottom:1px solid #000; padding:4px 0; margin-top:4px }}
+/* table-layout:fixed + the <colgroup> above locks column widths to fixed
+   percentages instead of sizing them from each table's own cell content --
+   needed so a chunk table built from a subset of rows (see
+   paginatePrintOutput()) can't wrap text differently than the original
+   table did, which would silently invalidate the row heights that were
+   measured against the original. */
+.print-table {{ width:100%; table-layout:fixed; border-collapse:collapse; font-size:10px; color:#000 }}
+.print-table th {{ text-align:left; font-size:9px; border-bottom:1px solid #000; padding:3px 4px;
+                    background:#fff; color:#000; position:static }}
+.print-table td {{ padding:3px 4px; border-bottom:1px solid #ccc; vertical-align:top }}
+.print-table td.c {{ text-align:center }}
+.print-row {{ break-inside:avoid }}
+.p-job {{ font-weight:bold }}
+.p-desc {{ color:#444; font-size:9px }}
+.p-barcode {{ display:block; margin:2px 0 }}
+.p-barcode rect {{ fill:#000 }}
+.p-barcode-num {{ display:block; font-size:8px; color:#000; letter-spacing:1px }}
+.print-table .overdue {{ color:#c00; font-weight:bold }}
+.print-total-row td {{ border-top:2px solid #000; border-bottom:none; font-weight:bold;
+                        text-align:right; padding-top:6px }}
+@page {{ size: letter landscape; margin: 0.5in }}
 @media print {{
   #hdr, #sidebar, #wrap {{ display:none }}
   body {{ overflow:visible; height:auto; background:#fff; color:#000 }}
-  #print-output {{ display:block }}
-  #print-output.pagebreak-per-wc .print-section {{ break-before:page }}
-  .print-hdr {{ display:flex; justify-content:space-between; align-items:flex-start;
-                border-bottom:2px solid #000; padding-bottom:8px; margin-bottom:10px }}
-  .print-hdr-left {{ font-size:10px }}
-  .print-hdr-company {{ font-weight:bold; font-size:13px; margin-top:2px }}
-  .print-hdr-title {{ font-weight:bold; font-size:16px; align-self:center }}
-  .print-hdr-right {{ font-size:10px; text-align:right }}
-  .print-hdr-sub {{ margin-top:2px }}
-  .print-hdr-section {{ display:none }}
-  #print-output.pagebreak-per-wc .print-hdr-main {{ display:none }}
-  #print-output.pagebreak-per-wc .print-hdr-section {{ display:flex }}
-  .print-sec-hdr {{ font-weight:bold; font-size:11px; border-bottom:1px solid #000; padding:4px 0; margin-top:4px }}
-  .print-table {{ width:100%; border-collapse:collapse; font-size:10px; color:#000 }}
-  .print-table th {{ text-align:left; font-size:9px; border-bottom:1px solid #000; padding:3px 4px;
-                      background:#fff; color:#000; position:static }}
-  .print-table td {{ padding:3px 4px; border-bottom:1px solid #ccc; vertical-align:top }}
-  .print-table td.c {{ text-align:center }}
-  .print-row {{ break-inside:avoid }}
-  .p-job {{ font-weight:bold }}
-  .p-desc {{ color:#444; font-size:9px }}
-  .p-barcode {{ display:block; margin:2px 0 }}
-  .p-barcode rect {{ fill:#000 }}
-  .print-table .overdue {{ color:#c00; font-weight:bold }}
-  .print-total-row td {{ border-top:2px solid #000; border-bottom:none; font-weight:bold;
-                          text-align:right; padding-top:6px }}
+  #print-output {{ position:static; width:auto; visibility:visible; pointer-events:auto }}
 }}
 {kiosk_css}
 </style>
@@ -1060,8 +1148,15 @@ function renderBarcodes(){{
     // je["oper"] (and in principle je["job"]) can be a blank string -- remove
     // the placeholder entirely rather than leaving an empty display:block
     // span with its own margin sitting in the row.
-    if (el.dataset.code) el.outerHTML = code128Svg(el.dataset.code, 1, 10);
-    else el.remove();
+    if (!el.dataset.code) {{ el.remove(); return; }}
+    // The job barcode's own value is already shown as bold plaintext right
+    // above it (the job number); the op barcode's value (op_key) has no
+    // other plaintext appearance anywhere on the page, so only it repeats
+    // its value below the barcode -- not a blanket behavior for every
+    // barcode, just this one, via data-show-value.
+    const valueHtml = el.dataset.showValue === '1'
+      ? `<span class="p-barcode-num">${{el.dataset.code}}</span>` : '';
+    el.outerHTML = code128Svg(el.dataset.code, 1, 10) + valueHtml;
   }});
 }}
 
@@ -1145,10 +1240,164 @@ pagebreakCb.addEventListener('change', () => {{
   try {{ localStorage.setItem('print_pagebreak', pagebreakCb.checked ? '1' : '0'); }} catch(e) {{}}
 }});
 
+
+// "Thru <date>", not a two-sided range -- the Schedule Window filter only
+// ever caps how far *out* a job can start (see matchesWindowAndMode()); it
+// never excludes an overdue/already-started job on the other end, so a
+// literal start-to-end range would misleadingly imply jobs before today
+// are excluded.
+function printDateRangeText(){{
+  const active = VIEW_WINDOWS.find(w => w.days === viewDays) || VIEW_WINDOWS[VIEW_WINDOWS.length - 1];
+  if(viewDays === Infinity) return active.label;
+  const end = new Date();
+  end.setHours(0, 0, 0, 0);
+  // matchesWindowAndMode()'s cutoff (today + viewDays) is an EXCLUSIVE upper
+  // bound -- the last day actually included is one day before that, so the
+  // printed label needs the same -1 or it'd claim a day that's excluded.
+  end.setDate(end.getDate() + viewDays - 1);
+  const fmt = d => d.toLocaleDateString('en-US', {{month:'2-digit', day:'2-digit', year:'2-digit'}});
+  return `${{active.label}} (thru ${{fmt(end)}})`;
+}}
+
+// Page numbers ("Page X of Y") can't rely on CSS Paged Media's @page margin
+// boxes -- Firefox has never implemented @top-right/etc, only Chromium has
+// -- so this computes real page breaks itself from measured element heights
+// (which is why #print-output's print styling isn't gated behind @media
+// print: it needs to be live during this ordinary-screen-context pass) and
+// stamps an ordinary .print-page-num element before each one.
+// Letter landscape content height is 7.5in (0.5in @page margin, 96 CSS
+// px/in) minus ~14px for the per-page label and a safety margin:
+// getBoundingClientRect() on an element doesn't include its own margins,
+// and several small per-element shortfalls like that compound once enough
+// rows/headers share a page -- empirically tuned against a worst-case
+// render (three sections packed onto one page) rather than derived
+// exactly, so this errs conservative on purpose. Only valid for landscape,
+// which is why @page above pins `size: letter landscape` -- a page's real
+// printed dimensions aren't exposed to JS at all (no API reports the print
+// dialog's selected paper size/orientation), so the only way to keep this
+// budget trustworthy is to force the one layout it was computed for.
+const PRINT_PAGE_BUDGET_PX = 620;
+
+function clearPagination(printOutput){{
+  printOutput.querySelectorAll('.print-injected').forEach(el => el.remove());
+  printOutput.querySelectorAll('.print-force-break').forEach(el => el.classList.remove('print-force-break'));
+  printOutput.querySelectorAll('.print-chunked-out').forEach(el => el.classList.remove('print-chunked-out'));
+}}
+
+function paginatePrintOutput(printOutput, useBreaks){{
+  const mainHdr = printOutput.querySelector(':scope > .print-hdr-main');
+  const sections = [...printOutput.querySelectorAll(':scope > .print-section')]
+    .filter(sec => !sec.classList.contains('hidden-section'));
+  if(!sections.length) return;
+
+  // The very first thing printed overall: the main header in continuous
+  // mode (mainHdr is absent here already if useBreaks, see the click
+  // handler), otherwise the first section's own repeated header.
+  const pageStarts = [(!useBreaks && mainHdr) ? mainHdr : sections[0]];
+  let budget = PRINT_PAGE_BUDGET_PX;
+  if(!useBreaks && mainHdr) budget -= mainHdr.getBoundingClientRect().height;
+
+  sections.forEach((sec, secIdx) => {{
+    const secHdr = sec.querySelector(':scope > .print-hdr-section');
+    const deptHdr = sec.querySelector(':scope > .print-sec-hdr');
+    const table = sec.querySelector(':scope > table.print-table');
+    const thead = table.querySelector('thead');
+    const tfoot = table.querySelector('tfoot');
+    const rows = [...table.querySelectorAll('tbody > tr.print-row')]
+      .filter(tr => !tr.classList.contains('hidden-section'));
+    const theadH = thead.getBoundingClientRect().height;
+    // secHdr is only really going to render in useBreaks mode (CSS hides it
+    // otherwise), but that CSS rule depends on the .pagebreak-per-wc class
+    // alone, so it's already live here too -- no need to re-check useBreaks.
+    const topBlockH = secHdr.getBoundingClientRect().height + deptHdr.getBoundingClientRect().height + theadH;
+
+    if(secIdx > 0){{
+      const firstRowH = rows[0].getBoundingClientRect().height;
+      if(useBreaks || budget < topBlockH + firstRowH){{
+        pageStarts.push(sec);
+        budget = PRINT_PAGE_BUDGET_PX;
+      }}
+    }}
+    budget -= topBlockH;
+
+    // Walk this section's own rows, splitting into page-chunks as needed.
+    // chunk[0] always stays put in the original table; chunk[1+] become new
+    // <table>s appended after it (built below), each repeating the column
+    // header. Rows aren't moved out of the original table for this -- they're
+    // cloned into the new chunk table and hidden (.print-chunked-out) in the
+    // original -- so there's nothing to "undo": next click's clearPagination
+    // just removes the injected tables and un-hides the originals.
+    const chunks = [[]];
+    const deptHdrH = deptHdr.getBoundingClientRect().height;
+    rows.forEach(tr => {{
+      const h = tr.getBoundingClientRect().height;
+      let chunk = chunks[chunks.length - 1];
+      if(chunk.length && budget < h){{
+        // deptHdr repeats on every continuation page too (not just thead) --
+        // a reader starting mid-table on page 3 of a long work center still
+        // needs to see which department/WC this is, same as page 1 does.
+        chunks.push(chunk = []);
+        budget = PRINT_PAGE_BUDGET_PX - deptHdrH - theadH;
+      }}
+      chunk.push(tr);
+      budget -= h;
+    }});
+    // Exactly one copy of tfoot ends up visible, wherever this section's
+    // last row landed (the original table if it wasn't split, otherwise the
+    // last chunk) -- either way it still takes up real space on that page,
+    // which the next section (if one shares the page) needs to know about.
+    budget -= tfoot.getBoundingClientRect().height;
+
+    for(let i = 1; i < chunks.length; i++){{
+      const deptHdrClone = deptHdr.cloneNode(true);
+      deptHdrClone.classList.add('print-injected');
+      const chunkTable = document.createElement('table');
+      chunkTable.className = table.className;
+      chunkTable.classList.add('print-injected');
+      chunkTable.appendChild(table.querySelector('colgroup').cloneNode(true));
+      chunkTable.appendChild(thead.cloneNode(true));
+      const tbody = document.createElement('tbody');
+      // Clone BEFORE hiding the originals -- cloneNode(true) copies whatever
+      // classes are on tr *at clone time*, so hiding tr first would hide its
+      // clone too.
+      chunks[i].forEach(tr => tbody.appendChild(tr.cloneNode(true)));
+      chunks[i].forEach(tr => tr.classList.add('print-chunked-out'));
+      chunkTable.appendChild(tbody);
+      if(i === chunks.length - 1 && tfoot) chunkTable.appendChild(tfoot.cloneNode(true));
+      sec.appendChild(deptHdrClone);
+      sec.appendChild(chunkTable);
+      // The label (and its break-before:page, added in the labeling pass
+      // below) goes before deptHdrClone, not chunkTable -- deptHdrClone is
+      // genuinely the first thing on this page now, so insertBefore needs
+      // to target it, not the table that comes after it.
+      pageStarts.push(deptHdrClone);
+    }}
+    if(chunks.length > 1 && tfoot) tfoot.classList.add('print-chunked-out');
+  }});
+
+  const total = pageStarts.length;
+  pageStarts.forEach((el, i) => {{
+    const label = document.createElement('div');
+    label.className = 'print-page-num print-injected';
+    // The break itself goes on the LABEL, not on `el` -- el is only used to
+    // find the right insertion point. A break on `el` would land between the
+    // label and its page's real content, stranding the label on the
+    // *previous* page instead of the one it's labeling.
+    if(i > 0) label.classList.add('print-force-break');
+    label.textContent = `Page ${{i + 1}} of ${{total}}`;
+    el.parentNode.insertBefore(label, el);
+  }});
+}}
+
 document.getElementById('print-btn').addEventListener('click', () => {{
-  const useBreaks = pagebreakCb.checked;
   const printOutput = document.getElementById('print-output');
+  clearPagination(printOutput);
+  const useBreaks = pagebreakCb.checked;
   printOutput.classList.toggle('pagebreak-per-wc', useBreaks);
+  const rangeText = printDateRangeText();
+  document.querySelectorAll('#print-output .print-hdr-daterange').forEach(el => {{
+    el.textContent = rangeText;
+  }});
   // display:none isn't enough to rule out: pull print-hdr-main out of the DOM
   // entirely in this mode rather than trust that a hidden sibling can't
   // affect where break-before:page lands on the first section. Reinserted
@@ -1174,6 +1423,7 @@ document.getElementById('print-btn').addEventListener('click', () => {{
     const totalEl = sec.querySelector('.print-total-val');
     if(totalEl) totalEl.textContent = anyVisible ? total.toFixed(2) : '';
   }});
+  paginatePrintOutput(printOutput, useBreaks);
   window.print();
 }});
 
@@ -1382,11 +1632,21 @@ setInterval(async () => {{
 
 # ── Main ────────────────────────────────────────────────────────────────────────
 
-def main():
+def main(force=False):
     """Regenerate schedule.html/kiosk.html from the JobBoss DB if configured,
     otherwise fall back to parsing a PDF already sitting at PDF_PATH from a
     manual drop (incoming/) or web upload (options.html) -- same on both
-    platforms."""
+    platforms. No-ops outside SCHEDULE_ACTIVE_START_HOUR/END_HOUR, leaving
+    the last-generated pages in place, unless force=True (--force on the
+    command line) -- process_drop.py passes that for a web upload or a
+    manual drop-dir run, since someone deliberately handing over a new PDF
+    right now should take effect immediately, not silently wait for the
+    next active-hours cycle. The unattended cron/Task Scheduler path never
+    passes it, so the gate still applies there."""
+    if not force and not _within_active_hours():
+        print(f"[{datetime.now():%Y-%m-%d %H:%M}] Outside active hours "
+              f"({SCHEDULE_ACTIVE_START_HOUR:02d}:00-{SCHEDULE_ACTIVE_END_HOUR:02d}:00) -- skipping this cycle.")
+        return
     if jobboss_db.is_configured():
         data = jobboss_db.fetch_from_db()
         if data is None:
@@ -1423,4 +1683,4 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    main(force='--force' in sys.argv)
