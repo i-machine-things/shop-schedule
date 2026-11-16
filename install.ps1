@@ -174,8 +174,11 @@ $AutoUpdateTrigger = New-ScheduledTaskTrigger -Daily -At '3:00am'
 # ExecutionTimeLimit: the default is 72 hours -- git fetch has no timeout of
 # its own, so cap the whole task well below that instead of letting a hung
 # fetch sit there indefinitely.
+# MultipleInstances IgnoreNew: this is already the registration default, but
+# set it explicitly -- a run stuck in a slow git fetch must never overlap a
+# second run checking out a different release out from under it.
 $AutoUpdateSettings = New-ScheduledTaskSettingsSet -StartWhenAvailable `
-    -ExecutionTimeLimit (New-TimeSpan -Minutes 30)
+    -ExecutionTimeLimit (New-TimeSpan -Minutes 30) -MultipleInstances IgnoreNew
 Register-ScheduledTask -TaskName 'ShopScheduleAutoUpdate' -Action $AutoUpdateAction -Trigger $AutoUpdateTrigger `
     -Settings $AutoUpdateSettings -User 'SYSTEM' -RunLevel Highest -Force | Out-Null
 

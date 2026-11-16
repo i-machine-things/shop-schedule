@@ -31,9 +31,16 @@ import subprocess  # nosec B404 -- fixed argv lists below, no shell=True, no use
 import sys
 import urllib.request
 
+try:
+    import fcntl  # POSIX only -- see _acquire_lock()
+except ImportError:
+    fcntl = None
+
 REPO = "i-machine-things/shop-schedule"
 INSTALL_DIR = os.path.dirname(os.path.abspath(__file__))
+UPDATER_FILENAME = os.path.basename(__file__)
 LOG_PATH = os.path.join(INSTALL_DIR, 'auto_update.log')
+LOCK_PATH = os.path.join(INSTALL_DIR, 'auto_update.lock')
 ENV_PATH = os.path.join(INSTALL_DIR, '.env')
 
 logging.basicConfig(
@@ -132,6 +139,58 @@ def _is_ancestor(older, newer):
         return False
 
 
+def _resolve_tag_commit(tag):
+    """Resolves `tag` to its commit SHA via the tags namespace explicitly
+    (`refs/tags/<tag>`) rather than a bare revision lookup -- plain
+    `git checkout <tag>` / `git rev-parse <tag>` fall back to a same-named
+    local branch when one exists, which would silently activate branch HEAD
+    instead of the release the ancestry check below just validated. Returns
+    None (and logs) if the tag can't be resolved this way.
+    """
+    try:
+        return _git(['rev-parse', '--verify', f'refs/tags/{tag}^{{commit}}']).stdout.strip()
+    except subprocess.CalledProcessError as exc:
+        logging.error("Could not resolve release tag %s to a commit: %s", tag, exc.stderr)
+        return None
+
+
+def _ref_has_file(ref, relpath):
+    """True if `relpath` exists in the tree at `ref` -- guards against
+    checking out a release that predates this script's own existence
+    (e.g. v1.4.0, tagged before auto_update.py was added). Git removes a
+    tracked file that's absent from the target tree during checkout, which
+    would delete this very script out from under the running install and
+    break every scheduled run after it.
+    """
+    try:
+        _git(['cat-file', '-e', f'{ref}:{relpath}'])
+        return True
+    except subprocess.CalledProcessError:
+        return False
+
+
+def _acquire_lock():
+    """Returns an open file object holding an exclusive, non-blocking lock
+    for the lifetime of this process, or None if another run already holds
+    it. POSIX only (`fcntl.flock`) -- cron has no built-in protection
+    against overlapping runs (e.g. one stuck in a slow `git fetch` for a
+    full day), so a second run could check out an older release over a
+    newer one once the first resumes. On Windows there's nothing to do here:
+    install.ps1's Scheduled Task already defaults to (and now sets
+    explicitly) MultipleInstances=IgnoreNew, so Task Scheduler itself
+    refuses to start an overlapping run.
+    """
+    if fcntl is None:
+        return None
+    lock_file = open(LOCK_PATH, 'w')  # noqa: SIM115 -- held for main()'s lifetime, closed on process exit
+    try:
+        fcntl.flock(lock_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        lock_file.close()
+        return False
+    return lock_file
+
+
 def restart_server():
     """Restart the long-running HTTP server process so it picks up the new
     code. Both platforms' install already run this (and the schedule
@@ -159,6 +218,11 @@ def main():
         logging.info("AUTO_UPDATE_ENABLED is not set to 1 in .env -- skipping (off by default).")
         return
 
+    lock_file = _acquire_lock()
+    if lock_file is False:
+        logging.info("Another auto_update.py run is already in progress -- skipping.")
+        return
+
     try:
         latest = latest_release_tag()
     except Exception as exc:
@@ -179,7 +243,11 @@ def main():
         )
         return
 
-    if current is not None and not _is_ancestor(current, latest):
+    target = _resolve_tag_commit(latest)
+    if target is None:
+        return
+
+    if current is not None and not _is_ancestor(current, target):
         logging.error(
             "Refusing to update: current tag %s is not an ancestor of latest "
             "release %s (would be a downgrade or diverged history) -- "
@@ -187,8 +255,15 @@ def main():
         )
         return
 
+    if not _ref_has_file(target, UPDATER_FILENAME):
+        logging.error(
+            "Refusing to update: release %s (commit %s) does not contain %s -- "
+            "leaving checkout as-is.", latest, target[:8], UPDATER_FILENAME,
+        )
+        return
+
     try:
-        _git(['checkout', latest])
+        _git(['checkout', '--detach', target])
     except subprocess.CalledProcessError as exc:
         logging.error(
             "git checkout to %s failed, leaving existing checkout in place: %s\n%s",
