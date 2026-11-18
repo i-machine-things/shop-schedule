@@ -334,31 +334,50 @@ sub onScheduleData()
         if data.thru_date <> invalid then thruDate = data.thru_date
         m.metaLabel.text = "Report: " + reportDate + "   |   Thru: " + thruDate
 
-        m.rawSections = data.sections
-        buildContent(filteredSections())
+        ' Staged, not committed to m.rawSections yet -- buildContent() can
+        ' reject an all-malformed response and keep the previously displayed
+        ' schedule on screen. Committing unconditionally here meant a later
+        ' filter change (setViewWindow()/setScheduleMode()) would rebuild
+        ' from the rejected data, get rejected again, and leave the display
+        ' and m.rawSections pointing at data that was never actually shown.
+        ' A valid build with zero matching jobs still counts as success (the
+        ' "legitimately nothing scheduled" case buildContent() itself
+        ' already treats as success, not rejection) -- only commit on an
+        ' actual reject. CodeRabbit catch on PR #298.
+        candidateSections = data.sections
+        if buildContent(filteredSections(candidateSections)) then m.rawSections = candidateSections
     catch e
         print "onScheduleData error: "; e.getMessage()
     end try
 end sub
 
-' Applies the Schedule Window/Mode filter to m.rawSections -- a section's
-' jobs array gets a copy with only the matching jobs kept; buildContent()'s
-' own existing "section.jobs.Count() > 0" check then drops any section that
-' comes out empty, same as the web kiosk hiding an empty section's header.
-' A section this screen can't safely iterate (malformed jobs) passes
-' through untouched so buildContent()'s malformed-response handling still
-' sees it exactly as the server sent it.
-function filteredSections() as Object
+' Applies the Schedule Window/Mode filter to the given section list -- a
+' section's jobs array gets a copy with only the matching jobs kept;
+' buildContent()'s own existing "section.jobs.Count() > 0" check then drops
+' any section that comes out empty, same as the web kiosk hiding an empty
+' section's header. A section this screen can't safely iterate (malformed
+' jobs) passes through untouched so buildContent()'s malformed-response
+' handling still sees it exactly as the server sent it -- same for an
+' individual malformed job (not an associative array): kept as-is rather
+' than silently dropped, so buildJobRow()'s own crash/catch there still
+' surfaces the existing display-error warning instead of the bad record
+' just vanishing from a WC-Dispatch-filtered view with no sign anything was
+' wrong. CodeRabbit catch on PR #298.
+function filteredSections(sections as Object) as Object
     todayOrd = todayOrdinal()
     result = []
-    for each section in m.rawSections
+    for each section in sections
         if section.jobs <> invalid and GetInterface(section.jobs, "ifArray") <> invalid then
             keptJobs = []
             for each job in section.jobs
-                currWc = job.curr_wc
-                if currWc = invalid then currWc = ""
-                if matchesWindowAndMode(section.wc, job.sch_start, currWc, todayOrd) then
+                if GetInterface(job, "ifAssociativeArray") = invalid then
                     keptJobs.push(job)
+                else
+                    currWc = job.curr_wc
+                    if currWc = invalid then currWc = ""
+                    if matchesWindowAndMode(section.wc, job.sch_start, currWc, todayOrd) then
+                        keptJobs.push(job)
+                    end if
                 end if
             end for
             filtered = {
@@ -425,14 +444,18 @@ function todayOrdinal() as Integer
     return dateOrdinal(dt.GetYear(), dt.GetMonth(), dt.GetDayOfMonth())
 end function
 
-' Day-count since an arbitrary fixed point, via a noon-UTC ISO8601 round
-' trip through roDateTime -- noon (not midnight) so the UTC/local offset on
+' Day-count since an arbitrary fixed point, via a noon ISO8601 round trip
+' through roDateTime -- noon (not midnight) so the UTC/local offset on
 ' either side of this call can never push the instant across a day boundary
 ' before AsSeconds()/86400 truncates it back down. Only ever used for
 ' *relative* comparisons between two dates built the same way here, never
-' treated as a real calendar epoch.
+' treated as a real calendar epoch. No trailing "Z" -- Roku's documented
+' FromISO8601String() formats don't include a timezone designator, and
+' behavior for a format outside that list isn't guaranteed (CodeRabbit
+' catch on PR #298: a silently-unparsed string would return the same
+' ordinal for every date, making the Schedule Window filter a no-op).
 function dateOrdinal(y as Integer, mo as Integer, d as Integer) as Integer
-    iso = y.ToStr() + "-" + leftPad(mo.ToStr(), 2) + "-" + leftPad(d.ToStr(), 2) + "T12:00:00Z"
+    iso = y.ToStr() + "-" + leftPad(mo.ToStr(), 2) + "-" + leftPad(d.ToStr(), 2) + "T12:00:00.000"
     dt = CreateObject("roDateTime")
     dt.FromISO8601String(iso)
     return dt.AsSeconds() \ 86400
@@ -481,7 +504,11 @@ end sub
 ' list before being yanked back to the top -- confirmed on real hardware as
 ' "restarts instead of showing the whole list." Fix: preserve scroll
 ' position across a refresh; only reset to 0 on the very first load.
-sub buildContent(sections as Object)
+' Returns whether the swap actually happened -- callers that stage a
+' candidate source before committing it to m.rawSections (see
+' onScheduleData()) need to know whether this rejected an all-malformed
+' response, so they don't commit data that was never actually displayed.
+function buildContent(sections as Object) as Boolean
     ' Guards the kiosk against ever freezing on an unexpected data shape --
     ' a crash here previously took the whole render thread down with it,
     ' leaving the last frame stuck on screen with no timers left running.
@@ -547,7 +574,7 @@ sub buildContent(sections as Object)
         if hadInputSections and newSectionBounds.Count() = 0 and malformedSections > 0 then
             m.errorLabel.text = "Display error building schedule -- will retry next refresh."
             m.errorBanner.visible = true
-            return
+            return false
         end if
 
         ' Everything above succeeded -- safe to actually swap the new
@@ -595,12 +622,14 @@ sub buildContent(sections as Object)
             m.scrollContent.translation = [0, 0]
             updateStickyHeader(0)
         end if
+        return true
     catch e
         print "buildContent error: "; e.getMessage()
         m.errorLabel.text = "Display error building schedule -- will retry next refresh."
         m.errorBanner.visible = true
+        return false
     end try
-end sub
+end function
 
 function buildSectionHeader(section as Object, y as Integer) as Object
     colors = colorsForDept(section.department)
@@ -1042,7 +1071,7 @@ sub setViewWindow(key as String)
         writeFilterSetting("view_window_days", key)
         closeWarpMenu()
         m.scrollY = 0
-        buildContent(filteredSections())
+        buildContent(filteredSections(m.rawSections))
     catch e
         print "setViewWindow error: "; e.getMessage()
     end try
@@ -1055,7 +1084,7 @@ sub setScheduleMode(key as String)
         writeFilterSetting("schedule_mode", key)
         closeWarpMenu()
         m.scrollY = 0
-        buildContent(filteredSections())
+        buildContent(filteredSections(m.rawSections))
     catch e
         print "setScheduleMode error: "; e.getMessage()
     end try
