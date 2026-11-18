@@ -74,6 +74,7 @@ sub init()
     m.stickyHeader.visible = false
     m.warpMenuOpen = false
     m.warpMenuIdx = 0
+    m.menuRows = []
     m.WARP_ROW_HEIGHT = 48
     m.WARP_VISIBLE_ROWS = 21
     ' Uniform green cells, contrasting-blue selection -- matches the web
@@ -82,6 +83,42 @@ sub init()
     ' accent color (job numbers, clock) rather than inventing a new one.
     m.WARP_ROW_COLOR = "0x2E7D32FF"
     m.WARP_ROW_SELECTED_COLOR = "0x4AAFFFFF"
+
+    ' Schedule Window / Schedule Mode -- the same two independent, ANDed
+    ' filters as the web kiosk's sidebar (update_schedule.py's
+    ' VIEW_WINDOWS/SCHEDULE_MODES/matchesWindowAndMode()), minus Print
+    ' Report (no printer on a Roku). Built here, not at file scope -- a bare
+    ' top-level assignment is invalid BrightScript (see CODING_NOTES.md).
+    m.VIEW_WINDOWS = [
+        { label: "Today", days: 1, key: "1" }
+        { label: "3 Days", days: 3, key: "3" }
+        { label: "1 Week", days: 7, key: "7" }
+        { label: "2 Weeks", days: 14, key: "14" }
+        { label: "All", days: -1, key: "all" }
+    ]
+    m.SCHEDULE_MODES = [
+        { label: "Standard", key: "standard" }
+        { label: "WC Dispatch", key: "dispatch" }
+    ]
+    m.viewWindowKey = "all"
+    m.viewDays = -1
+    m.scheduleModeKey = "standard"
+    m.dispatchMode = false
+    ' Work Centers starts collapsed here, unlike the web kiosk (there, Print
+    ' Report -- not present on this screen at all -- is the one that starts
+    ' collapsed). On a real shop's work-center count (25+, confirmed in
+    ' shop-schedule's own commit history), Work Centers is by far the
+    ' longest section in this one shared menu, and reaching Schedule
+    ' Window/Mode below it means one Down-press per row on a remote, not a
+    ' mouse scroll -- the same "buries the short sections below the fold"
+    ' problem that justified collapsing Print Report there, just landing on
+    ' a different section here. Overridden by loadFilterSettings() once the
+    ' user has actually toggled anything.
+    m.menuCollapsed = { wc: true, window: false, mode: false }
+    ' The last-fetched, unfiltered section list -- filteredSections() reads
+    ' this fresh every time the Window/Mode filter is (re)applied, so a
+    ' filter change never needs a new network fetch.
+    m.rawSections = []
 end sub
 
 sub screenShown()
@@ -93,9 +130,51 @@ sub screenShown()
     sec = CreateObject("roRegistrySection", "ScheduleConfig")
     m.serverUrl = sec.Read("serverUrl")
 
+    loadFilterSettings()
+
     requestFetch()
     m.refreshTimer.control = "start"
 end sub
+
+' Persisted the same way SetupScreen.brs persists serverUrl -- a dedicated
+' registry section ("ScheduleFilters", separate from "ScheduleConfig" so
+' resetting the server via "options" doesn't also wipe these), read once
+' here and written back only when the user actually changes something (see
+' setViewWindow()/setScheduleMode()/toggleMenuSection()). Read() returns ""
+' for a key never written, which is what lets each setting fall back to its
+' own default below.
+sub loadFilterSettings()
+    sec = CreateObject("roRegistrySection", "ScheduleFilters")
+
+    windowKey = sec.Read("view_window_days")
+    if windowKey = "" then windowKey = "all"
+    m.viewWindowKey = windowKey
+    m.viewDays = viewDaysForKey(windowKey)
+
+    modeKey = sec.Read("schedule_mode")
+    if modeKey = "" then modeKey = "standard"
+    m.scheduleModeKey = modeKey
+    m.dispatchMode = (modeKey = "dispatch")
+
+    ' "wc" defaults collapsed; the other two default expanded -- see init()'s
+    ' comment on m.menuCollapsed for why.
+    m.menuCollapsed.wc = (sec.Read("menu_collapsed_wc") <> "0")
+    m.menuCollapsed.window = (sec.Read("menu_collapsed_window") = "1")
+    m.menuCollapsed.mode = (sec.Read("menu_collapsed_mode") = "1")
+end sub
+
+sub writeFilterSetting(key as String, value as String)
+    sec = CreateObject("roRegistrySection", "ScheduleFilters")
+    sec.Write(key, value)
+    sec.Flush()
+end sub
+
+function viewDaysForKey(key as String) as Integer
+    for each w in m.VIEW_WINDOWS
+        if w.key = key then return w.days
+    end for
+    return -1
+end function
 
 ' Called by AppScene.brs's onReconfigure() before removing this screen --
 ' without this, a detached-but-still-alive ScheduleScreen kept polling the
@@ -255,11 +334,109 @@ sub onScheduleData()
         if data.thru_date <> invalid then thruDate = data.thru_date
         m.metaLabel.text = "Report: " + reportDate + "   |   Thru: " + thruDate
 
-        buildContent(data.sections)
+        m.rawSections = data.sections
+        buildContent(filteredSections())
     catch e
         print "onScheduleData error: "; e.getMessage()
     end try
 end sub
+
+' Applies the Schedule Window/Mode filter to m.rawSections -- a section's
+' jobs array gets a copy with only the matching jobs kept; buildContent()'s
+' own existing "section.jobs.Count() > 0" check then drops any section that
+' comes out empty, same as the web kiosk hiding an empty section's header.
+' A section this screen can't safely iterate (malformed jobs) passes
+' through untouched so buildContent()'s malformed-response handling still
+' sees it exactly as the server sent it.
+function filteredSections() as Object
+    todayOrd = todayOrdinal()
+    result = []
+    for each section in m.rawSections
+        if section.jobs <> invalid and GetInterface(section.jobs, "ifArray") <> invalid then
+            keptJobs = []
+            for each job in section.jobs
+                currWc = job.curr_wc
+                if currWc = invalid then currWc = ""
+                if matchesWindowAndMode(section.wc, job.sch_start, currWc, todayOrd) then
+                    keptJobs.push(job)
+                end if
+            end for
+            filtered = {
+                department: section.department
+                wc_group: section.wc_group
+                wc: section.wc
+                jobs: keptJobs
+            }
+            if section.backlog_days <> invalid then filtered.backlog_days = section.backlog_days
+            if section.gap_days <> invalid then filtered.gap_days = section.gap_days
+            result.push(filtered)
+        else
+            result.push(section)
+        end if
+    end for
+    return result
+end function
+
+' Mirrors update_schedule.py's matchesWindowAndMode()/isVisible(): Schedule
+' Window caps how far out a job's sch_start can be (an EXCLUSIVE upper
+' bound -- a blank/unparseable sch_start always passes, same as the web
+' kiosk's `if(startStr && ...)` skip), and Schedule Mode (WC Dispatch)
+' additionally requires the job's current work center to match the section
+' it's listed under. Independent, ANDed -- WC Dispatch narrows whatever
+' date window is already selected rather than replacing it.
+function matchesWindowAndMode(wc as String, startStr as Dynamic, currWc as String, todayOrd as Integer) as Boolean
+    if m.viewDays <> -1 then
+        startOrd = parseSchedDateOrdinal(startStr)
+        if startOrd <> -1 and startOrd >= todayOrd + m.viewDays then return false
+    end if
+    if m.dispatchMode and currWc <> wc then return false
+    return true
+end function
+
+' "dd-Mon-yy" (e.g. "05-Jan-26") -> a stable day-ordinal integer, or -1 if
+' blank/unparseable. Mirrors jobboss_db.py's _parse_sched_date()'s format
+' assumption (two-digit year, three-letter month). -1 specifically (not 0 or
+' some far-future sentinel) because a genuinely blank/missing sch_start must
+' skip the window check entirely, not sort as an arbitrary real date.
+function parseSchedDateOrdinal(s as Dynamic) as Integer
+    if type(s) <> "String" or Len(s) <> 9 then return -1
+    monthNum = monthAbbrToNum(Mid(s, 4, 3))
+    if monthNum = 0 then return -1
+    day = Int(Val(Left(s, 2)))
+    year = 2000 + Int(Val(Right(s, 2)))
+    if day < 1 or day > 31 then return -1
+    return dateOrdinal(year, monthNum, day)
+end function
+
+function monthAbbrToNum(abbr as String) as Integer
+    months = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"]
+    lower = LCase(abbr)
+    for i = 0 to 11
+        if months[i] = lower then return i + 1
+    end for
+    return 0
+end function
+
+' Local calendar "today" as the same day-ordinal dateOrdinal() produces, so
+' it's directly comparable to a job's parsed sch_start.
+function todayOrdinal() as Integer
+    dt = CreateObject("roDateTime")
+    dt.ToLocalTime()
+    return dateOrdinal(dt.GetYear(), dt.GetMonth(), dt.GetDayOfMonth())
+end function
+
+' Day-count since an arbitrary fixed point, via a noon-UTC ISO8601 round
+' trip through roDateTime -- noon (not midnight) so the UTC/local offset on
+' either side of this call can never push the instant across a day boundary
+' before AsSeconds()/86400 truncates it back down. Only ever used for
+' *relative* comparisons between two dates built the same way here, never
+' treated as a real calendar epoch.
+function dateOrdinal(y as Integer, mo as Integer, d as Integer) as Integer
+    iso = y.ToStr() + "-" + leftPad(mo.ToStr(), 2) + "-" + leftPad(d.ToStr(), 2) + "T12:00:00Z"
+    dt = CreateObject("roDateTime")
+    dt.FromISO8601String(iso)
+    return dt.AsSeconds() \ 86400
+end function
 
 ' Repaints already-built section headers (inline + sticky) once deptColors
 ' actually lands -- fetchDeptColors() runs after scheduleData is set in
@@ -592,34 +769,25 @@ function toRokuColor(hexColor as String) as String
     return "0x" + Mid(hexColor, 2) + "FF"
 end function
 
-' Work-center warp menu (OK key) -- lets a full scroll-through (several
-' minutes with real production data) be skipped by jumping straight to a
-' section. Built fresh from m.sectionBounds every time it opens rather than
-' kept live while hidden -- it's only ever on screen momentarily, and
-' sections only change on a data refresh anyway.
+' Sidebar menu (OK key) -- three independently-collapsible sections (Work
+' Centers / Schedule Window / Schedule Mode), flattened into one
+' Up/Down-navigable row list. Built fresh every time it opens rather than
+' kept live while hidden -- it's only ever on screen momentarily, and the
+' underlying data (m.sectionBounds) only changes on a data refresh anyway.
+' Always openable, even with zero current sections (m.sectionBounds empty)
+' -- unlike the original work-center-only version, Schedule Window/Mode must
+' stay reachable so a user who filtered everything out isn't stranded.
 sub openWarpMenu()
     try
-        if m.sectionBounds.Count() = 0 then return
-
         m.scrollTimer.control = "stop"
         m.pauseTimer.control = "stop"
         m.manualPauseTimer.control = "stop"
 
-        m.warpMenuList.removeChildren(m.warpMenuList.getChildren(-1, 0))
-        ' Direct node references, not re-found by id later -- see
-        ' highlightWarpMenuRow()'s comment for why this replaced an earlier
-        ' findNode("bg")-per-row version that silently never highlighted
-        ' anything on real hardware.
-        m.warpMenuRowBgs = []
-        for i = 0 to m.sectionBounds.Count() - 1
-            rowInfo = buildWarpMenuRow(m.sectionBounds[i].section, i)
-            m.warpMenuList.appendChild(rowInfo.group)
-            m.warpMenuRowBgs.push(rowInfo.bg)
-        end for
+        m.menuRows = buildMenuRows()
+        renderMenuRows()
         m.warpMenuList.translation = [0, 0]
 
-        m.warpMenuIdx = m.currentSectionIdx
-        if m.warpMenuIdx < 0 then m.warpMenuIdx = 0
+        m.warpMenuIdx = 0
         m.warpMenuOpen = true
         ' Stop any still-running close animation from a rapid Back-then-OK
         ' press within its ~0.2s slide-out -- left running, it would finish
@@ -634,7 +802,8 @@ sub openWarpMenu()
         ' Reset off-screen before showing/animating -- guards against a
         ' prior close animation having been interrupted mid-slide (e.g. by
         ' buildContent()'s force-close) and leaving translation.x partway in.
-        m.warpMenu.translation = [-320, 0]
+        ' -380, matching the panel's widened 380px -- see ScheduleScreen.xml.
+        m.warpMenu.translation = [-380, 0]
         m.warpMenu.visible = true
         m.warpMenuOpenAnim.control = "start"
         highlightWarpMenuRow()
@@ -645,29 +814,96 @@ sub openWarpMenu()
     end try
 end sub
 
-' Uniform green cell, work-center name only -- matches the web kiosk's
-' existing sidebar filter (options.html), not this screen's own per-
-' department section-header styling. See highlightWarpMenuRow() for the
-' selected-state color swap.
-' Returns { group, bg } -- the caller keeps bg directly in m.warpMenuRowBgs
-' rather than re-finding it by id later (see openWarpMenu()).
-function buildWarpMenuRow(section as Object, idx as Integer) as Object
+' Flattens the three collapsible sections into one list Up/Down can walk
+' linearly -- a header row (toggleMenuSection(), via onMenuSelect()) toggles
+' its own section's collapse state; an item row underneath an expanded
+' header performs that item's own action. Rebuilt on open and again every
+' time a header's collapse state changes -- never kept diffed/patched.
+'
+' The Work Centers item list is built from m.sectionBounds (what's actually
+' on screen right now, post-filter), not m.rawSections (every work center
+' that exists) -- unlike the web kiosk's own independent work-center filter
+' list. This section is a *jump* list here, not a filter: a work center
+' Schedule Window/Mode has already filtered down to zero visible jobs has
+' nothing left to jump to, so listing it would be a dead selection.
+function buildMenuRows() as Object
+    rows = []
+
+    rows.push({ type: "header", key: "wc", label: "WORK CENTERS", collapsed: m.menuCollapsed.wc })
+    if not m.menuCollapsed.wc then
+        for i = 0 to m.sectionBounds.Count() - 1
+            rows.push({ type: "wc", sectionIdx: i, label: m.sectionBounds[i].section.wc })
+        end for
+    end if
+
+    rows.push({ type: "header", key: "window", label: "SCHEDULE WINDOW", collapsed: m.menuCollapsed.window })
+    if not m.menuCollapsed.window then
+        for each w in m.VIEW_WINDOWS
+            rows.push({ type: "window", windowKey: w.key, label: w.label, active: (w.key = m.viewWindowKey) })
+        end for
+    end if
+
+    rows.push({ type: "header", key: "mode", label: "SCHEDULE MODE", collapsed: m.menuCollapsed.mode })
+    if not m.menuCollapsed.mode then
+        for each md in m.SCHEDULE_MODES
+            rows.push({ type: "mode", modeKey: md.key, label: md.label, active: (md.key = m.scheduleModeKey) })
+        end for
+    end if
+
+    return rows
+end function
+
+' Rebuilds warpMenuList's children from m.menuRows. Direct node references
+' kept in m.warpMenuRowBgs rather than re-found by id later -- see
+' highlightWarpMenuRow()'s comment for why a findNode-per-row version
+' silently never highlighted anything on real hardware.
+sub renderMenuRows()
+    m.warpMenuList.removeChildren(m.warpMenuList.getChildren(-1, 0))
+    m.warpMenuRowBgs = []
+    for i = 0 to m.menuRows.Count() - 1
+        rowInfo = buildMenuRowNode(m.menuRows[i], i)
+        m.warpMenuList.appendChild(rowInfo.group)
+        m.warpMenuRowBgs.push(rowInfo.bg)
+    end for
+end sub
+
+' Header rows get a full-width dark bar with a collapse indicator (matching
+' the web kiosk's own .sidebar-hdr accordion styling); item rows keep the
+' original work-center-only menu's uniform green cell. "[+]"/"[-]" rather
+' than a chevron glyph -- unverified whether font:SmallBoldSystemFont
+' actually has one on real hardware, and plain ASCII can't render wrong.
+' Window/Mode items additionally mark whichever one is actually applied
+' right now (row.active) with a leading "> " -- distinct from
+' highlightWarpMenuRow()'s own cursor-position highlight; the row the
+' cursor is on and the row that's actually in effect are independent and
+' can differ.
+function buildMenuRowNode(row as Object, idx as Integer) as Object
     group = CreateObject("roSGNode", "Group")
     group.translation = [10, idx * m.WARP_ROW_HEIGHT]
 
     bg = CreateObject("roSGNode", "Rectangle")
-    bg.width = 300
+    bg.width = 356
     bg.height = m.WARP_ROW_HEIGHT - 4
-    bg.color = m.WARP_ROW_COLOR
+
+    label = CreateObject("roSGNode", "Label")
+    label.translation = [14, 11]
+    label.font = "font:SmallBoldSystemFont"
+    label.color = "0xFFFFFFFF"
+
+    if row.type = "header" then
+        bg.color = "0x1A1A1AFF"
+        chevron = "[+]"
+        if not row.collapsed then chevron = "[-]"
+        label.text = row.label + "  " + chevron
+    else
+        bg.color = m.WARP_ROW_COLOR
+        prefix = ""
+        if (row.type = "window" or row.type = "mode") and row.active then prefix = "> "
+        label.text = prefix + row.label
+    end if
+
     group.appendChild(bg)
-
-    wcLabel = CreateObject("roSGNode", "Label")
-    wcLabel.text = section.wc
-    wcLabel.translation = [14, 11]
-    wcLabel.font = "font:SmallBoldSystemFont"
-    wcLabel.color = "0xFFFFFFFF"
-    group.appendChild(wcLabel)
-
+    group.appendChild(label)
     return { group: group, bg: bg }
 end function
 
@@ -675,7 +911,7 @@ end function
 ' panel's own slide) the highlighted row's background and keeps it inside
 ' warpMenuViewport's clipped window by shifting warpMenuList's translation.
 ' Earlier version re-found each row's background via row.findNode("bg")
-' every call instead of keeping the reference from buildWarpMenuRow() --
+' every call instead of keeping the reference from the row-builder --
 ' confirmed on real hardware that nothing ever actually highlighted, with
 ' no error printed either. Kept the direct-reference array instead of
 ' digging further into why findNode didn't surface the row here, since it
@@ -686,6 +922,8 @@ sub highlightWarpMenuRow()
         for i = 0 to m.warpMenuRowBgs.Count() - 1
             if i = m.warpMenuIdx then
                 m.warpMenuRowBgs[i].color = m.WARP_ROW_SELECTED_COLOR
+            else if m.menuRows[i].type = "header" then
+                m.warpMenuRowBgs[i].color = "0x1A1A1AFF"
             else
                 m.warpMenuRowBgs[i].color = m.WARP_ROW_COLOR
             end if
@@ -740,9 +978,43 @@ sub onWarpMenuCloseAnimState()
     end if
 end sub
 
-sub warpToSelection()
+' Dispatches the highlighted row's action: a header toggles its own
+' section's collapse state and stays open; a Work Centers item jumps to
+' that section (closing the menu, same as the original warp-to behavior);
+' a Schedule Window/Mode item applies that filter immediately and closes.
+sub onMenuSelect()
+    row = m.menuRows[m.warpMenuIdx]
+    if row.type = "header" then
+        toggleMenuSection(row.key)
+    else if row.type = "wc" then
+        warpToSection(row.sectionIdx)
+    else if row.type = "window" then
+        setViewWindow(row.windowKey)
+    else if row.type = "mode" then
+        setScheduleMode(row.modeKey)
+    end if
+end sub
+
+' Toggling a header never shifts rows ABOVE it, so m.warpMenuIdx (still
+' pointing at this same header) stays valid after the rebuild without
+' needing to re-find it.
+sub toggleMenuSection(key as String)
     try
-        target = m.sectionBounds[m.warpMenuIdx]
+        m.menuCollapsed[key] = not m.menuCollapsed[key]
+        collapsedStr = "0"
+        if m.menuCollapsed[key] then collapsedStr = "1"
+        writeFilterSetting("menu_collapsed_" + key, collapsedStr)
+        m.menuRows = buildMenuRows()
+        renderMenuRows()
+        highlightWarpMenuRow()
+    catch e
+        print "toggleMenuSection error: "; e.getMessage()
+    end try
+end sub
+
+sub warpToSection(sectionIdx as Integer)
+    try
+        target = m.sectionBounds[sectionIdx]
         maxScroll = m.contentHeight - m.viewportHeight
 
         m.scrollY = target.startY
@@ -750,9 +1022,43 @@ sub warpToSelection()
         if m.scrollY < 0 then m.scrollY = 0
         applyScroll()
     catch e
-        print "warpToSelection error: "; e.getMessage()
+        print "warpToSection error: "; e.getMessage()
     end try
     closeWarpMenu()
+end sub
+
+' closeWarpMenu() (called first) may put a still-scrolling display into
+' "manualPaused" -- buildContent() below reads that same m.scrollState at
+' its own entry and, seeing it, keeps the rebuilt content paused too before
+' auto-resuming a few seconds later, same as any other manual interaction.
+' Setting m.scrollY = 0 AFTER closeWarpMenu() (which doesn't touch scrollY
+' itself) and BEFORE buildContent() (which reads it as the position to
+' restore) is what actually resets the display to the top for this filter
+' change, matching the web kiosk's own applyFilter() resetting scrollTop.
+sub setViewWindow(key as String)
+    try
+        m.viewWindowKey = key
+        m.viewDays = viewDaysForKey(key)
+        writeFilterSetting("view_window_days", key)
+        closeWarpMenu()
+        m.scrollY = 0
+        buildContent(filteredSections())
+    catch e
+        print "setViewWindow error: "; e.getMessage()
+    end try
+end sub
+
+sub setScheduleMode(key as String)
+    try
+        m.scheduleModeKey = key
+        m.dispatchMode = (key = "dispatch")
+        writeFilterSetting("schedule_mode", key)
+        closeWarpMenu()
+        m.scrollY = 0
+        buildContent(filteredSections())
+    catch e
+        print "setScheduleMode error: "; e.getMessage()
+    end try
 end sub
 
 function buildJobRow(job as Object, y as Integer) as Object
@@ -865,12 +1171,13 @@ end sub
 ' unattended on a shop floor TV and shouldn't be easy to trigger by accident.
 ' Up/Down scroll manually; auto-scroll pauses while in manual control and
 ' resumes a few seconds after the last press, same idea as the web kiosk
-' pausing on wheel/touch input. OK opens the work-center warp menu and
-' (once open) selects the highlighted row -- same button, context-dependent,
-' matching SetupScreen.brs's existing OK-does-different-things-by-focus
-' pattern rather than introducing a new one. Chosen over an earlier Left-to-
-' open version that tested as unintuitive -- OK is the one button every
-' remote user already reaches for to "do the thing."
+' pausing on wheel/touch input. OK opens the sidebar menu (Work Centers /
+' Schedule Window / Schedule Mode) and (once open) acts on the highlighted
+' row -- same button, context-dependent, matching SetupScreen.brs's
+' existing OK-does-different-things-by-focus pattern rather than
+' introducing a new one. Chosen over an earlier Left-to-open version that
+' tested as unintuitive -- OK is the one button every remote user already
+' reaches for to "do the thing."
 function onKeyEvent(key as String, press as Boolean) as Boolean
     if not press then return false
 
@@ -884,12 +1191,12 @@ function onKeyEvent(key as String, press as Boolean) as Boolean
                 highlightWarpMenuRow()
             end if
         else if key = "down" then
-            if m.warpMenuIdx < m.sectionBounds.Count() - 1 then
+            if m.warpMenuIdx < m.menuRows.Count() - 1 then
                 m.warpMenuIdx = m.warpMenuIdx + 1
                 highlightWarpMenuRow()
             end if
         else if key = "OK" then
-            warpToSelection()
+            onMenuSelect()
         else if key = "back" then
             closeWarpMenu()
         end if
