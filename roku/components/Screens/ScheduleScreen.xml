@@ -66,31 +66,35 @@
 
         <Label id="loadingLabel" text="Loading schedule..." translation="[760, 520]" font="font:LargeSystemFont" color="0x4AAFFFFF" />
 
-        <!-- Work-center warp menu (OK key) -- matches the web kiosk's
-             existing left sidebar work-center filter (see shop-schedule's
-             options.html): a 320px panel docked to the left edge, uniform
-             green cells, slides in/out rather than a centered dim-overlay
-             dialog. Rows built fresh in BRS from m.sectionBounds each time
-             it opens, not kept live while hidden. The whole warpMenu group
-             (panel bg + list together) is what animates -- its own
-             translation.x is the slide, not a position on warpMenuList.
-             clippingRect on warpMenuViewport (local coords, same
-             requirement as the main viewport above) confines the row list
-             to the panel; selection scrolls warpMenuList by snapping its
-             translation, not animating -- that part is discrete keyboard
-             selection, not auto-scroll, unlike the panel's own slide. -->
-        <Group id="warpMenu" visible="false" translation="[-320, 0]">
-            <Rectangle id="warpMenuPanelBg" width="320" height="1080" color="0x0B0B18FF" />
-            <Label id="warpMenuTitle" text="WORK CENTERS" translation="[16, 20]" font="font:SmallBoldSystemFont" color="0x999999FF" />
-            <Group id="warpMenuViewport" translation="[0, 56]" clippingRect="[0, 0, 320, 1024]">
+        <!-- Sidebar menu (OK key) -- matches the web kiosk's own sidebar:
+             three independently-collapsible sections (Work Centers,
+             Schedule Window, Schedule Mode -- no Print Report, there's no
+             printer here), flattened into one Up/Down-navigable list built
+             fresh in BRS (buildMenuRows()/renderMenuRows()) each time it
+             opens or a header's collapse state changes, not kept live while
+             hidden. 380px (wider than the original work-center-only
+             version's 320px) so "SCHEDULE WINDOW"/"WC DISPATCH"-length
+             labels have room without clipping against clippingRect below.
+             The whole warpMenu group (panel bg + list together) is what
+             animates -- its own translation.x is the slide, not a position
+             on warpMenuList. clippingRect on warpMenuViewport (local
+             coords, same requirement as the main viewport above) confines
+             the row list to the panel; selection scrolls warpMenuList by
+             snapping its translation, not animating -- that part is
+             discrete keyboard selection, not auto-scroll, unlike the
+             panel's own slide. -->
+        <Group id="warpMenu" visible="false" translation="[-380, 0]">
+            <Rectangle id="warpMenuPanelBg" width="380" height="1080" color="0x0B0B18FF" />
+            <Label id="warpMenuTitle" text="MENU" translation="[16, 20]" font="font:SmallBoldSystemFont" color="0x999999FF" />
+            <Group id="warpMenuViewport" translation="[0, 56]" clippingRect="[0, 0, 380, 1024]">
                 <Group id="warpMenuList" translation="[0, 0]" />
             </Group>
         </Group>
         <Animation id="warpMenuOpenAnim" duration="0.25" easeFunction="outCubic">
-            <Vector2DFieldInterpolator key="[0.0, 1.0]" keyValue="[[-320.0, 0.0], [0.0, 0.0]]" fieldToInterp="warpMenu.translation" />
+            <Vector2DFieldInterpolator key="[0.0, 1.0]" keyValue="[[-380.0, 0.0], [0.0, 0.0]]" fieldToInterp="warpMenu.translation" />
         </Animation>
         <Animation id="warpMenuCloseAnim" duration="0.2" easeFunction="inCubic">
-            <Vector2DFieldInterpolator key="[0.0, 1.0]" keyValue="[[0.0, 0.0], [-320.0, 0.0]]" fieldToInterp="warpMenu.translation" />
+            <Vector2DFieldInterpolator key="[0.0, 1.0]" keyValue="[[0.0, 0.0], [-380.0, 0.0]]" fieldToInterp="warpMenu.translation" />
         </Animation>
 
         <ScheduleTask id="scheduleTask" />
